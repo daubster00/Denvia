@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+jobs:
+  # RAG 코드 변경 감지 — 변경 시 PR 차단
+  pathspec-check:
+    name: RAG 코드 변경 감지
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: RAG 코드 디렉터리 변경 감지
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD)
+          if echo "$CHANGED" | grep -q "^RAG 코드/"; then
+            echo "❌ RAG 코드 디렉터리 변경이 감지되었습니다. 이 디렉터리는 수정 금지입니다."
+            exit 1
+          fi
+          echo "✅ RAG 코드 변경 없음"
+
+  # web: ESLint + TypeScript + Vitest
+  web:
+    name: Web (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        run: pnpm eslint src --ext ts,tsx
+
+      - name: TypeScript 타입 체크
+        run: pnpm tsc --noEmit
+
+      - name: Vitest 단위 테스트
+        run: pnpm vitest run
+
+  # api: Ruff + Mypy + Pytest
+  api:
+    name: API (FastAPI)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: denvia
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: denvia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: 의존성 설치
+        run: uv sync
+
+      - name: Ruff 린트
+        run: uv run ruff check .
+
+      - name: Mypy 타입 체크
+        run: uv run mypy src/ --ignore-missing-imports
+
+      - name: Pytest
+        env:
+          DATABASE_SYNC_URL: postgresql+psycopg://denvia:password@localhost:5432/denvia
+          DATABASE_URL: postgresql+psycopg://denvia:password@localhost:5432/denvia
+          REDIS_URL: redis://localhost:6379
+        run: uv run pytest tests/ -v

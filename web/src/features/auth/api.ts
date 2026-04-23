@@ -1,0 +1,88 @@
+import { apiFetch } from "@/lib/api-client";
+import type { SessionUser } from "@/types/api";
+
+/** 현재 세션 사용자 정보 조회 */
+export async function fetchMe(): Promise<SessionUser> {
+  return apiFetch<SessionUser>("/api/v1/me");
+}
+
+/** SMS OTP 발송 */
+export async function sendSmsOtp(phone: string, purpose: "signup" | "find_id" | "find_password") {
+  return apiFetch<{ sent_at: string; cooldown_seconds: number; max_retries: number }>(
+    "/api/v1/auth/sms/send",
+    { method: "POST", body: JSON.stringify({ phone, purpose }) }
+  );
+}
+
+/** SMS OTP 검증 */
+export async function verifySmsOtp(phone: string, code: string, purpose: "signup" | "find_id" | "find_password") {
+  return apiFetch<{ phone_verification_token: string }>(
+    "/api/v1/auth/sms/verify",
+    { method: "POST", body: JSON.stringify({ phone, code, purpose }) }
+  );
+}
+
+/** 회원가입 */
+export async function signup(payload: {
+  email: string;
+  password: string;
+  phone: string;
+  phone_verification_token: string;
+}) {
+  return apiFetch<SessionUser>("/api/v1/auth/signup", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 가입유형 설정 */
+export async function setSegment(payload: {
+  segment: "doctor" | "hygienist" | "student_other";
+  years_of_experience?: number;
+}) {
+  return apiFetch<void>("/api/v1/me/segment", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 이메일 로그인 */
+export async function login(payload: {
+  email: string;
+  password: string;
+  persist_session: boolean;
+}) {
+  return apiFetch<import("@/types/api").SessionUser>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 로그아웃 */
+export async function logout() {
+  return apiFetch<void>("/api/v1/auth/logout", { method: "POST" });
+}
+
+/** 비밀번호 찾기 — SMS 임시 비밀번호 발송 */
+export async function requestPasswordReset(payload: { email: string; phone: string }) {
+  return apiFetch<{ ok: boolean }>("/api/v1/auth/find-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 아이디(이메일) 찾기 — phone_verification_token으로 마스킹된 이메일 반환 */
+export async function lookupId(payload: { phone_verification_token: string }) {
+  return apiFetch<{ email_masked: string | null; signup_method: "email" | "social" | null }>(
+    "/api/v1/auth/find-id",
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+/** 임시 비밀번호 → 신규 비밀번호 변경 */
+export async function changePassword(payload: { new_password: string }) {
+  return apiFetch<{ ok: boolean }>("/api/v1/me/password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

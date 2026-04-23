@@ -1,0 +1,97 @@
+name: PR Notification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  send_slack:
+    if: "${{ github.event.pull_request.draft == false && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci: skip slack noti') }}"
+    name: Send Slack Notification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Parse Title
+        id: parse-title
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const { data } = await github.rest.pulls.get({
+              pull_number: context.issue.number,
+              owner: 'wanteddev',
+              repo: 'wds',
+            });
+
+            const title = data.title.replace(/\\/g, '\\\\').
+              replace(/\u0008/g, '\\b').
+              replace(/\t/g, '\\t').
+              replace(/\n/g, '\\n').
+              replace(/\f/g, '\\f').
+              replace(/\r/g, '\\r').
+              replace(/'/g, '\\\'').
+              replace(/"/g, '\\"').
+              replace(/`/g, '\\`');
+
+            core.setOutput('title', title);
+      - name: Send Slack Notification
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "",
+              "attachments": [
+                {
+                  "color": "${{ (job.status == 'success' && 'good') || (job.status == 'failure' && 'danger') || 'warning' }}",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "PR 리뷰 요청"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": ">*PR 제목*\n>[${{ github.event.repository.name }}] ${{ steps.parse-title.outputs.title }}\n>\n>*작성자*\n>${{ github.event.pull_request.user.login }} (c.c <!subteam^S084RSQ5JJW>)"
+                        }
+                      ],
+                      "accessory": {
+                        "type": "image",
+                        "image_url": "${{ github.event.pull_request.user.avatar_url }}",
+                        "alt_text": "${{ github.event.pull_request.user.login }}"
+                      }
+                    },
+                    {
+                      "type": "context",
+                      "elements": [
+                        {
+                          "type": "mrkdwn",
+                          "text": ":eyes: 리뷰 및 승인 부탁드립니다"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "리뷰하러 가기"
+                          },
+                          "url": "${{ github.event.pull_request.html_url }}",
+                          "style": "primary"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }' \
+            "$SLACK_WEBHOOK_URL"

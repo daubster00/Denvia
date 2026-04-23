@@ -1,0 +1,17 @@
+{
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "cache": true
+    },
+    "watch": {
+      "dependsOn": ["^watch"]
+    },
+    "lint:fix": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    }
+  }
+}

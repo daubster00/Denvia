@@ -1,0 +1,86 @@
+name: Code Connect Publish And Icon/Figma Sync
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'code connect push 여부'
+        type: choice
+        required: false
+        default: 'true'
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+  FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+
+permissions:
+  packages: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    uses: wanteddev/montage-web/.github/workflows/figma-icon-sync.yml@main
+    with:
+      output_dir: output
+    secrets: inherit
+
+  create-pull-request:
+    needs: sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Restore cached Primes
+        id: cache-primes-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: output
+          key: ${{ needs.sync.outputs.figma-output-cache-key }}
+
+      - uses: ./.github/actions/pnpm-install
+      - run: node scripts/figma-icon.mjs
+
+      - run: git config user.name "github-actions[bot]"
+      - run: git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create Branch And Commit
+        run: |
+          git branch feature/code-connect/${{ github.run_id }}
+          git checkout feature/code-connect/${{ github.run_id }}
+          git add .
+          git commit -m "feat(wds-icon): add icons synced from figma" --no-verify
+          git push origin feature/code-connect/${{ github.run_id }}
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Create New PR
+        run: |
+          gh pr create -B ${{ steps.extract_branch.outputs.branch }} -H feature/code-connect/${{ github.run_id }} --title "feat(wds,wds-icon): icon figma sync and new code connect publish" --body "add icons synced from figma"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+
+  publish:
+    needs: create-pull-request
+    if: ${{ inputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        uses: ./.github/actions/pnpm-install
+
+      - name: Build packages
+        uses: ./.github/actions/package-build
+
+      - name: Publish
+        run: pnpm run publish:codeconnect --token ${{ env.FIGMA_TOKEN }} --skip-validation --batch-size 50

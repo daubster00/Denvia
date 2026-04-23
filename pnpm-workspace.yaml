@@ -1,0 +1,3 @@
+packages:
+  - "web"
+  - "vendor/montage-web/packages/*"

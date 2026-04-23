@@ -1,0 +1,17 @@
+packages:
+  - .github/actions/*
+  - docs
+  - tests/*
+  - packages/*
+  - scripts/*
+
+enablePrePostScripts: true
+
+engineStrict: true
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - nx
+  - sharp
+  - unrs-resolver

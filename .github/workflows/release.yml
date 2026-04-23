@@ -1,0 +1,16 @@
+# Phase 2 이미지 빌드 파이프라인 — 골격만 (추후 구체화)
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    name: Docker 이미지 빌드
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: TODO
+        run: echo "Phase 2에서 이미지 빌드 및 레지스트리 푸시 구현 예정"

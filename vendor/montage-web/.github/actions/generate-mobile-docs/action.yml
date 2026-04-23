@@ -1,0 +1,10 @@
+name: Generate Mobile Docs
+description: Generate mobile docs from mobile document
+
+runs:
+  using: 'node20'
+  main: 'dist/index.mjs'
+inputs:
+  gh_token:
+    description: github token
+    required: true

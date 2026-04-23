@@ -1,0 +1,50 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@hookform/resolvers": "^5.2.2",
+    "@sentry/nextjs": "^10.49.0",
+    "@tanstack/react-query": "^5.99.2",
+    "@tiptap/extension-image": "^3.22.4",
+    "@tiptap/extension-link": "^3.22.4",
+    "@tiptap/react": "^3.22.4",
+    "@tiptap/starter-kit": "^3.22.4",
+    "@wanteddev/wds": "workspace:^3.5.0",
+    "@wanteddev/wds-icon": "workspace:^3.5.0",
+    "@wanteddev/wds-nextjs": "workspace:^3.5.0",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-hook-form": "^7.73.1",
+    "recharts": "^3.8.1",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.2",
+    "@playwright/test": "^1.59.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "eslint-plugin-import": "^2.32.0",
+    "jsdom": "^29.0.2",
+    "msw": "^2.13.4",
+    "typescript": "^5",
+    "vitest": "^4.1.5"
+  }
+}

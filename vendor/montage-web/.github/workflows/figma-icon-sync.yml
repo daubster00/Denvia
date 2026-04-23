@@ -1,0 +1,337 @@
+name: Figma icon sync
+on:
+  workflow_call:
+    inputs:
+      output_dir:
+        type: string
+        description: 'output directory'
+        required: true
+        default: output
+    outputs:
+      figma-output-cache-key:
+        value: ${{ jobs.sync.outputs.figma-output-cache-key }}
+
+env:
+  FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+    outputs:
+      figma-output-cache-key: ${{ steps.create-cache-key.outputs.figma-output-cache-key }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Create cache key
+        id: create-cache-key
+        run: echo "figma-output-cache-key=${{ github.run_id }}-${{ github.sha }}-${{ github.ref }}" >> $GITHUB_OUTPUT
+
+      - uses: actions/github-script@v7
+        env:
+          FIGMA_TOKEN: ${{ env.FIGMA_TOKEN }}
+          OUTPUT_DIR: ${{ inputs.output_dir }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const TOKEN = process.env.FIGMA_TOKEN;
+            const URL_BASE = 'https://api.figma.com/v1/files';
+            const URL_BASE_IMAGES = 'https://api.figma.com/v1/images';
+
+            const FILE_KEY = '7RHtWV3Pw6I98UEDjbx5V1';
+
+            // Icon/Assets/Normal
+            const ROOT_TRAVERSE_IDS = [
+              // Components
+              '26882:89366',
+              // 0 Theme
+              '10077:24937',
+              // Icon
+              '14852:37729',
+              // '' Section
+              '14854:45087',
+              // Solid
+              '14854:45155',
+              // Content
+              '26894:99058',
+            ];
+
+            // Icon/Assets/Color/Logo
+            const ROOT_TRAVERSE_COLOR_LOGO_IDS = [
+              // Components
+              '26882:89366',
+              // 0 Theme
+              '10077:24937',
+              // Icon
+              '14852:37729',
+              // '' Section
+              '14854:45087',
+              // Color
+              '14854:45156',
+              // '' Section
+              '40167:141932',
+              // Logo
+              '40167:141933',
+              // '' Section
+              '40214:1350',
+              // Content
+              '40167:141715',
+            ];
+
+            // Icon/Assets/Color/Normal
+            const ROOT_TRAVERSE_COLOR_NORMAL_IDS = [
+              // Components
+              '26882:89366',
+              // 0 Theme
+              '10077:24937',
+              // Icon
+              '14852:37729',
+              // '' Section
+              '14854:45087',
+              // Color
+              '14854:45156',
+              // '' Section
+              '40167:141932',
+              // Normal
+              '40167:141934',
+              // '' Section
+              '40214:1351',
+              // Logo
+              '26900:94433',
+            ];
+
+            // Icon/Navigation
+            const ROOT_TRAVERSE_NAVIGATION_IDS = [
+              // Components
+              '26882:89366',
+              // 0 Theme
+              '10077:24937',
+              // Icon
+              '14852:37729',
+              // '' Section
+              '14854:45087',
+              // Navigation
+              '14854:45095',
+              // Content
+              '10077:25083',
+            ];
+
+            const getIconComponents = async () => {
+              try {
+                const fileResponse = await fetch(
+                  `${URL_BASE}/${FILE_KEY}?ids=26882-89366`,
+                  {
+                    method: 'GET',
+                    headers: { 'X-FIGMA-TOKEN': TOKEN },
+                  },
+                );
+                const data = await fileResponse.json();
+
+                return await fileRESTResponseToIconComponentsJSON(data);
+              } catch (e) {
+                throw e;
+              }
+            };
+
+            const getSVGImages = async (nodeIds) => {
+              try {
+                const fileResponse = await fetch(
+                  `${URL_BASE_IMAGES}/${FILE_KEY}?format=svg&ids=${nodeIds.join(',')}`,
+                  {
+                    method: 'GET',
+                    headers: { 'X-FIGMA-TOKEN': TOKEN },
+                  },
+                );
+                return await fileResponse.json();
+              } catch (e) {
+                throw e;
+              }
+            };
+
+            const fileRESTResponseToIconComponentsJSON = async (response) => {
+              // ICON
+              let parentNode = response.document;
+              // ICON COLOR LOGO
+              let colorLogoParentNode = response.document;
+              // ICON COLOR NORMAL
+              let colorNormalParentNode = response.document;
+              // ICON NAVIGATION
+              let navigationParentNode = response.document;
+
+              ROOT_TRAVERSE_IDS.forEach(
+                (id) => (parentNode = parentNode.children.find((a) => a.id === id)),
+              );
+
+              ROOT_TRAVERSE_COLOR_LOGO_IDS.forEach(
+                (id) =>
+                  (colorLogoParentNode = colorLogoParentNode.children.find(
+                    (a) => a.id === id,
+                  )),
+              );
+
+              ROOT_TRAVERSE_COLOR_NORMAL_IDS.forEach(
+                (id) =>
+                  (colorNormalParentNode = colorNormalParentNode.children.find(
+                    (a) => a.id === id,
+                  )),
+              );
+
+              ROOT_TRAVERSE_NAVIGATION_IDS.forEach(
+                (id) =>
+                  (navigationParentNode = navigationParentNode.children.find(
+                    (a) => a.id === id,
+                  )),
+              );
+
+              const idsToNameAndComponentSetId = {};
+
+              const getIconNames = (nodes, type = '') => {
+                if (nodes) {
+                  nodes.children.forEach((component) => {
+                    if (component.type === 'COMPONENT_SET') {
+                      const components = component.children.filter(
+                        (child) => child.type === 'COMPONENT',
+                      );
+
+                      if (components) {
+                        components.map((child) => {
+                          const name =
+                            'Icon' +
+                            child.name
+                              .replace('Name=', '')
+                              .replace('name=', '')
+                              .replace(/, [\s\S]+/g, '')
+                              .split(/[^a-zA-Z0-9]+/)
+                              .map((a) => a.charAt(0).toUpperCase() + a.substring(1))
+                              .join('') +
+                            type;
+
+                          idsToNameAndComponentSetId[child.id] = {
+                            name,
+                            id: component.id,
+                            description: response.componentSets[component.id]?.description,
+                          };
+                        });
+                      }
+                    }
+                  });
+                }
+              };
+
+              getIconNames(parentNode);
+              getIconNames(colorLogoParentNode, 'Color');
+              getIconNames(colorNormalParentNode, 'Color');
+              getIconNames(navigationParentNode);
+
+              const nodeIds = Object.keys(idsToNameAndComponentSetId);
+              const { images } = await getSVGImages(nodeIds);
+
+              const processNodeId = async (nodeId) => {
+                const fileResponse = await fetch(images[nodeId], { method: 'GET' });
+                const svg = await fileResponse.text();
+                const {
+                  name,
+                  id: componentSetId,
+                  description,
+                } = idsToNameAndComponentSetId[nodeId];
+
+                const parsedName = name
+                  .replace('Icon', '')
+                  .replace('Color', '')
+                  .split(/[^a-zA-Z0-9]+/)
+                  .map((a, i) =>
+                    i === 0
+                      ? a.charAt(0).toLowerCase() + a.substring(1)
+                      : a.charAt(0).toUpperCase() + a.substring(1),
+                  )
+                  .join('');
+
+                res.push({
+                  name,
+                  content: svg,
+                  id: componentSetId.replace(':', '-'),
+                  parsedName: name.includes('Color') ? parsedName + 'Color' : parsedName,
+                  description,
+                });
+              };
+
+              console.log('Sleeping for ten seconds to wait for images to exist...');
+              await new Promise((resolve) => setTimeout(resolve, 10000));
+              console.log('Proceeding....');
+
+              /**
+              * @type {Array<{name: string, content: string, id: string, parsedName: string}>}
+              */
+              const res = [];
+              const fails = [];
+              await Promise.all(
+                nodeIds.map(async (nodeId) => {
+                  try {
+                    await processNodeId(nodeId);
+                  } catch (e) {
+                    fails.push(nodeId);
+                    console.log('Failed once:', nodeId, e);
+                  }
+                }),
+              );
+              console.log(`Retrying ${fails.length} failure(s)...`);
+              await Promise.all(
+                fails.map(async (nodeId) => {
+                  try {
+                    await processNodeId(nodeId);
+                  } catch (e) {
+                    console.error(e);
+                    console.log(
+                      'Failed again:',
+                      nodeId,
+                      images[nodeId],
+                      ...idsToNameAndComponentSetId[nodeId],
+                    );
+                  }
+                }),
+              );
+
+              return res;
+            };
+
+            const main = async () => {
+              const data = await getIconComponents();
+
+              if (!fs.existsSync(process.env.OUTPUT_DIR)) {
+                fs.mkdirSync(process.env.OUTPUT_DIR);
+              }
+
+              data.forEach(({ content, parsedName }) => {
+                fs.writeFileSync(
+                  path.join(process.env.OUTPUT_DIR, `${parsedName}.svg`),
+                  content,
+                  'utf-8',
+                );
+              });
+
+              const result = data.map(({ id, parsedName, description }) => ({
+                id,
+                name: parsedName,
+                description,
+              }));
+
+              fs.writeFileSync(
+                path.join(process.env.OUTPUT_DIR, 'result.json'),
+                JSON.stringify(result, null, 2),
+                'utf-8',
+              );
+            };
+
+            await main();
+
+      - uses: actions/cache/save@v4
+        name: Save cache
+        with:
+          path: |
+            ${{ inputs.output_dir }}
+          key: ${{ steps.create-cache-key.outputs.figma-output-cache-key }}

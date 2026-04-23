@@ -1,0 +1,21 @@
+[lint]
+# snake_case 및 기타 코드 품질 규칙
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "N",   # pep8-naming (snake_case 강제)
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "S",   # flake8-bandit (보안)
+]
+ignore = [
+  "S101",  # assert 허용 (테스트 코드)
+  "S105",  # 하드코딩 비밀번호 false positive 무시
+]
+
+[lint.pep8-naming]
+# 클래스명은 CamelCase, 함수/변수는 snake_case
+classmethod-decorators = ["classmethod"]

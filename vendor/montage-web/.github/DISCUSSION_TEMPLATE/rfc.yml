@@ -1,0 +1,25 @@
+title: '[RFC] '
+labels: ['request for comments']
+body:
+  - type: textarea
+    attributes:
+      label: Goals
+      description: List the goals you are trying to achieve.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Background
+      description: Explain the context behind this request.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposal
+      description: How would you like this to be resolved? Describe your proposed solution.
+    validations:
+      required: true

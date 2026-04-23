@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.react.json",
+  "compilerOptions": {
+    "removeComments": false,
+    "baseUrl": "./",
+    "paths": {
+      "@wanteddev/wds": ["packages/wds/src"],
+      "@wanteddev/wds-icon": ["packages/wds-icon/src"],
+      "@wanteddev/wds-nextjs": ["packages/wds-nextjs/src"],
+      "@wanteddev/wds-engine": ["packages/wds-engine/src"],
+      "@wanteddev/wds-theme": ["packages/wds-theme/src"],
+      "@wanteddev/wds-lottie": ["packages/wds-lottie/src"]
+    }
+  },
+  "include": ["figma/**/*"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,163 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { sendSmsOtp, verifySmsOtp, lookupId } from "./api";
+import { PhoneNumberField } from "./PhoneNumberField";
+import { SMSCodeInput } from "./SMSCodeInput";
+
+interface FindIdPopupProps {
+  onBack: () => void;
+}
+
+type Step = "phone" | "otp" | "result";
+
+interface LookupResult {
+  email_masked: string | null;
+  signup_method: "email" | "social" | null;
+}
+
+/** 아이디 찾기 — 3단계: 휴대폰 입력 → OTP 검증 → 결과 표시 */
+export function FindIdPopup({ onBack }: FindIdPopupProps) {
+  const [step, setStep] = useState<Step>("phone");
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | undefined>();
+  const [cooldownSeconds, setCooldownSeconds] = useState(60);
+  const [otpError, setOtpError] = useState<string | undefined>();
+  const [result, setResult] = useState<LookupResult | null>(null);
+  const [sendingOtp, setSendingOtp] = useState(false);
+
+  const normalizedPhone = phone.replace(/\D/g, "");
+
+  const handleSendOtp = async () => {
+    if (!/^010\d{8}$/.test(normalizedPhone)) {
+      setPhoneError("올바른 휴대폰 번호를 입력하세요. (010-XXXX-XXXX)");
+      return;
+    }
+    setPhoneError(undefined);
+    setSendingOtp(true);
+    try {
+      const res = await sendSmsOtp(normalizedPhone, "find_id");
+      setCooldownSeconds(res.cooldown_seconds);
+      setStep("otp");
+    } catch {
+      setPhoneError("인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleResendOtp = useCallback(async () => {
+    await sendSmsOtp(normalizedPhone, "find_id");
+  }, [normalizedPhone]);
+
+  const handleOtpComplete = async (code: string) => {
+    setOtpError(undefined);
+    try {
+      const { phone_verification_token } = await verifySmsOtp(normalizedPhone, code, "find_id");
+      const lookupResult = await lookupId({ phone_verification_token });
+      setResult(lookupResult);
+      setStep("result");
+    } catch {
+      setOtpError("인증번호가 올바르지 않습니다.");
+    }
+  };
+
+  if (step === "phone") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <PhoneNumberField
+          id="find-id-phone"
+          value={phone}
+          onChange={setPhone}
+          error={phoneError}
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={handleSendOtp}
+          disabled={sendingOtp}
+          aria-busy={sendingOtp}
+          style={{
+            padding: "12px 0",
+            background: sendingOtp ? "#C4B5FD" : "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 8,
+            fontSize: 15,
+            fontWeight: 600,
+            cursor: sendingOtp ? "not-allowed" : "pointer",
+          }}
+        >
+          {sendingOtp ? "전송 중..." : "인증번호 전송"}
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "otp") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 14, color: "#70737C", textAlign: "center" }}>
+          {phone}으로 인증번호를 전송했습니다.
+        </p>
+        <SMSCodeInput
+          onComplete={handleOtpComplete}
+          onResend={handleResendOtp}
+          cooldownSeconds={cooldownSeconds}
+          error={otpError}
+        />
+      </div>
+    );
+  }
+
+  // 결과 화면
+  const getResultMessage = () => {
+    if (!result) return null;
+    if (result.email_masked && result.signup_method === "email") {
+      return (
+        <>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#171719" }}>가입 이메일</p>
+          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#7C3AED" }}>{result.email_masked}</p>
+          <p style={{ margin: 0, fontSize: 13, color: "#70737C" }}>이메일로 로그인해주세요.</p>
+        </>
+      );
+    }
+    if (result.email_masked && result.signup_method === "social") {
+      return (
+        <p style={{ margin: 0, fontSize: 14, color: "#171719", lineHeight: 1.6 }}>
+          이 휴대폰은 소셜 계정으로 가입되어 있습니다.
+          <br />
+          소셜 로그인을 이용해주세요.
+        </p>
+      );
+    }
+    return (
+      <p style={{ margin: 0, fontSize: 14, color: "#70737C", lineHeight: 1.6 }}>
+        해당 휴대폰으로 가입된 계정이 없거나 소셜 가입일 수 있습니다.
+      </p>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "center" }}>
+      {getResultMessage()}
+      <button
+        type="button"
+        onClick={onBack}
+        style={{
+          padding: "12px 0",
+          background: "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          fontSize: 15,
+          fontWeight: 600,
+          cursor: "pointer",
+          marginTop: 8,
+        }}
+      >
+        로그인 화면으로 돌아가기
+      </button>
+    </div>
+  );
+}

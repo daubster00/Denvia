@@ -1,0 +1,13 @@
+{
+  "name": "@wanteddev/test-visual",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@wanteddev/wds": "workspace:*",
+    "@wanteddev/wds-icon": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}
