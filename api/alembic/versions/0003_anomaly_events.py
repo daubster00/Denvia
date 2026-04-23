@@ -10,6 +10,7 @@ Create Date: 2026-04-23
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "0003"
 down_revision = "0002"
@@ -18,24 +19,35 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # CREATE TYPE IF NOT EXISTS equivalent via DO block (idempotent).
     op.execute(
         """
-        CREATE TYPE anomaly_event_type AS ENUM (
-            'login_brute_force',
-            'rapid_questions',
-            'concurrent_ip_login',
-            'repeated_question',
-            'recovery_abuse'
-        )
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'anomaly_event_type') THEN
+                CREATE TYPE anomaly_event_type AS ENUM (
+                    'login_brute_force',
+                    'rapid_questions',
+                    'concurrent_ip_login',
+                    'repeated_question',
+                    'recovery_abuse'
+                );
+            END IF;
+        END$$
         """
     )
     op.execute(
         """
-        CREATE TYPE anomaly_event_status AS ENUM (
-            'new',
-            'reviewed',
-            'actioned'
-        )
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'anomaly_event_status') THEN
+                CREATE TYPE anomaly_event_status AS ENUM (
+                    'new',
+                    'reviewed',
+                    'actioned'
+                );
+            END IF;
+        END$$
         """
     )
 
@@ -44,7 +56,7 @@ def upgrade() -> None:
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column(
             "type",
-            sa.Enum(
+            postgresql.ENUM(
                 "login_brute_force",
                 "rapid_questions",
                 "concurrent_ip_login",
@@ -61,7 +73,7 @@ def upgrade() -> None:
         sa.Column("details", sa.JSON(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
+            postgresql.ENUM(
                 "new",
                 "reviewed",
                 "actioned",

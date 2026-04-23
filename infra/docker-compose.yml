@@ -28,32 +28,36 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ../api:/app
+      - ../api:/workspace/api
+      # 호스트의 Windows .venv가 컨테이너 Linux .venv를 덮어쓰지 못하게 named volume으로 분리
+      - api_venv:/workspace/api/.venv
 
   worker:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    command: uv run celery -A api.src.workers.celery_app worker --loglevel=info
+    command: uv --project /workspace/api run celery -A api.src.workers.celery_app worker --loglevel=info
     env_file:
       - ../.env
     depends_on:
       - redis
       - postgres
     volumes:
-      - ../api:/app
+      - ../api:/workspace/api
+      - api_venv:/workspace/api/.venv
 
   beat:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    command: uv run celery -A api.src.workers.celery_app beat --loglevel=info
+    command: uv --project /workspace/api run celery -A api.src.workers.celery_app beat --loglevel=info
     env_file:
       - ../.env
     depends_on:
       - redis
     volumes:
-      - ../api:/app
+      - ../api:/workspace/api
+      - api_venv:/workspace/api/.venv
 
   postgres:
     image: postgres:16
@@ -98,3 +102,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  api_venv:

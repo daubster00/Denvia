@@ -56,5 +56,10 @@ export async function apiFetch<T>(
     await handleErrorResponse(res, path);
   }
 
+  // 204 No Content 또는 빈 body는 undefined로 반환 (void 응답 지원)
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }

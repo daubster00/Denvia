@@ -1,17 +1,22 @@
 FROM python:3.12-slim
 
-WORKDIR /app
+# /workspace를 루트로 삼고 api/ 디렉터리 구조를 그대로 유지
+# (코드가 `from api.src.X import Y` 형식으로 import하기 때문)
+WORKDIR /workspace/api
 
 # uv 설치
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# 의존성 복사 및 설치
-COPY api/pyproject.toml api/uv.lock ./
+# 의존성 복사 및 설치 (hatchling이 pyproject.readme 경로를 검증하므로 README.md도 포함)
+COPY api/pyproject.toml api/uv.lock api/README.md ./
 RUN uv sync --frozen --no-dev
 
 # 소스 복사
-COPY api/ .
+COPY api/ ./
+
+# uvicorn은 /workspace에서 실행 — `api.src.main`이 네임스페이스 패키지로 해석됨
+WORKDIR /workspace
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uv", "--project", "/workspace/api", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

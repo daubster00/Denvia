@@ -154,7 +154,7 @@ class FindIdRequest(BaseModel):
 
 class FindIdResponse(BaseModel):
     email_masked: str | None
-    signup_method: Literal["email", "social"] | None
+    signup_method: Literal["email", "kakao", "google", "naver", "social"] | None
 
 
 class PasswordChangeRequest(BaseModel):
@@ -181,3 +181,19 @@ class SegmentRequest(BaseModel):
         if v is not None and not (1 <= v <= 50):
             raise ValueError("연차는 1~50 사이여야 합니다.")
         return v
+
+
+# ── OAuth 3종 (Story 1.6) ────────────────────────────────────────────────────
+
+class OAuthCompleteRequest(BaseModel):
+    signup_pending_token: str
+    phone: str
+    phone_verification_token: str
+
+    @field_validator("phone")
+    @classmethod
+    def phone_format(cls, v: str) -> str:
+        cleaned = re.sub(r"[^0-9]", "", v)
+        if not re.match(r"^010\d{8}$", cleaned):
+            raise ValueError("올바른 휴대폰 번호를 입력하세요.")
+        return cleaned

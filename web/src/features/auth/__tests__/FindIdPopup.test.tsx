@@ -39,7 +39,10 @@ describe("FindIdPopup — 단계 전이", () => {
 });
 
 describe("FindIdPopup — 결과 분기", () => {
-  async function setupOtpVerified(lookupResult: { email_masked: string | null; signup_method: "email" | "social" | null }) {
+  async function setupOtpVerified(lookupResult: {
+    email_masked: string | null;
+    signup_method: "email" | "kakao" | "google" | "naver" | "social" | null;
+  }) {
     const { sendSmsOtp, verifySmsOtp, lookupId } = await import("@/features/auth/api");
     vi.mocked(sendSmsOtp).mockResolvedValue({ sent_at: "", cooldown_seconds: 60, max_retries: 3 });
     vi.mocked(verifySmsOtp).mockResolvedValue({ phone_verification_token: "token_abc" });
@@ -93,6 +96,33 @@ describe("FindIdPopup — 결과 분기", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/가입된 계정이 없거나/)).toBeTruthy();
+    });
+  });
+
+  it("카카오 가입자 결과: 카카오 로그인 안내 표시", async () => {
+    await setupOtpVerified({ email_masked: "d****@denvia.com", signup_method: "kakao" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/카카오 계정으로 가입되어/)).toBeTruthy();
+      expect(screen.getByText(/카카오 로그인을 이용해주세요/)).toBeTruthy();
+    });
+  });
+
+  it("구글 가입자 결과: 구글 로그인 안내 표시", async () => {
+    await setupOtpVerified({ email_masked: "d****@denvia.com", signup_method: "google" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/구글 계정으로 가입되어/)).toBeTruthy();
+      expect(screen.getByText(/구글 로그인을 이용해주세요/)).toBeTruthy();
+    });
+  });
+
+  it("네이버 가입자 결과: 네이버 로그인 안내 표시", async () => {
+    await setupOtpVerified({ email_masked: "d****@denvia.com", signup_method: "naver" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/네이버 계정으로 가입되어/)).toBeTruthy();
+      expect(screen.getByText(/네이버 로그인을 이용해주세요/)).toBeTruthy();
     });
   });
 });

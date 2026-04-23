@@ -183,3 +183,39 @@ async def test_만료_토큰_400(fake_redis_otp, fake_redis_rl):
 
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "SMS_TOKEN_INVALID"
+
+
+# ── Story 1.6: oauth_identity provider별 세분화 ─────────────────────────────
+
+def _mock_db_social_with_provider(user, provider: str) -> AsyncMock:
+    """첫 execute는 user, 두 번째 execute는 provider 문자열을 반환."""
+    db = AsyncMock(spec=AsyncSession)
+
+    first_result = MagicMock()
+    first_result.scalar_one_or_none.return_value = user
+
+    second_result = MagicMock()
+    second_result.scalar_one_or_none.return_value = provider
+
+    db.execute = AsyncMock(side_effect=[first_result, second_result])
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    return db
+
+
+@pytest.mark.parametrize("provider", ["kakao", "google", "naver"])
+async def test_signup_method_provider별_분기(fake_redis_otp, fake_redis_rl, provider):
+    token = f"tok_{provider}"
+    await fake_redis_otp.set(_TOKEN_KEY.format(token=token), "01077778888", ex=600)
+
+    user = _make_user("01077778888", password_hash=None)
+    db = _mock_db_social_with_provider(user, provider)
+
+    result = await lookup_id(
+        phone_verification_token=token,
+        ip=None,
+        ua=None,
+        redis_url="redis://fake",
+        db=db,
+    )
+    assert result["signup_method"] == provider

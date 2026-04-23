@@ -3,6 +3,7 @@
 import sentry_sdk
 import structlog
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -50,10 +51,19 @@ app = FastAPI(title="Denvia API", version="0.1.0")
 # slowapi Limiter 주입
 app.state.limiter = limiter
 
-# 미들웨어 등록 (안쪽부터 적용: trace → audit → rate_limit)
+# 미들웨어 등록 (바깥쪽부터 순서: cors → rate_limit → audit → trace)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(TraceMiddleware)
+# CORS — 프론트 origin만 허용, credentials:include 필요 (JWT 쿠키)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.oauth_web_origin],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["X-Trace-Id"],
+)
 
 
 @app.exception_handler(RateLimitExceeded)

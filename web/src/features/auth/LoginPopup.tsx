@@ -24,12 +24,8 @@ export function LoginPopup() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
-  // body scroll lock
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, []);
+  // body scroll lock은 LoginPopupMount에서 isPopupOpen 상태에 직접 연결되어 관리된다.
+  // 여기서 중복 조작하면 외부 이동(window.location.href) 후 복귀 시 잔류 위험.
 
   // 뷰 전환 시 첫 포커스 이동
   useEffect(() => {
@@ -86,8 +82,12 @@ export function LoginPopup() {
       ? mode === "login" ? "이메일로 로그인" : "이메일로 가입하기"
       : mode === "login" ? "로그인" : "회원가입";
 
-  const handleSocial = (provider: string) => {
-    console.warn(`Story 1.6에서 구현: ${provider} OAuth`);
+  const handleSocial = (provider: "kakao" | "naver" | "google") => {
+    // 외부 이동 전 팝업 닫기 — 뒤로가기 복귀 시 잔류 state 방지
+    closePopup();
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const params = new URLSearchParams({ mode });
+    window.location.href = `${apiBase}/api/v1/auth/oauth/${provider}/authorize?${params}`;
   };
 
   return (

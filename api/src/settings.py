@@ -36,5 +36,17 @@ class Settings(BaseSettings):
     messaging_provider: str = "stub"           # stub | aligo | nhn_cloud
     alimtalk_template_map_json: str = "{}"     # {"billing.first_charge_success": "KA01234", ...}
 
+    # OAuth 3종 (Story 1.6) — 개발자 개인 키, 인수 시 교체
+    kakao_client_id: str = ""
+    kakao_client_secret: str = ""
+    kakao_redirect_uri: str = "http://localhost:8000/api/v1/auth/oauth/kakao/callback"
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/oauth/google/callback"
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
+    naver_redirect_uri: str = "http://localhost:8000/api/v1/auth/oauth/naver/callback"
+    oauth_web_origin: str = "http://localhost:3000"
+
 
 settings = Settings()

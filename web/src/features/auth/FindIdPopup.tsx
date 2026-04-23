@@ -13,8 +13,14 @@ type Step = "phone" | "otp" | "result";
 
 interface LookupResult {
   email_masked: string | null;
-  signup_method: "email" | "social" | null;
+  signup_method: "email" | "kakao" | "google" | "naver" | "social" | null;
 }
+
+const PROVIDER_LABELS: Record<"kakao" | "google" | "naver", string> = {
+  kakao: "카카오",
+  google: "구글",
+  naver: "네이버",
+};
 
 /** 아이디 찾기 — 3단계: 휴대폰 입력 → OTP 검증 → 결과 표시 */
 export function FindIdPopup({ onBack }: FindIdPopupProps) {
@@ -122,7 +128,21 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
         </>
       );
     }
-    if (result.email_masked && result.signup_method === "social") {
+    if (
+      result.signup_method === "kakao" ||
+      result.signup_method === "google" ||
+      result.signup_method === "naver"
+    ) {
+      const label = PROVIDER_LABELS[result.signup_method];
+      return (
+        <p style={{ margin: 0, fontSize: 14, color: "#171719", lineHeight: 1.6 }}>
+          이 휴대폰은 {label} 계정으로 가입되어 있습니다.
+          <br />
+          {label} 로그인을 이용해주세요.
+        </p>
+      );
+    }
+    if (result.signup_method === "social") {
       return (
         <p style={{ margin: 0, fontSize: 14, color: "#171719", lineHeight: 1.6 }}>
           이 휴대폰은 소셜 계정으로 가입되어 있습니다.

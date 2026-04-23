@@ -1,9 +1,11 @@
 "use client";
 
-/** 소셜 로그인 탭 — 3사 버튼 UI. 실 OAuth는 Story 1.6에서 구현 */
-export function SocialLoginTab() {
-  const handleSocialClick = (provider: string) => {
-    console.warn(`Story 1.6에서 구현: ${provider} OAuth`);
+/** 소셜 로그인 탭 — 3사 버튼 UI. (Story 1.6 구현) */
+export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" } = {}) {
+  const handleSocialClick = (provider: "kakao" | "naver" | "google") => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    const params = new URLSearchParams({ mode });
+    window.location.href = `${apiBase}/api/v1/auth/oauth/${provider}/authorize?${params}`;
   };
 
   return (

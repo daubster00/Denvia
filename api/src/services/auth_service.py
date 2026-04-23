@@ -1,9 +1,12 @@
 """인증 서비스 — SMS OTP, 회원가입, 로그인 비즈니스 로직."""
 
+import hashlib
+import json
 import random
 import secrets
 import string
 from datetime import datetime, timezone
+from typing import Literal, TypedDict
 
 import sentry_sdk
 import structlog
@@ -12,8 +15,14 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.src.integrations.auth_providers.base import (
+    OAuthProvider,
+    OAuthProviderUnavailable,
+    ProviderName,
+)
 from api.src.integrations.messaging.port import MessagingProvider
 from api.src.models.anomaly_event import AnomalyEvent
+from api.src.models.oauth_identity import OAuthIdentity
 from api.src.models.user import User
 from api.src.settings import REDIS_DB_OTP, REDIS_DB_RATE_LIMIT
 from api.src.utils.argon2 import hash_password, verify_password
@@ -265,6 +274,8 @@ async def signup_user(
         "auth.signup.completed",
         user_id=user.id,
     )
+
+    return user
 
 
 async def login_user(
@@ -528,6 +539,378 @@ async def lookup_id(
         return {"email_masked": None, "signup_method": None}
 
     email_masked = mask_email(user.email)
-    # TODO Story 1.6: oauth_identity 테이블 추가 후 provider별 세분화 ("kakao"/"google"/"naver")
-    signup_method = "email" if user.password_hash is not None else "social"
+
+    # signup_method 결정 — Story 1.6에서 4값으로 확장
+    if user.password_hash is not None:
+        signup_method: str = "email"
+    else:
+        oi_row = await db.execute(
+            select(OAuthIdentity.provider)
+            .where(OAuthIdentity.user_id == user.id)
+            .order_by(OAuthIdentity.id.asc())
+            .limit(1)
+        )
+        provider = oi_row.scalar_one_or_none()
+        signup_method = provider if provider in {"kakao", "google", "naver"} else "social"
+
     return {"email_masked": email_masked, "signup_method": signup_method}
+
+
+# ── OAuth 3종 (Story 1.6) ────────────────────────────────────────────────────
+
+REDIS_DB_OAUTH_STATE = REDIS_DB_RATE_LIMIT  # DB 2 공용 (일시성 도메인)
+
+_OAUTH_STATE_KEY = "oauth_state:{state}"
+_OAUTH_STATE_TTL = 600  # 10분
+_SIGNUP_PENDING_KEY = "signup_pending:{token}"
+_SIGNUP_PENDING_TTL = 600  # 10분
+
+
+class OAuthCallbackResult(TypedDict, total=False):
+    action: Literal[
+        "login_completed",
+        "signup_completed_full",
+        "signup_pending_phone",
+        "email_collision",
+        "phone_collision",
+    ]
+    user_id: int
+    signup_pending_token: str
+    provider: str
+
+
+def _sub_hash(sub: str) -> str:
+    return hashlib.sha256(sub.encode("utf-8")).hexdigest()[:16]
+
+
+async def oauth_start(
+    provider_name: ProviderName,
+    mode: Literal["login", "signup"],
+    provider: OAuthProvider,
+    redis_url: str,
+) -> str:
+    """OAuth authorize URL 생성 — state 32B nonce를 Redis DB 2에 기록."""
+    state = secrets.token_urlsafe(32)
+    key = _OAUTH_STATE_KEY.format(state=state)
+    payload = json.dumps({"provider": provider_name, "mode": mode})
+    async with _make_redis_rl(redis_url) as r:
+        await r.set(key, payload, ex=_OAUTH_STATE_TTL)
+    return provider.get_authorization_url(state=state)
+
+
+async def _consume_oauth_state(state: str, provider_name: str, redis_url: str) -> dict:
+    """state 검증 + 즉시 삭제. 없거나 provider 불일치면 OAUTH_STATE_INVALID."""
+    key = _OAUTH_STATE_KEY.format(state=state)
+    async with _make_redis_rl(redis_url) as r:
+        raw = await r.get(key)
+        if raw is None:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
+            )
+        await r.delete(key)
+
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
+        )
+
+    if payload.get("provider") != provider_name:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
+        )
+    return payload
+
+
+async def oauth_callback(
+    provider_name: ProviderName,
+    code: str,
+    state: str,
+    provider: OAuthProvider,
+    redis_url: str,
+    db: AsyncSession,
+) -> OAuthCallbackResult:
+    """OAuth 콜백 — state 검증 후 분기 결과를 반환.
+
+    action 종류:
+        - login_completed: (user_id)
+        - signup_completed_full: (user_id)
+        - signup_pending_phone: (signup_pending_token)
+        - email_collision: 자체 가입자 이메일 충돌
+        - phone_collision: provider 제공 휴대폰 중복
+
+    Provider HTTP 실패는 OAuthProviderUnavailable을 재발생시킨다.
+    """
+    await _consume_oauth_state(state, provider_name, redis_url)
+
+    token_body = await provider.exchange_code(code)
+    access_token = token_body["access_token"]
+    profile = await provider.fetch_profile(access_token)
+
+    provider_sub = profile["provider_sub"]
+    email = profile["email"]
+    phone = profile["phone"]
+
+    # 분기 1: oauth_identity 매칭 → 로그인
+    oi_row = await db.execute(
+        select(OAuthIdentity)
+        .where(
+            OAuthIdentity.provider == provider_name,
+            OAuthIdentity.provider_sub == provider_sub,
+        )
+    )
+    oi = oi_row.scalar_one_or_none()
+    if oi is not None:
+        u_row = await db.execute(
+            select(User).where(User.id == oi.user_id, User.withdrawn_at.is_(None))
+        )
+        matched_user = u_row.scalar_one_or_none()
+        if matched_user is not None:
+            logger.info(
+                "auth.oauth.login_completed",
+                provider=provider_name,
+                user_id=matched_user.id,
+                sub_hash=_sub_hash(provider_sub),
+                trace_id="",
+            )
+            return {"action": "login_completed", "user_id": matched_user.id}
+        # 매칭된 oauth_identity가 withdrawn 유저를 가리키면 재가입 플로우 진입
+        # (oauth_identity 레코드는 Story 1.7에서 삭제 처리)
+
+    # 분기 2: 이메일 매칭 — 자체 가입자(password_hash NOT NULL + oauth 미연동)?
+    email_row = await db.execute(
+        select(User).where(User.email == email, User.withdrawn_at.is_(None))
+    )
+    email_user = email_row.scalar_one_or_none()
+    if email_user is not None:
+        if email_user.password_hash is not None:
+            logger.info(
+                "auth.oauth.email_collision",
+                provider=provider_name,
+                email=mask_email(email),
+                sub_hash=_sub_hash(provider_sub),
+                trace_id="",
+            )
+            return {"action": "email_collision"}
+        # 소셜 전용 유저(같은 이메일, 다른 provider로 이미 가입) → oauth_identity만 추가하고 로그인
+        now = datetime.now(tz=timezone.utc)
+        link = OAuthIdentity(
+            user_id=email_user.id,
+            provider=provider_name,
+            provider_sub=provider_sub,
+            linked_at=now,
+        )
+        db.add(link)
+        await db.flush()
+        logger.info(
+            "auth.oauth.login_completed",
+            provider=provider_name,
+            user_id=email_user.id,
+            sub_hash=_sub_hash(provider_sub),
+            trace_id="",
+            linked_new_provider=True,
+        )
+        return {"action": "login_completed", "user_id": email_user.id}
+
+    # 분기 3·4: 신규 + provider phone 제공
+    if phone:
+        # 휴대폰 중복 검사
+        phone_row = await db.execute(
+            select(User).where(User.phone == phone, User.withdrawn_at.is_(None))
+        )
+        if phone_row.scalar_one_or_none() is not None:
+            logger.info(
+                "auth.oauth.phone_collision",
+                provider=provider_name,
+                phone=f"****{phone[-4:]}",
+                sub_hash=_sub_hash(provider_sub),
+                trace_id="",
+            )
+            return {"action": "phone_collision"}
+
+        now = datetime.now(tz=timezone.utc)
+        user = User(
+            email=email,
+            phone=phone,
+            password_hash=None,
+            phone_verified=True,
+            subscription_status="free",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(user)
+        await db.flush()
+        link = OAuthIdentity(
+            user_id=user.id,
+            provider=provider_name,
+            provider_sub=provider_sub,
+            linked_at=now,
+        )
+        db.add(link)
+        await db.flush()
+        logger.info(
+            "auth.oauth.signup_completed",
+            provider=provider_name,
+            user_id=user.id,
+            sub_hash=_sub_hash(provider_sub),
+            trace_id="",
+        )
+        return {"action": "signup_completed_full", "user_id": user.id}
+
+    # 분기 5: 신규 + provider 휴대폰 미제공 → pending token 발급
+    pending_token = secrets.token_urlsafe(32)
+    key = _SIGNUP_PENDING_KEY.format(token=pending_token)
+    payload = json.dumps(
+        {
+            "provider": provider_name,
+            "provider_sub": provider_sub,
+            "email": email,
+        }
+    )
+    async with _make_redis(redis_url) as r:
+        await r.set(key, payload, ex=_SIGNUP_PENDING_TTL)
+
+    logger.info(
+        "auth.oauth.signup_pending_phone",
+        provider=provider_name,
+        sub_hash=_sub_hash(provider_sub),
+        trace_id="",
+    )
+    return {
+        "action": "signup_pending_phone",
+        "signup_pending_token": pending_token,
+        "provider": provider_name,
+    }
+
+
+async def oauth_complete_phone_supplement(
+    signup_pending_token: str,
+    phone: str,
+    phone_verification_token: str,
+    redis_url: str,
+    db: AsyncSession,
+) -> User:
+    """OAuth 신규 가입 — SMS 보충 마무리.
+
+    Raises:
+        400 OAUTH_PENDING_INVALID — signup_pending_token 만료·부재
+        400 SMS_TOKEN_INVALID — phone_verification_token 불일치·부재
+        409 OAUTH_PHONE_COLLISION / OAUTH_EMAIL_COLLISION_WITH_EMAIL_SIGNUP
+    """
+    pending_key = _SIGNUP_PENDING_KEY.format(token=signup_pending_token)
+    async with _make_redis(redis_url) as r:
+        pending_raw = await r.get(pending_key)
+        if pending_raw is None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "OAUTH_PENDING_INVALID",
+                    "message": "소셜 가입 세션이 만료되었습니다. 다시 시도해주세요.",
+                },
+            )
+
+        # phone_verification_token 검증 + 소진
+        token_key = _TOKEN_KEY.format(token=phone_verification_token)
+        stored_phone = await r.get(token_key)
+        if stored_phone is None or stored_phone != phone:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "SMS_TOKEN_INVALID", "message": "휴대폰 인증이 필요합니다."},
+            )
+        # 양쪽 토큰 즉시 소진
+        await r.delete(token_key)
+        await r.delete(pending_key)
+
+    try:
+        pending = json.loads(pending_raw)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "OAUTH_PENDING_INVALID", "message": "소셜 가입 세션이 만료되었습니다."},
+        )
+
+    provider_name = pending["provider"]
+    provider_sub = pending["provider_sub"]
+    email = pending["email"]
+
+    # 이메일 재검사 (OAuth 콜백 이후 race)
+    email_row = await db.execute(
+        select(User).where(User.email == email, User.withdrawn_at.is_(None))
+    )
+    email_user = email_row.scalar_one_or_none()
+    if email_user is not None and email_user.password_hash is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "OAUTH_EMAIL_COLLISION_WITH_EMAIL_SIGNUP",
+                "message": "이 이메일은 이메일 가입으로 등록되어 있습니다. 이메일 로그인을 이용해주세요.",
+            },
+        )
+
+    # 휴대폰 중복 검사
+    phone_row = await db.execute(
+        select(User).where(User.phone == phone, User.withdrawn_at.is_(None))
+    )
+    if phone_row.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "OAUTH_PHONE_COLLISION",
+                "message": "이 휴대폰은 이미 가입된 계정이 있습니다. 최초 가입 방식으로 로그인해주세요.",
+            },
+        )
+
+    now = datetime.now(tz=timezone.utc)
+
+    # 이메일 매칭 소셜 유저가 있으면 oauth_identity만 추가하고 해당 유저 반환
+    if email_user is not None and email_user.password_hash is None:
+        link = OAuthIdentity(
+            user_id=email_user.id,
+            provider=provider_name,
+            provider_sub=provider_sub,
+            linked_at=now,
+        )
+        db.add(link)
+        await db.flush()
+        logger.info(
+            "auth.oauth.signup_completed",
+            provider=provider_name,
+            user_id=email_user.id,
+            sub_hash=_sub_hash(provider_sub),
+            trace_id="",
+            linked_existing_social=True,
+        )
+        return email_user
+
+    user = User(
+        email=email,
+        phone=phone,
+        password_hash=None,
+        phone_verified=True,
+        subscription_status="free",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(user)
+    await db.flush()
+    link = OAuthIdentity(
+        user_id=user.id,
+        provider=provider_name,
+        provider_sub=provider_sub,
+        linked_at=now,
+    )
+    db.add(link)
+    await db.flush()
+
+    logger.info(
+        "auth.oauth.signup_completed",
+        provider=provider_name,
+        user_id=user.id,
+        sub_hash=_sub_hash(provider_sub),
+        trace_id="",
+    )
+    return user

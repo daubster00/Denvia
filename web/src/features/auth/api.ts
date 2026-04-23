@@ -73,10 +73,30 @@ export async function requestPasswordReset(payload: { email: string; phone: stri
 
 /** 아이디(이메일) 찾기 — phone_verification_token으로 마스킹된 이메일 반환 */
 export async function lookupId(payload: { phone_verification_token: string }) {
-  return apiFetch<{ email_masked: string | null; signup_method: "email" | "social" | null }>(
+  return apiFetch<{
+    email_masked: string | null;
+    signup_method: "email" | "kakao" | "google" | "naver" | "social" | null;
+  }>(
     "/api/v1/auth/find-id",
     { method: "POST", body: JSON.stringify(payload) }
   );
+}
+
+/** OAuth 신규 가입 SMS 보충 완료 (Story 1.6) */
+export async function completeOAuthSignup(payload: {
+  signup_pending_token: string;
+  phone: string;
+  phone_verification_token: string;
+}) {
+  return apiFetch<{
+    user_id: number;
+    email: string;
+    role: string;
+    subscription_status: string;
+  }>("/api/v1/auth/oauth/complete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 /** 임시 비밀번호 → 신규 비밀번호 변경 */

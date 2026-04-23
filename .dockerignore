@@ -1,0 +1,35 @@
+# Python
+api/.venv/
+api/__pycache__/
+api/**/__pycache__/
+api/.pytest_cache/
+api/.mypy_cache/
+api/.ruff_cache/
+*.pyc
+
+# Node
+web/node_modules/
+web/.next/
+web/out/
+
+# Git / env / IDE
+.git/
+.env
+.env.local
+.env.*.local
+.env.production
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 참고 자료 / 빌드 산출물
+자료/
+기획자료/
+RAG 코드/
+_bmad-output/
+node_modules/
+dist/
+build/

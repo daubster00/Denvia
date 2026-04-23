@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Select, Option, Typography } from "@wanteddev/wds";
 import { ApiError } from "@/types/api";
 
 type SegmentValue = "doctor" | "hygienist" | "student_other";
@@ -71,9 +72,9 @@ export function SegmentSelect({ onComplete }: SegmentSelectProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <p style={{ fontSize: 14, color: "#5A5C63", margin: "0 0 4px" }}>
+      <Typography as="p" variant="body2-reading" color="semantic.label.alternative">
         가입유형을 선택하면 맞춤 정보를 제공합니다.
-      </p>
+      </Typography>
 
       {SEGMENT_OPTIONS.map((opt) => (
         <button
@@ -91,38 +92,44 @@ export function SegmentSelect({ onComplete }: SegmentSelectProps) {
         </button>
       ))}
 
-      {/* 조건부 연차 선택 */}
+      {/* 조건부 연차 선택 — WDS Select 사용 */}
       {needsYears && (
         <div>
-          <label htmlFor="years-select" style={{ display: "block", marginBottom: 4, fontSize: 14, fontWeight: 500 }}>
-            연차 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
-          </label>
-          <select
-            id="years-select"
-            value={years}
-            onChange={(e) => { setYears(e.target.value); setError(undefined); }}
-            aria-invalid={!!error && !years}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              border: `1px solid ${error && !years ? "#EF4444" : "#E1E2E4"}`,
-              borderRadius: 8,
-              fontSize: 14,
-              background: "#fff",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
+          <Typography
+            as="label"
+            variant="label1-reading"
+            weight="medium"
+            display="block"
+            sx={{ marginBottom: "6px" }}
           >
-            <option value="">연차를 선택하세요</option>
+            연차 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
+          </Typography>
+          <Select
+            value={years}
+            onChange={(v) => { setYears(v); setError(undefined); }}
+            placeholder="연차를 선택하세요"
+            width="100%"
+            invalid={!!error && !years}
+            contentProps={{ sx: { maxHeight: "280px", overflowY: "auto" } }}
+          >
             {Array.from({ length: 50 }, (_, i) => i + 1).map((y) => (
-              <option key={y} value={y}>{y}년차</option>
+              <Option key={y} value={String(y)}>
+                {y}년차
+              </Option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
       {error && (
-        <p role="alert" style={{ color: "#EF4444", fontSize: 13 }}>{error}</p>
+        <Typography
+          as="p"
+          role="alert"
+          variant="label1-reading"
+          color="semantic.status.negative"
+        >
+          {error}
+        </Typography>
       )}
 
       <button
