@@ -1,0 +1,274 @@
+# ADR-0001: SSOT 편차 4건 — 가입유형 권한·세그먼트 통합·아이디 찾기·kill-switch 이원화
+
+> **최종 수정일:** 2026-04-24
+> **작성자:** Hyung woo
+> **승인자:** (인수자 검토 시 기입)
+> **버전:** v1.0
+> **관련 FR/Story:** FR10·FR11·FR28·FR56 / Story 1.3·1.5·1.6·4.3·5.2·6.2·6.4·9.2·9.4
+
+---
+
+본 ADR은 단일 진실 공급원(SSOT, Single Source of Truth: 클라이언트 측 기획서·기능명세서·협의서)과 PRD(Product Requirements Document) 사이의 **공식 편차 4건**을 정식 등재한다. 각 편차는 클라이언트와 합의·확정된 후 PRD에 반영되었으며, 본 ADR은 그 결정 경위와 영향 범위를 영구 기록으로 보존한다.
+
+> ⚠️ **PRD 본문 정합성 주의:** 편차 #4(kill-switch)의 경우 `_bmad-output/planning-artifacts/prd.md` FR56 본문이 여전히 SSOT 초판 표현("유료 질의 전역 차단")으로 남아있다. **본 ADR이 정정 SSOT**이며, PRD 본문 교정은 Post-MVP 문서 유지보수 작업으로 분리한다.
+
+---
+
+## 편차 #1 — 가입유형 변경 권한(관리자만)
+
+### 상태
+
+**Accepted** (2026-04-22 클라이언트 확정)
+
+### 맥락
+
+SSOT 측 정의(F-106 / 협의서 #A-06):
+- 사용자는 마이페이지에서 가입유형(치과의사·치과위생사·학생·기타)을 **30일 제한으로 직접 변경** 가능
+- 연차(years_of_experience)는 **관리자만** 변경 가능
+
+운영상 우려 사항:
+- 가입유형 자가 변경은 무료/유료 정책 회피(예: 학생→일반 직군 또는 그 반대)·통계 왜곡·세그먼트 광고 타게팅 우회의 통로가 될 수 있다.
+- 본 서비스의 사용자 등급은 결제·콘텐츠 차등의 핵심 축이므로 자가 변경은 운영 리스크가 크다.
+
+### 결정
+
+**가입유형(`segment`)·연차(`years_of_experience`) 모두 관리자만 변경 가능**으로 일원화한다. 사용자 마이페이지에서는 **조회만 가능**하다.
+
+### 근거
+
+- 운영 단순성: 30일 제한 로직(`segment_changed_at` 컬럼·쿨다운 검증 미들웨어) 불필요 → 코드 표면적 축소.
+- 무결성: 결제·세그먼트 통계의 신뢰도 확보. 변경 이력은 `audit_logs` 테이블에 액션 코드 `admin.user.segment_changed`로 영구 보존(NFR-S7, 1년 보관).
+- 사용자 영향 최소: 가입 단계에서 정확히 선택하면 변경 빈도는 매우 낮다는 클라이언트 운영 경험치(2026-04-22 미팅 기록).
+
+### 영향받는 산출물
+
+| 분류 | 항목 |
+|---|---|
+| PRD FR | FR11(가입유형 선택 — 관리자만 변경), FR28(마이페이지 조회만, 변경 비활성) |
+| Epic/Story | Epic 6 Story 6.2 (`/admin/users` 권한·세그먼트 편집 UI) |
+| 데이터베이스 | `users.segment`(이미 존재, `api/src/models/user.py:22`), `users.years_of_experience`(`api/src/models/user.py:23`) |
+| 백엔드 | `api/src/routers/me.py`(마이페이지) — segment/years 수정 엔드포인트 **미제공** 보장 |
+| 프론트엔드 | `web/src/features/account/`(현재 미구현, Story 4.3에서 신설 예정) — 조회 전용 UI |
+| 관리자 UI | `web/src/features/admin-users/`(Story 6.2, TBD — 현 시점 backlog) |
+
+### 날짜·승인자
+
+2026-04-22 · Hyung woo(개발사) ↔ 클라이언트 합의 · ADR 등재일 2026-04-24
+
+---
+
+## 편차 #2 — 가입유형 3종 통합(학생·기타 단일 ③)
+
+### 상태
+
+**Accepted** (2026-04-22 클라이언트 확정)
+
+### 맥락
+
+SSOT 측 정의(F-106, 기능명세서 §2.2): 가입유형 4종 분류
+1. 치과의사(`doctor`)
+2. 치과위생사(`hygienist`)
+3. 치위생학과 학생(`student`)
+4. 기타(`other`)
+
+운영상 검토:
+- "치위생학과 학생"과 "기타"는 모두 **무료 등급 한정 사용자군**으로 결제·콘텐츠 정책이 동일하다.
+- 두 분류를 별도로 유지할 운영 가치(통계·광고 타게팅·정책 분기)가 미미하다.
+- 가입 폼 UX 단순화(4지선다 → 3지선다)로 가입 완료율 개선 효과 기대.
+
+### 결정
+
+가입유형을 **3종**으로 통합한다.
+
+| 코드 | 한글명 | 결제 정책 |
+|---|---|---|
+| `doctor` | 치과의사 | Pro 구독 가능 |
+| `hygienist` | 치과위생사 | Pro 구독 가능 |
+| `student_other` | 학생/기타 | 무료 한정(구독 비활성) |
+
+### 근거
+
+- 운영 단순성: ENUM 분기·통계 집계 컬럼 1종 축소.
+- UX 개선: 가입 폼 선택지 25% 축소(4→3).
+- 손실 없음: 통계상 `student`·`other` 분리 분석 요구 부재(클라이언트 미팅 확인).
+
+### 영향받는 산출물
+
+| 분류 | 항목 |
+|---|---|
+| PRD FR | FR11(가입유형 선택 항목 정의) |
+| Epic/Story | Epic 1 Story 1.3(이메일 가입 — segment 컬럼 입력), Epic 6 Story 6.4(세그먼트 통계 — 3종 카테고리) |
+| 데이터베이스 | `users.segment`(`api/src/models/user.py:22`) — 현재 `String(20)`으로 정의되어 있어 ENUM 제약은 애플리케이션 레이어에서 관리 |
+| 프론트엔드 | `web/src/features/auth/SegmentSelect.tsx`(존재 확인) — 3종 옵션만 노출 |
+| 검증 로직 | `web/src/features/auth/schemas.ts`(존재 확인) — Zod enum `['doctor', 'hygienist', 'student_other']` |
+| 데이터 마이그레이션 | 기존 `student`·`other` 값을 `student_other`로 정규화 (아래 SQL 참조) |
+
+### 기존 데이터 마이그레이션 SQL
+
+ADR 시행 시점에 이미 `users.segment IN ('student','other')` 행이 존재할 수 있다(개발 테스트 데이터·초기 가입자). `_VALID_SEGMENTS = {'doctor','hygienist','student_other'}` 검증 실패 방지를 위해 일회성 마이그레이션 또는 alembic data migration 필수.
+
+```sql
+-- 일회성 정규화 (BEGIN/COMMIT 트랜잭션으로 묶어 실행)
+BEGIN;
+
+-- (a) 영향 범위 사전 확인
+SELECT segment, COUNT(*) AS cnt
+FROM users
+WHERE segment IN ('student', 'other')
+GROUP BY segment;
+
+-- (b) 정규화
+UPDATE users
+SET segment = 'student_other', updated_at = NOW()
+WHERE segment IN ('student', 'other');
+
+-- (c) 잔존 검증 (0건이어야 정상)
+SELECT COUNT(*) AS leftover
+FROM users
+WHERE segment NOT IN ('doctor', 'hygienist', 'student_other');
+
+COMMIT;
+```
+
+또는 alembic revision으로 멱등 처리(권장):
+```python
+# alembic/versions/00XX_normalize_segment_3types.py
+def upgrade():
+    op.execute("UPDATE users SET segment = 'student_other' WHERE segment IN ('student', 'other')")
+
+def downgrade():
+    # 단방향 정규화 — 원복 불가 (편차 #2가 student/other 분리 정보 손실 결정)
+    pass
+```
+
+### 날짜·승인자
+
+2026-04-22 · Hyung woo ↔ 클라이언트 · ADR 등재일 2026-04-24
+
+---
+
+## 편차 #3 — 아이디(이메일) 찾기 추가(FR10)
+
+### 상태
+
+**Accepted** (2026-04-22 클라이언트 확정, SSOT 외 운영 확장)
+
+### 맥락
+
+SSOT 측 정의:
+- 비밀번호 찾기(F-104)는 정의되어 있다.
+- **아이디(이메일) 찾기는 정의되어 있지 않다.**
+
+사용자 리서치 결과:
+- 한국 사용자는 가입 이메일을 잊는 빈도가 매우 높다(특히 OAuth 가입 후 시간이 지난 경우).
+- 본 서비스는 SMS 인증 기반 OTP 인프라를 이미 보유(Story 4.1) → 추가 비용 없이 SMS 기반 ID 찾기 구현 가능.
+
+### 결정
+
+**SMS 인증 기반 이메일 찾기 기능을 신설**한다(SSOT 외 운영 확장 — 클라이언트 동의).
+
+- 엔드포인트: `POST /api/v1/auth/lookup-id`
+- 입력: 가입 시 등록한 휴대폰 번호 + SMS OTP 코드
+- 출력: 마스킹된 이메일(예: `da***@gmail.com`) 화면 표시 — 평문 노출 금지(PIPA 준수)
+- OAuth 가입 사용자 식별:
+  - **현 구현 (2026-04-24 기준)**: `users.signup_method` 컬럼은 `User` ORM 모델(`api/src/models/user.py`)에 **미정의**. 식별은 `oauth_identity` 테이블(`api/alembic/versions/0004_oauth_identity.py`) 조인으로 표현 (`auth_service.py`·`schemas/auth.py` 참조).
+  - **향후 정식화**: Story 1.6 마이그레이션 후속 또는 별도 리팩토링 스토리에서 `users.signup_method` 컬럼을 ORM에 추가하면 4값(`email`·`kakao`·`google`·`naver`) ENUM 일원화. 현 시점은 조인 기반.
+- **Rate limit (브루트포스·전화번호 사전 공격 방지 필수)**:
+  - Redis DB2(`REDIS_DB_RATE_LIMIT`) 기반 limiter 적용
+  - 동일 휴대폰 번호: 5분에 3회 (OTP 발송 단계)
+  - 동일 IP: 1분에 10회 (전화번호 사전 공격 방지)
+  - 초과 시 429 `RATE_LIMITED` 응답
+  - PIPA 준수: 마스킹은 노출은 막지만 "해당 번호로 가입된 계정 존재 여부"는 응답 분기(200 vs 404)로 유출 가능 → rate limit으로 가입자 사전 매칭 공격 차단
+
+### 근거
+
+- 사용자 마찰 감소: 비밀번호 찾기와 대칭되는 ID 찾기로 로그인 불능 사용자 구제.
+- 인프라 재사용: 기존 SMS OTP 어댑터(`api/src/integrations/messaging/`) 재활용으로 신규 인프라 비용 0.
+- PIPA(개인정보 보호법) 준수: 마스킹 처리로 PII 누설 방지.
+
+### 영향받는 산출물
+
+| 분류 | 항목 |
+|---|---|
+| PRD FR | FR10(SMS 기반 이메일 찾기) |
+| Epic/Story | Epic 1 Story 1.5(`/api/v1/auth/lookup-id` 구현), Story 1.6 AC-11(`signup_method` 4값 확장) |
+| 데이터베이스 | `oauth_identity` 테이블(`api/alembic/versions/0004_oauth_identity.py`) — 현 시점 OAuth 가입자 식별 경로. `users.signup_method` ORM 컬럼 추가는 별도 리팩토링 (TBD) |
+| Rate Limit | `REDIS_DB_RATE_LIMIT`(Redis DB2) — `lookup_id_phone:{phone}` (5분 3회) + `lookup_id_ip:{ip}` (1분 10회) |
+| 프론트엔드 | `web/src/features/auth/FindIdPopup.tsx`(존재 확인) — 마스킹 표시 UX |
+| 백엔드 | `api/src/routers/auth.py`(존재 확인) — `lookup-id` 엔드포인트 |
+| 변경 관리 절차 | 기능명세서 §9 변경 관리 절차에 등재 — 본 ADR이 그 등재 매개체 |
+
+### 날짜·승인자
+
+2026-04-22 · Hyung woo ↔ 클라이언트 · ADR 등재일 2026-04-24
+
+---
+
+## 편차 #4 — kill-switch(비상 정지 스위치) 범위 교정(이원 모드)
+
+### 상태
+
+**Accepted** (2026-04-22 클라이언트 재확인으로 PRD FR56 초판 오류 교정)
+
+### 맥락
+
+SSOT 측 정의(기능명세서 A-101 p.27 + A-502 p.29 + 협의서 #B-05):
+- **평상시 자동 무료 차단** + **비상시 수동 전체 정지** + **경고·수동 정지 양립**의 3가지 정책이 한 번에 명세됨.
+- 자동 모드: 월 예산 80% / 95% 알림톡 경고 → 100% 도달 시 무료 사용자 질의만 자동 차단(유료 구독자는 정상 동작).
+- 수동 모드: 관리자가 비상시 전체 정지(유료·무료 모두 차단).
+- 수동 정지 시 유료 구독자에게는 정지 기간만큼 구독 기간을 자동 연장한다(이용약관 명시).
+
+PRD FR56 **초판 오류**:
+- 초판에 "유료 질의 전역 차단"으로 단일 모드처럼 잘못 번역되었다.
+- 2026-04-22 클라이언트 재확인 미팅에서 SSOT가 이원 모드임을 재확인 → ADR로 교정.
+
+### 결정
+
+**`killswitch_states.mode` enum으로 이원 모드를 관리**한다.
+
+| 모드 | 트리거 | 차단 범위 | 활성자 |
+|---|---|---|---|
+| `auto_free_only` | 월 예산 100% 도달 시 자동 ON | 무료 사용자 질의만 차단(유료 정상) | 시스템(`activated_by_admin_id=NULL`) |
+| `manual_total` | 관리자 수동 발동 | 유료·무료 모두 차단 | 관리자(`activated_by_admin_id` 기록) |
+
+추가 정책:
+- **3단계 자동 알림톡 경고**: 80% / 95% / 100% 시점에 관리자 휴대폰으로 알림톡 발송(이메일 0건 원칙 준수 — `project_email_zero_policy.md`).
+- **두 모드 병존 가능**: `uq_killswitch_active_mode` partial UNIQUE(`mode`, WHERE `deactivated_at IS NULL`)로 동일 모드 중복 활성만 방지하고, 서로 다른 모드는 동시 활성 가능.
+- **OR 평가**: 질의 차단 판정은 "둘 중 하나라도 ON이면 해당 모드 정책 적용"으로 OR 평가하며 `manual_total` 우선(전체 차단이 무료만 차단의 상위 집합).
+- **이용약관 조항**: "수동 kill-switch 발동 시 유료 구독 기간을 정지 기간만큼 자동 연장"(`docs/legal/terms.md` — Story 9.2 범위에서 작성).
+
+### 근거
+
+- SSOT 충실성: 클라이언트 기능명세서 원문(A-101 + A-502 + 협의서 #B-05)을 정확히 반영.
+- 운영 안전망: 자동 모드(예산 보호) + 수동 모드(시스템·법적 비상)의 양립으로 관리자 의사결정 지점이 명확.
+- 이메일 0건 원칙(`project_email_zero_policy.md`): 80/95% 경고는 모두 알림톡(`notification_service.send_alimtalk` 카테고리 `system`)으로 발송. PRD FR56 초판의 "이메일 80%·95%" 표현은 본 ADR에서 알림톡으로 교정한다.
+
+### 영향받는 산출물
+
+| 분류 | 항목 |
+|---|---|
+| PRD FR | FR56(예산 경고 + kill-switch) — **본 ADR이 정정 SSOT** |
+| Epic/Story | Epic 9 Story 9.2(`killswitch_states`·`KillSwitchPanel`·`/admin/finance/killswitch`), Epic 5 Story 5.2(예산 경고 알림톡 발송 로직), Epic 9 Story 9.4(본 ADR) |
+| 데이터베이스 | `killswitch_states`(Story 9.2 마이그레이션), `budget_thresholds`(Story 5.2 마이그레이션) — 둘 다 현 시점 미생성(Wave 4·9 backlog) |
+| 백엔드 | `api/src/services/killswitch_service.py`·`api/src/services/budget_service.py`·`api/src/workers/budget_tasks.py`·`api/src/routers/admin/{killswitch,finance}.py` — TBD(Story 5.2·9.2) |
+| 프론트엔드 | `web/src/features/admin-finance/KillSwitchPanel.tsx`·`BudgetGauge.tsx` — TBD(Story 5.2·9.2) |
+| 알림톡 템플릿 | `api/src/integrations/messaging/templates.py`에 추가 — Story 단일 소유 명확화: |
+| ↳ Story 5.2 (예산 경고 발송 로직 + 트리거 워커) | `admin.budget_warning_80`·`admin.budget_warning_95`·`admin.budget_hard_cap_reached` 템플릿 등록 + 80/95/100% 임계 도달 감지 워커 |
+| ↳ Story 9.2 (KillSwitchPanel UI/State + manual_total) | `admin.killswitch_manual_activated`·`admin.killswitch_manual_deactivated` 템플릿 등록 + `killswitch_states` 테이블·관리자 UI |
+| ↳ 양쪽 의존 (HOLD-MSG) | 5.2의 발송 로직은 stub 어댑터로도 동작하므로 Wave 4에서 착수 가능. 9.2는 HOLD-MSG 해제 후 실 어댑터로 운영 검증 |
+| 약관 | `docs/legal/terms.md`(수동 kill-switch 시 유료 구독 기간 자동 연장 조항) — Story 9.2 범위 |
+| PRD 본문 | `_bmad-output/planning-artifacts/prd.md:629` — Post-MVP 문서 유지보수 시 본 ADR 결정으로 본문 교정 예정 |
+
+### 날짜·승인자
+
+2026-04-22 · Hyung woo ↔ 클라이언트 · ADR 등재일 2026-04-24
+
+---
+
+## 검증 이력
+
+| 날짜 | 검증자 | 결과 | 조치 |
+|---|---|---|---|
+| 2026-04-24 | Hyung woo | OK — **다중 결정 ADR 패턴**(`docs/adr/README.md` 작성 규칙 참조)에 따라 편차 4건이 각각 H2(`## 편차 #N`) + 그 안에 6개 H3 섹션(상태·맥락·결정·근거·영향받는 산출물·날짜·승인자) 엄수 확인. PRD FR10/FR11/FR28/FR56 인용 라인(`prd.md:559`·`:586`·`:629`) 실재 검증 완료. `users.segment`·`users.years_of_experience` 컬럼 실재(`api/src/models/user.py:22-23`) 검증. `web/src/features/auth/SegmentSelect.tsx`·`FindIdPopup.tsx` 실재 검증. | — |
+| 2026-04-24 | Hyung woo (code-review D1 적용) | OK — README "다중 결정 ADR 패턴" 신설로 본 ADR 구조 정합성 공식 확인. 자체 검증 이력 문구도 패턴 명시로 정정. | — |
+| 2026-04-24 | claude-opus-4-7 (code-review 후속 6건 patch 적용) | OK — 메타 헤더 Story 번호 9건 정렬(`1.3·1.5·1.6·4.3·5.2·6.2·6.4·9.2·9.4` 일치), 편차 #2 기존 데이터 마이그레이션 SQL + alembic data migration 추가, 편차 #3 `signup_method` ORM 미정의 정정(oauth_identity 조인 명시) + Rate Limit(Redis DB2) 정책 추가, 편차 #4 알림톡 템플릿 Story 5.2(발송 로직)·9.2(KillSwitchPanel UI/State) 단일 소유 명확화 적용 완료. README 인덱스 표 Story 번호도 동일 정렬. | — |
