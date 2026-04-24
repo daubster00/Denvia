@@ -17,7 +17,7 @@ import structlog
 from tenacity import (
     RetryError,
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -36,7 +36,7 @@ _PROFILE_URL = "https://kapi.kakao.com/v2/user/me"
 
 
 def _retryable_http_error(exc: BaseException) -> bool:
-    """5xx와 네트워크 오류만 재시도. 4xx는 재시도하지 않음."""
+    """5xx + 네트워크/타임아웃만 재시도. 4xx는 즉시 실패."""
     if isinstance(exc, httpx.HTTPStatusError):
         return 500 <= exc.response.status_code < 600
     if isinstance(exc, (httpx.RequestError, httpx.TimeoutException)):
@@ -45,7 +45,7 @@ def _retryable_http_error(exc: BaseException) -> bool:
 
 
 _retry = retry(
-    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException)),
+    retry=retry_if_exception(_retryable_http_error),
     wait=wait_exponential(multiplier=1, min=2, max=30),
     stop=stop_after_attempt(3),
     reraise=True,
@@ -70,7 +70,9 @@ class KakaoProvider:
         }
         return f"{_AUTHORIZE_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> dict:
+    async def exchange_code(self, code: str, state: str = "") -> dict:
+        # Kakao는 token endpoint에 state를 요구하지 않는다 — 시그니처 호환용.
+        _ = state
         data = {
             "grant_type": "authorization_code",
             "client_id": self._client_id,
@@ -99,12 +101,16 @@ class KakaoProvider:
 
                 resp = await _do()
         except (RetryError, httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as exc:
-            raise OAuthProviderUnavailable("kakao", repr(exc)) from exc
+            logger.exception("auth.oauth.provider_http_error", provider="kakao", phase="token")
+            raise OAuthProviderUnavailable("kakao", "token_http_error") from exc
 
         if resp.status_code != 200:
             raise OAuthProviderInvalidResponse("kakao", f"token status={resp.status_code}")
 
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise OAuthProviderInvalidResponse("kakao", "token json decode") from exc
         access_token = body.get("access_token")
         if not access_token:
             raise OAuthProviderInvalidResponse("kakao", "no access_token")
@@ -129,12 +135,16 @@ class KakaoProvider:
 
                 resp = await _do()
         except (RetryError, httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as exc:
-            raise OAuthProviderUnavailable("kakao", repr(exc)) from exc
+            logger.exception("auth.oauth.provider_http_error", provider="kakao", phase="profile")
+            raise OAuthProviderUnavailable("kakao", "profile_http_error") from exc
 
         if resp.status_code != 200:
             raise OAuthProviderInvalidResponse("kakao", f"profile status={resp.status_code}")
 
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise OAuthProviderInvalidResponse("kakao", "profile json decode") from exc
         sub = body.get("id")
         if sub is None:
             raise OAuthProviderInvalidResponse("kakao", "no id")
@@ -143,9 +153,18 @@ class KakaoProvider:
         email = account.get("email")
         if not email:
             raise OAuthProviderInvalidResponse("kakao", "no email")
+        # 미검증 이메일로 계정 탈취 방지 — 카카오가 명시적으로 False인 경우만 거부
+        # (필드 부재 시 True 간주: 비즈검수 전 앱은 이 필드를 제공하지 않는 경우가 있음)
+        if account.get("is_email_verified", True) is False:
+            raise OAuthProviderInvalidResponse("kakao", "email_unverified")
 
         phone_raw = account.get("phone_number")
-        phone = _normalize_kr_phone(phone_raw) if phone_raw else None
+        # 미인증 phone은 SMS 보충 경로 강제 — phone=None 취급
+        phone_verified = account.get("is_phone_number_verified", True)
+        if phone_raw and phone_verified is not False:
+            phone = _normalize_kr_phone(phone_raw)
+        else:
+            phone = None
 
         return {
             "provider_sub": str(sub),

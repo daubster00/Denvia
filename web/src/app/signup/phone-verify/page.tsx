@@ -3,6 +3,8 @@ import { PhoneVerifyClient } from "./PhoneVerifyClient";
 
 export const metadata = {
   title: "소셜 가입 휴대폰 인증 — Denvia",
+  // 토큰 쿼리를 품는 페이지 — 검색엔진 인덱싱 차단으로 토큰 노출 방지
+  robots: { index: false, follow: false },
 };
 
 /**
@@ -11,7 +13,14 @@ export const metadata = {
  */
 export default function PhoneVerifyPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div
+          aria-hidden="true"
+          style={{ minHeight: "100vh", background: "#FAFAFA" }}
+        />
+      }
+    >
       <PhoneVerifyClient />
     </Suspense>
   );

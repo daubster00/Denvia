@@ -177,3 +177,182 @@ async def test_oauth_identity_unique_violation(run_migrations):
         await conn.execute(text("DELETE FROM users WHERE id=:uid"), {"uid": user_id})
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_oauth_identity_idx_user_id(run_migrations):
+    """idx_oauth_identity_user_id (non-unique) 인덱스 존재 — find-id 조회 성능 보장."""
+    engine = create_async_engine(DB_URL)
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            text(
+                "SELECT indexname FROM pg_indexes "
+                "WHERE tablename='oauth_identity' AND indexname='idx_oauth_identity_user_id'"
+            )
+        )
+        row = result.fetchone()
+    await engine.dispose()
+    assert row is not None, "idx_oauth_identity_user_id 인덱스가 존재해야 함"
+
+
+@pytest.mark.asyncio
+async def test_oauth_identity_check_provider_valid_only(run_migrations):
+    """CHECK (provider IN ('kakao','google','naver')) — 다른 값은 IntegrityError."""
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_async_engine(DB_URL)
+    user_id: int | None = None
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO users (email, phone, phone_verified, created_at, updated_at) "
+                    "VALUES ('oauth_check@example.com', '01088880000', true, NOW(), NOW()) "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+            uid_row = await conn.execute(
+                text("SELECT id FROM users WHERE email='oauth_check@example.com'")
+            )
+            user_id = uid_row.scalar_one()
+
+        raised = False
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO oauth_identity(user_id, provider, provider_sub, linked_at) "
+                        "VALUES (:uid, 'facebook', 'x', NOW())"
+                    ),
+                    {"uid": user_id},
+                )
+        except IntegrityError:
+            raised = True
+        assert raised, "provider='facebook'은 CHECK 제약 위반이어야 함"
+    finally:
+        if user_id is not None:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("DELETE FROM users WHERE id=:uid"), {"uid": user_id}
+                )
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_oauth_identity_on_delete_cascade(run_migrations):
+    """users 레코드 DELETE 시 FK ON DELETE CASCADE로 oauth_identity 자동 삭제."""
+    engine = create_async_engine(DB_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO users (email, phone, phone_verified, created_at, updated_at) "
+                    "VALUES ('cascade_test@example.com', '01077770000', true, NOW(), NOW()) "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+            uid_row = await conn.execute(
+                text("SELECT id FROM users WHERE email='cascade_test@example.com'")
+            )
+            user_id = uid_row.scalar_one()
+            await conn.execute(
+                text(
+                    "INSERT INTO oauth_identity(user_id, provider, provider_sub, linked_at) "
+                    "VALUES (:uid, 'kakao', 'cascade_sub_1', NOW()), "
+                    "       (:uid, 'google', 'cascade_sub_2', NOW())"
+                ),
+                {"uid": user_id},
+            )
+
+        async with engine.begin() as conn:
+            count_row = await conn.execute(
+                text("SELECT COUNT(*) FROM oauth_identity WHERE user_id=:uid"),
+                {"uid": user_id},
+            )
+            assert count_row.scalar_one() == 2
+
+        # users DELETE — CASCADE로 oauth_identity 자동 삭제
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM users WHERE id=:uid"), {"uid": user_id})
+
+        async with engine.begin() as conn:
+            count_row = await conn.execute(
+                text("SELECT COUNT(*) FROM oauth_identity WHERE user_id=:uid"),
+                {"uid": user_id},
+            )
+            assert count_row.scalar_one() == 0, "CASCADE로 oauth_identity 레코드가 모두 삭제되어야 함"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_oauth_identity_not_null_constraints(run_migrations):
+    """provider/provider_sub/user_id/linked_at 각각 NULL 삽입 거부."""
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_async_engine(DB_URL)
+    user_id: int | None = None
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO users (email, phone, phone_verified, created_at, updated_at) "
+                    "VALUES ('notnull_test@example.com', '01066660000', true, NOW(), NOW()) "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+            uid_row = await conn.execute(
+                text("SELECT id FROM users WHERE email='notnull_test@example.com'")
+            )
+            user_id = uid_row.scalar_one()
+
+        # user_id NULL
+        raised = False
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO oauth_identity(user_id, provider, provider_sub, linked_at) "
+                        "VALUES (NULL, 'kakao', 'nn1', NOW())"
+                    )
+                )
+        except IntegrityError:
+            raised = True
+        assert raised, "user_id NULL 삽입은 거부되어야 함"
+
+        # provider NULL
+        raised = False
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO oauth_identity(user_id, provider, provider_sub, linked_at) "
+                        "VALUES (:uid, NULL, 'nn2', NOW())"
+                    ),
+                    {"uid": user_id},
+                )
+        except IntegrityError:
+            raised = True
+        assert raised, "provider NULL 삽입은 거부되어야 함"
+
+        # provider_sub NULL
+        raised = False
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO oauth_identity(user_id, provider, provider_sub, linked_at) "
+                        "VALUES (:uid, 'kakao', NULL, NOW())"
+                    ),
+                    {"uid": user_id},
+                )
+        except IntegrityError:
+            raised = True
+        assert raised, "provider_sub NULL 삽입은 거부되어야 함"
+    finally:
+        if user_id is not None:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("DELETE FROM users WHERE id=:uid"), {"uid": user_id}
+                )
+        await engine.dispose()

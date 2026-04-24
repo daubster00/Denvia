@@ -28,5 +28,9 @@ export const errorCopy: Record<string, string> = {
 };
 
 export function getErrorMessage(code: string): string {
-  return errorCopy[code] ?? "알 수 없는 오류가 발생했습니다.";
+  // hasOwn 가드로 prototype pollution(`__proto__`·`toString` 등) 및 빈 코드 방어
+  if (!code || !Object.prototype.hasOwnProperty.call(errorCopy, code)) {
+    return "알 수 없는 오류가 발생했습니다.";
+  }
+  return errorCopy[code];
 }

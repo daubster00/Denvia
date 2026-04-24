@@ -1,7 +1,7 @@
 """인증 관련 Pydantic 스키마 — snake_case, 래퍼 금지 (architecture.md §703)."""
 
 from typing import Literal
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 import re
 
 
@@ -186,9 +186,11 @@ class SegmentRequest(BaseModel):
 # ── OAuth 3종 (Story 1.6) ────────────────────────────────────────────────────
 
 class OAuthCompleteRequest(BaseModel):
-    signup_pending_token: str
+    # 빈 문자열 조기 거부(422). 실제 토큰은 secrets.token_urlsafe(32) 결과이나,
+    # 테스트 mock은 짧은 상수를 쓰므로 min_length=1로만 강제하고 실 검증은 서비스 레이어에 위임.
+    signup_pending_token: str = Field(min_length=1, max_length=128)
     phone: str
-    phone_verification_token: str
+    phone_verification_token: str = Field(min_length=1, max_length=128)
 
     @field_validator("phone")
     @classmethod

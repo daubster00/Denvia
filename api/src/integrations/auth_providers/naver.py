@@ -18,7 +18,7 @@ import structlog
 from tenacity import (
     RetryError,
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -36,8 +36,17 @@ _TOKEN_URL = "https://nid.naver.com/oauth2.0/token"
 _PROFILE_URL = "https://openapi.naver.com/v1/nid/me"
 
 
+def _retryable_http_error(exc: BaseException) -> bool:
+    """5xx + 네트워크/타임아웃만 재시도. 4xx는 즉시 실패."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return 500 <= exc.response.status_code < 600
+    if isinstance(exc, (httpx.RequestError, httpx.TimeoutException)):
+        return True
+    return False
+
+
 _retry = retry(
-    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException)),
+    retry=retry_if_exception(_retryable_http_error),
     wait=wait_exponential(multiplier=1, min=2, max=30),
     stop=stop_after_attempt(3),
     reraise=True,
@@ -51,29 +60,38 @@ class NaverProvider:
         self._client_id = client_id
         self._client_secret = client_secret
         self._redirect_uri = redirect_uri
+        # 마지막 authorize 호출의 state — exchange_code에서 동일 값을 전달하기 위해 기억
+        # 네이버 사양은 token endpoint에서도 authorize state와 동일 값을 요구한다.
+        self._last_state: str = ""
 
     def get_authorization_url(self, state: str) -> str:
+        # scope는 네이버 앱 콘솔에서 허용된 항목만 유효. email은 기본 허용.
+        # 동의 범위를 코드에서 명시하여 provider 응답 스키마 변화를 줄인다.
         params = {
             "response_type": "code",
             "client_id": self._client_id,
             "redirect_uri": self._redirect_uri,
             "state": state,
+            "scope": "name email",
         }
+        self._last_state = state
         return f"{_AUTHORIZE_URL}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> dict:
+    async def exchange_code(self, code: str, state: str = "") -> dict:
+        # 네이버 사양: authorize 시 전달한 state와 동일 값을 token endpoint에도 요구.
+        # state 인자가 비면 최근 authorize 시의 state로 폴백(같은 인스턴스에서 호출된 경우).
+        effective_state = state or self._last_state
         params = {
             "grant_type": "authorization_code",
             "client_id": self._client_id,
             "client_secret": self._client_secret,
             "code": code,
-            "state": "",  # 네이버는 state를 token endpoint에도 요구하지만 빈 값 허용
+            "state": effective_state,
         }
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 @_retry
                 async def _do() -> httpx.Response:
-                    # 네이버는 GET으로 token 교환
                     resp = await client.get(_TOKEN_URL, params=params)
                     if 500 <= resp.status_code < 600:
                         raise httpx.HTTPStatusError(
@@ -85,12 +103,20 @@ class NaverProvider:
 
                 resp = await _do()
         except (RetryError, httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as exc:
-            raise OAuthProviderUnavailable("naver", repr(exc)) from exc
+            logger.exception("auth.oauth.provider_http_error", provider="naver", phase="token")
+            raise OAuthProviderUnavailable("naver", "token_http_error") from exc
 
         if resp.status_code != 200:
             raise OAuthProviderInvalidResponse("naver", f"token status={resp.status_code}")
 
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise OAuthProviderInvalidResponse("naver", "token json decode") from exc
+
+        # 네이버 token 응답은 에러 시에도 200 반환하고 body에 error 필드를 담는다.
+        if body.get("error"):
+            raise OAuthProviderInvalidResponse("naver", f"token error={body.get('error')}")
         if not body.get("access_token"):
             raise OAuthProviderInvalidResponse("naver", "no access_token")
         return body
@@ -114,12 +140,24 @@ class NaverProvider:
 
                 resp = await _do()
         except (RetryError, httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as exc:
-            raise OAuthProviderUnavailable("naver", repr(exc)) from exc
+            logger.exception("auth.oauth.provider_http_error", provider="naver", phase="profile")
+            raise OAuthProviderUnavailable("naver", "profile_http_error") from exc
 
         if resp.status_code != 200:
             raise OAuthProviderInvalidResponse("naver", f"profile status={resp.status_code}")
 
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise OAuthProviderInvalidResponse("naver", "profile json decode") from exc
+
+        # 네이버 profile 응답 형식: {"resultcode":"00","message":"success","response":{...}}
+        if body.get("resultcode") != "00":
+            raise OAuthProviderInvalidResponse(
+                "naver",
+                f"resultcode={body.get('resultcode')}",
+            )
+
         response = body.get("response", {}) or {}
         sub = response.get("id")
         email = response.get("email")

@@ -23,6 +23,8 @@ export function LoginPopup() {
   const [mode, setMode] = useState<Mode>("login");
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  // 소셜 버튼 더블클릭·OAuth 이동 중복 실행 가드 (페이지 내 single-shot)
+  const navigatingRef = useRef(false);
 
   // body scroll lock은 LoginPopupMount에서 isPopupOpen 상태에 직접 연결되어 관리된다.
   // 여기서 중복 조작하면 외부 이동(window.location.href) 후 복귀 시 잔류 위험.
@@ -83,9 +85,12 @@ export function LoginPopup() {
       : mode === "login" ? "로그인" : "회원가입";
 
   const handleSocial = (provider: "kakao" | "naver" | "google") => {
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
     // 외부 이동 전 팝업 닫기 — 뒤로가기 복귀 시 잔류 state 방지
     closePopup();
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    // trailing slash 제거로 `//api/` 같은 이중 슬래시 방지
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
     const params = new URLSearchParams({ mode });
     window.location.href = `${apiBase}/api/v1/auth/oauth/${provider}/authorize?${params}`;
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { getErrorMessage } from "@/lib/error-copy";
 import { useAlertStore } from "@/stores/alert-store";
@@ -14,16 +14,20 @@ import { useAlertStore } from "@/stores/alert-store";
  */
 export function OAuthErrorBanner() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const router = useRouter();
   const show = useAlertStore((s) => s.show);
   const lastHandledRef = useRef<string | null>(null);
 
+  // searchParams 객체 identity 가 churn 하므로 code 문자열만 dep 으로 사용.
+  const code = searchParams.get("oauth_error");
+
   useEffect(() => {
-    const code = searchParams.get("oauth_error");
     if (!code) return;
     if (lastHandledRef.current === code) return;
 
     lastHandledRef.current = code;
+    // 미매핑 코드 방어: getErrorMessage가 fallback 카피 반환
     show({
       level: "error",
       title: "로그인 안내",
@@ -35,10 +39,8 @@ export function OAuthErrorBanner() {
     const remaining = new URLSearchParams(searchParams.toString());
     remaining.delete("oauth_error");
     const nextQuery = remaining.toString();
-    const pathname =
-      typeof window !== "undefined" ? window.location.pathname : "/";
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-  }, [searchParams, router, show]);
+  }, [code, pathname, router, searchParams, show]);
 
   // 다음 에러가 같은 코드여도 다시 표시되도록, 페이지 이탈 시 ref 리셋
   useEffect(() => {

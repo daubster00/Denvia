@@ -12,7 +12,9 @@ import sentry_sdk
 import structlog
 from fastapi import HTTPException
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.integrations.auth_providers.base import (
@@ -218,6 +220,10 @@ async def signup_user(
         HTTPException 400 SMS_TOKEN_INVALID — phone_verification_token 검증 실패
         HTTPException 409 ACCOUNT_EMAIL_DUPLICATE / ACCOUNT_PHONE_DUPLICATE
     """
+    # 이메일 정규화 — OAuth provider의 `.lower().strip()` 정규화와 일관성 유지
+    # (대소문자 섞인 가입 이메일과 소문자로 정규화된 provider 이메일이 AC-6 충돌 검사에서 불일치하는 버그 방지)
+    email = email.lower().strip()
+
     # phone_verification_token 검증
     token_key = _TOKEN_KEY.format(token=phone_verification_token)
     async with _make_redis(redis_url) as r:
@@ -268,7 +274,7 @@ async def signup_user(
 
     sentry_sdk.add_breadcrumb(
         message="auth.signup.completed",
-        data={"user_id": user.id, "trace_id": ""},
+        data={"user_id": user.id},
     )
     logger.info(
         "auth.signup.completed",
@@ -465,7 +471,6 @@ async def request_password_reset(
             "auth.password_reset.requested",
             phone=f"****{phone[-4:]}",
             matched=True,
-            trace_id="",
         )
     elif matched and user.password_hash is None:
         # 소셜 전용 계정 — dummy argon2 타이밍 균일화
@@ -473,13 +478,11 @@ async def request_password_reset(
         logger.info(
             "auth.password_reset.skipped_social",
             phone=f"****{phone[-4:]}",
-            trace_id="",
         )
         logger.info(
             "auth.password_reset.requested",
             phone=f"****{phone[-4:]}",
             matched=False,
-            trace_id="",
         )
     else:
         # 불일치 — dummy argon2 타이밍 균일화
@@ -488,7 +491,6 @@ async def request_password_reset(
             "auth.password_reset.requested",
             phone=f"****{phone[-4:]}",
             matched=False,
-            trace_id="",
         )
 
 
@@ -532,7 +534,6 @@ async def lookup_id(
         "auth.id_lookup.requested",
         phone=f"****{phone[-4:]}",
         matched=matched,
-        trace_id="",
     )
 
     if not matched:
@@ -577,6 +578,7 @@ class OAuthCallbackResult(TypedDict, total=False):
     user_id: int
     signup_pending_token: str
     provider: str
+    next_path: str  # AC-3: login_completed 성공 시 라우터에서 사용할 리다이렉트 경로 (없으면 "")
 
 
 def _sub_hash(sub: str) -> str:
@@ -588,41 +590,65 @@ async def oauth_start(
     mode: Literal["login", "signup"],
     provider: OAuthProvider,
     redis_url: str,
+    next_path: str = "",
 ) -> str:
-    """OAuth authorize URL 생성 — state 32B nonce를 Redis DB 2에 기록."""
+    """OAuth authorize URL 생성 — state 32B nonce를 Redis DB 2에 기록.
+
+    next_path: 콜백 후 프론트 리다이렉트 경로(allowlist에 통과된 값만 전달됨).
+    """
     state = secrets.token_urlsafe(32)
     key = _OAUTH_STATE_KEY.format(state=state)
-    payload = json.dumps({"provider": provider_name, "mode": mode})
-    async with _make_redis_rl(redis_url) as r:
-        await r.set(key, payload, ex=_OAUTH_STATE_TTL)
+    payload = json.dumps(
+        {"provider": provider_name, "mode": mode, "next": next_path or ""}
+    )
+    try:
+        async with _make_redis_rl(redis_url) as r:
+            await r.set(key, payload, ex=_OAUTH_STATE_TTL)
+    except RedisError:
+        logger.exception("auth.oauth.redis_error", phase="start")
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OAUTH_PROVIDER_UNAVAILABLE", "message": "소셜 로그인이 일시 지연됩니다."},
+        )
     return provider.get_authorization_url(state=state)
 
 
+def _state_invalid_error() -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
+    )
+
+
 async def _consume_oauth_state(state: str, provider_name: str, redis_url: str) -> dict:
-    """state 검증 + 즉시 삭제. 없거나 provider 불일치면 OAUTH_STATE_INVALID."""
+    """state 검증 + 즉시 삭제(원자). 실패 시 `auth.oauth.state_invalid` 이벤트 로깅 후 HTTPException.
+
+    원자성: Redis 6.2+ `GETDEL`로 GET+DEL을 단일 명령으로 처리하여 동시 콜백에서의 state 재사용을 방지.
+    """
     key = _OAUTH_STATE_KEY.format(state=state)
-    async with _make_redis_rl(redis_url) as r:
-        raw = await r.get(key)
-        if raw is None:
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
-            )
-        await r.delete(key)
+    try:
+        async with _make_redis_rl(redis_url) as r:
+            raw = await r.getdel(key)
+    except RedisError:
+        logger.exception("auth.oauth.redis_error", phase="state_consume", provider=provider_name)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OAUTH_PROVIDER_UNAVAILABLE", "message": "소셜 로그인이 일시 지연됩니다."},
+        )
+
+    if raw is None:
+        logger.warning("auth.oauth.state_invalid", provider=provider_name, reason="not_found")
+        raise _state_invalid_error()
 
     try:
         payload = json.loads(raw)
     except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
-        )
+        logger.warning("auth.oauth.state_parse_error", provider=provider_name)
+        raise _state_invalid_error()
 
     if payload.get("provider") != provider_name:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "OAUTH_STATE_INVALID", "message": "소셜 로그인 세션이 만료되었습니다."},
-        )
+        logger.warning("auth.oauth.state_invalid", provider=provider_name, reason="provider_mismatch")
+        raise _state_invalid_error()
     return payload
 
 
@@ -645,9 +671,12 @@ async def oauth_callback(
 
     Provider HTTP 실패는 OAuthProviderUnavailable을 재발생시킨다.
     """
-    await _consume_oauth_state(state, provider_name, redis_url)
+    state_payload = await _consume_oauth_state(state, provider_name, redis_url)
+    mode: str = state_payload.get("mode", "login")
+    next_path: str = state_payload.get("next", "") or ""
 
-    token_body = await provider.exchange_code(code)
+    # Naver는 token endpoint에서도 state를 요구하므로 반드시 전달.
+    token_body = await provider.exchange_code(code, state)
     access_token = token_body["access_token"]
     profile = await provider.fetch_profile(access_token)
 
@@ -655,31 +684,28 @@ async def oauth_callback(
     email = profile["email"]
     phone = profile["phone"]
 
-    # 분기 1: oauth_identity 매칭 → 로그인
+    # 분기 1: oauth_identity JOIN users with withdrawn_at IS NULL — AC-13 정합
+    # (withdrawn user의 stale oauth_identity 레코드가 있어도 여기서 fall-through 되어
+    #  아래 INSERT 시 UNIQUE(provider, provider_sub) 충돌을 일으키는 버그 방어)
     oi_row = await db.execute(
-        select(OAuthIdentity)
+        select(OAuthIdentity, User)
+        .join(User, User.id == OAuthIdentity.user_id)
         .where(
             OAuthIdentity.provider == provider_name,
             OAuthIdentity.provider_sub == provider_sub,
+            User.withdrawn_at.is_(None),
         )
     )
-    oi = oi_row.scalar_one_or_none()
-    if oi is not None:
-        u_row = await db.execute(
-            select(User).where(User.id == oi.user_id, User.withdrawn_at.is_(None))
+    oi_row_result = oi_row.first()
+    if oi_row_result is not None:
+        _, matched_user = oi_row_result
+        logger.info(
+            "auth.oauth.login_completed",
+            provider=provider_name,
+            user_id=matched_user.id,
+            sub_hash=_sub_hash(provider_sub),
         )
-        matched_user = u_row.scalar_one_or_none()
-        if matched_user is not None:
-            logger.info(
-                "auth.oauth.login_completed",
-                provider=provider_name,
-                user_id=matched_user.id,
-                sub_hash=_sub_hash(provider_sub),
-                trace_id="",
-            )
-            return {"action": "login_completed", "user_id": matched_user.id}
-        # 매칭된 oauth_identity가 withdrawn 유저를 가리키면 재가입 플로우 진입
-        # (oauth_identity 레코드는 Story 1.7에서 삭제 처리)
+        return {"action": "login_completed", "user_id": matched_user.id, "next_path": next_path}
 
     # 분기 2: 이메일 매칭 — 자체 가입자(password_hash NOT NULL + oauth 미연동)?
     email_row = await db.execute(
@@ -693,7 +719,6 @@ async def oauth_callback(
                 provider=provider_name,
                 email=mask_email(email),
                 sub_hash=_sub_hash(provider_sub),
-                trace_id="",
             )
             return {"action": "email_collision"}
         # 소셜 전용 유저(같은 이메일, 다른 provider로 이미 가입) → oauth_identity만 추가하고 로그인
@@ -705,16 +730,36 @@ async def oauth_callback(
             linked_at=now,
         )
         db.add(link)
-        await db.flush()
+        try:
+            await db.flush()
+        except IntegrityError:
+            # 동시 콜백으로 UNIQUE(provider, provider_sub) 또는 user_id 조합 충돌 — 재조회 후 로그인 처리
+            await db.rollback()
+            oi_row_r = await db.execute(
+                select(OAuthIdentity).where(
+                    OAuthIdentity.provider == provider_name,
+                    OAuthIdentity.provider_sub == provider_sub,
+                )
+            )
+            oi_r = oi_row_r.scalar_one_or_none()
+            if oi_r is not None:
+                logger.info(
+                    "auth.oauth.login_completed",
+                    provider=provider_name,
+                    user_id=oi_r.user_id,
+                    sub_hash=_sub_hash(provider_sub),
+                    race_recovered=True,
+                )
+                return {"action": "login_completed", "user_id": oi_r.user_id, "next_path": next_path}
+            raise  # 예상치 못한 무결성 위반 — 상위 핸들러로 전파
         logger.info(
             "auth.oauth.login_completed",
             provider=provider_name,
             user_id=email_user.id,
             sub_hash=_sub_hash(provider_sub),
-            trace_id="",
             linked_new_provider=True,
         )
-        return {"action": "login_completed", "user_id": email_user.id}
+        return {"action": "login_completed", "user_id": email_user.id, "next_path": next_path}
 
     # 분기 3·4: 신규 + provider phone 제공
     if phone:
@@ -728,7 +773,6 @@ async def oauth_callback(
                 provider=provider_name,
                 phone=f"****{phone[-4:]}",
                 sub_hash=_sub_hash(provider_sub),
-                trace_id="",
             )
             return {"action": "phone_collision"}
 
@@ -743,21 +787,32 @@ async def oauth_callback(
             updated_at=now,
         )
         db.add(user)
-        await db.flush()
-        link = OAuthIdentity(
-            user_id=user.id,
-            provider=provider_name,
-            provider_sub=provider_sub,
-            linked_at=now,
-        )
-        db.add(link)
-        await db.flush()
+        try:
+            await db.flush()
+            link = OAuthIdentity(
+                user_id=user.id,
+                provider=provider_name,
+                provider_sub=provider_sub,
+                linked_at=now,
+            )
+            db.add(link)
+            await db.flush()
+        except IntegrityError:
+            # 동시 콜백·가입으로 UNIQUE(email/phone/provider_sub) 충돌 — phone_collision으로 안전하게 응답
+            await db.rollback()
+            logger.warning(
+                "auth.oauth.phone_collision",
+                provider=provider_name,
+                phone=f"****{phone[-4:]}",
+                sub_hash=_sub_hash(provider_sub),
+                race_recovered=True,
+            )
+            return {"action": "phone_collision"}
         logger.info(
             "auth.oauth.signup_completed",
             provider=provider_name,
             user_id=user.id,
             sub_hash=_sub_hash(provider_sub),
-            trace_id="",
         )
         return {"action": "signup_completed_full", "user_id": user.id}
 
@@ -769,16 +824,23 @@ async def oauth_callback(
             "provider": provider_name,
             "provider_sub": provider_sub,
             "email": email,
+            "mode": mode,
         }
     )
-    async with _make_redis(redis_url) as r:
-        await r.set(key, payload, ex=_SIGNUP_PENDING_TTL)
+    try:
+        async with _make_redis(redis_url) as r:
+            await r.set(key, payload, ex=_SIGNUP_PENDING_TTL)
+    except RedisError:
+        logger.exception("auth.oauth.redis_error", phase="pending_set", provider=provider_name)
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OAUTH_PROVIDER_UNAVAILABLE", "message": "소셜 로그인이 일시 지연됩니다."},
+        )
 
     logger.info(
         "auth.oauth.signup_pending_phone",
         provider=provider_name,
         sub_hash=_sub_hash(provider_sub),
-        trace_id="",
     )
     return {
         "action": "signup_pending_phone",
@@ -797,45 +859,70 @@ async def oauth_complete_phone_supplement(
     """OAuth 신규 가입 — SMS 보충 마무리.
 
     Raises:
-        400 OAUTH_PENDING_INVALID — signup_pending_token 만료·부재
+        400 OAUTH_PENDING_INVALID — signup_pending_token 만료·부재·스키마 오류
         400 SMS_TOKEN_INVALID — phone_verification_token 불일치·부재
         409 OAUTH_PHONE_COLLISION / OAUTH_EMAIL_COLLISION_WITH_EMAIL_SIGNUP
     """
     pending_key = _SIGNUP_PENDING_KEY.format(token=signup_pending_token)
-    async with _make_redis(redis_url) as r:
-        pending_raw = await r.get(pending_key)
-        if pending_raw is None:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "OAUTH_PENDING_INVALID",
-                    "message": "소셜 가입 세션이 만료되었습니다. 다시 시도해주세요.",
-                },
-            )
+    token_key = _TOKEN_KEY.format(token=phone_verification_token)
 
-        # phone_verification_token 검증 + 소진
-        token_key = _TOKEN_KEY.format(token=phone_verification_token)
-        stored_phone = await r.get(token_key)
-        if stored_phone is None or stored_phone != phone:
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "SMS_TOKEN_INVALID", "message": "휴대폰 인증이 필요합니다."},
-            )
-        # 양쪽 토큰 즉시 소진
-        await r.delete(token_key)
-        await r.delete(pending_key)
-
+    # 1) pending을 먼저 조회·검증·파싱 — 파싱 실패 시 phone 토큰은 아직 건드리지 않음 (UX: SMS 재사용 가능)
     try:
-        pending = json.loads(pending_raw)
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "OAUTH_PENDING_INVALID", "message": "소셜 가입 세션이 만료되었습니다."},
-        )
+        async with _make_redis(redis_url) as r:
+            pending_raw = await r.get(pending_key)
+            if pending_raw is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "OAUTH_PENDING_INVALID",
+                        "message": "소셜 가입 세션이 만료되었습니다. 다시 시도해주세요.",
+                    },
+                )
 
-    provider_name = pending["provider"]
-    provider_sub = pending["provider_sub"]
-    email = pending["email"]
+            # pending JSON 파싱·필수 키·provider 값 검증(삭제 전)
+            try:
+                pending = json.loads(pending_raw)
+            except (TypeError, ValueError):
+                # 잘못된 pending 데이터는 소진 후 거부 (재시도 방어)
+                await r.delete(pending_key)
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "OAUTH_PENDING_INVALID", "message": "소셜 가입 세션이 만료되었습니다."},
+                )
+
+            provider_name = pending.get("provider")
+            provider_sub = pending.get("provider_sub")
+            email = pending.get("email")
+            if not provider_name or not provider_sub or not email:
+                await r.delete(pending_key)
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "OAUTH_PENDING_INVALID", "message": "소셜 가입 세션이 만료되었습니다."},
+                )
+            if provider_name not in {"kakao", "google", "naver"}:
+                await r.delete(pending_key)
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "OAUTH_PENDING_INVALID", "message": "소셜 가입 세션이 만료되었습니다."},
+                )
+
+            # 2) phone 검증 토큰 확인 — 불일치면 토큰을 소진하지 않아 사용자가 재시도 가능
+            stored_phone = await r.get(token_key)
+            if stored_phone is None or stored_phone != phone:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "SMS_TOKEN_INVALID", "message": "휴대폰 인증이 필요합니다."},
+                )
+
+            # 3) 성공 경로 — 양쪽 토큰 원자적 소진
+            await r.delete(token_key)
+            await r.delete(pending_key)
+    except RedisError:
+        logger.exception("auth.oauth.redis_error", phase="oauth_complete")
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "OAUTH_PROVIDER_UNAVAILABLE", "message": "소셜 로그인이 일시 지연됩니다."},
+        )
 
     # 이메일 재검사 (OAuth 콜백 이후 race)
     email_row = await db.execute(
@@ -866,8 +953,15 @@ async def oauth_complete_phone_supplement(
 
     now = datetime.now(tz=timezone.utc)
 
-    # 이메일 매칭 소셜 유저가 있으면 oauth_identity만 추가하고 해당 유저 반환
+    # 이메일 매칭 소셜 유저가 있으면 oauth_identity 추가 + phone 보충 데이터 반영
     if email_user is not None and email_user.password_hash is None:
+        # SMS 인증으로 확정한 phone/phone_verified를 기존 유저 레코드에도 반영 (보충 데이터 폐기 방지)
+        if not email_user.phone:
+            email_user.phone = phone
+        if not email_user.phone_verified:
+            email_user.phone_verified = True
+        email_user.updated_at = now
+
         link = OAuthIdentity(
             user_id=email_user.id,
             provider=provider_name,
@@ -875,13 +969,23 @@ async def oauth_complete_phone_supplement(
             linked_at=now,
         )
         db.add(link)
-        await db.flush()
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            # 동일 (provider, provider_sub)가 이미 다른 user와 연결된 극단 케이스 — phone_collision으로 응답
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "OAUTH_PHONE_COLLISION",
+                    "message": "이 휴대폰은 이미 가입된 계정이 있습니다. 최초 가입 방식으로 로그인해주세요.",
+                },
+            )
         logger.info(
             "auth.oauth.signup_completed",
             provider=provider_name,
             user_id=email_user.id,
             sub_hash=_sub_hash(provider_sub),
-            trace_id="",
             linked_existing_social=True,
         )
         return email_user
@@ -896,21 +1000,31 @@ async def oauth_complete_phone_supplement(
         updated_at=now,
     )
     db.add(user)
-    await db.flush()
-    link = OAuthIdentity(
-        user_id=user.id,
-        provider=provider_name,
-        provider_sub=provider_sub,
-        linked_at=now,
-    )
-    db.add(link)
-    await db.flush()
+    try:
+        await db.flush()
+        link = OAuthIdentity(
+            user_id=user.id,
+            provider=provider_name,
+            provider_sub=provider_sub,
+            linked_at=now,
+        )
+        db.add(link)
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        # 동시 가입 race — 휴대폰/이메일/provider_sub 중 하나가 이미 사용됨
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "OAUTH_PHONE_COLLISION",
+                "message": "이 휴대폰은 이미 가입된 계정이 있습니다. 최초 가입 방식으로 로그인해주세요.",
+            },
+        )
 
     logger.info(
         "auth.oauth.signup_completed",
         provider=provider_name,
         user_id=user.id,
         sub_hash=_sub_hash(provider_sub),
-        trace_id="",
     )
     return user

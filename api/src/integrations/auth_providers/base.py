@@ -23,8 +23,12 @@ class OAuthProvider(Protocol):
         """authorize URL 생성 — state는 호출자가 Redis에 기록 후 전달."""
         ...
 
-    async def exchange_code(self, code: str) -> dict:
-        """code → access_token 교환. {'access_token': str, ...} 반환."""
+    async def exchange_code(self, code: str, state: str) -> dict:
+        """code → access_token 교환. {'access_token': str, ...} 반환.
+
+        네이버는 token endpoint에도 authorize state와 동일 값을 요구하므로 state 인자를 필수로 한다.
+        다른 provider는 state를 사용하지 않을 수 있다.
+        """
         ...
 
     async def fetch_profile(self, access_token: str) -> OAuthProfile:

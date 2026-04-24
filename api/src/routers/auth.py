@@ -1,8 +1,10 @@
 """인증 라우터 — SMS OTP · 회원가입 · 로그인 · 로그아웃 · OAuth."""
 
+import re
 import secrets as _secrets
 from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import quote, urlparse
 
 import sentry_sdk
 import structlog
@@ -62,6 +64,11 @@ def _get_messaging() -> MessagingProvider:
     return StubMessagingAdapter()
 
 
+def _is_secure_env() -> bool:
+    """cookie.secure 플래그 — production 환경에서만 True (로컬 HTTP 개발 시 False)."""
+    return settings.environment.lower() in {"production", "staging"}
+
+
 # ── SMS ──────────────────────────────────────────────────────────────────────
 
 @router.post("/sms/send", response_model=SmsSendResponse)
@@ -113,22 +120,26 @@ async def signup(
         subscription_status=user.subscription_status,
     )
 
+    secure = _is_secure_env()
     response.set_cookie(
         key="denvia_session",
         value=token,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
+        path="/",
         max_age=3600,
     )
-    # CSRF 쿠키 — JS가 읽어 헤더로 전송
+    # CSRF 쿠키 — JS가 읽어 헤더로 전송. samesite는 session 쿠키와 동일하게 lax로 통일
+    # (strict일 경우 cross-site 리다이렉트 후 첫 요청에서 누락되어 double-submit 검증 실패).
     csrf_token = _secrets.token_urlsafe(32)
     response.set_cookie(
         key="denvia_csrf",
         value=csrf_token,
         httponly=False,
-        secure=True,
-        samesite="strict",
+        secure=secure,
+        samesite="lax",
+        path="/",
         max_age=3600,
     )
 
@@ -171,12 +182,14 @@ async def login(
         persist=body.persist_session,
     )
 
+    secure = _is_secure_env()
     cookie_kwargs: dict = dict(
         key="denvia_session",
         value=token,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
+        path="/",
     )
     if body.persist_session:
         cookie_kwargs["max_age"] = 86400  # 1일
@@ -188,8 +201,9 @@ async def login(
         key="denvia_csrf",
         value=csrf_token,
         httponly=False,
-        secure=True,
-        samesite="strict",
+        secure=secure,
+        samesite="lax",
+        path="/",
         **({"max_age": 86400} if body.persist_session else {}),
     )
 
@@ -250,20 +264,23 @@ async def find_id(
 @router.post("/logout", status_code=200)
 async def logout(response: Response) -> dict:
     """로그아웃 — 세션·CSRF 쿠키 삭제."""
+    secure = _is_secure_env()
     response.set_cookie(
         key="denvia_session",
         value="",
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
+        path="/",
         max_age=0,
     )
     response.set_cookie(
         key="denvia_csrf",
         value="",
         httponly=False,
-        secure=True,
-        samesite="strict",
+        secure=secure,
+        samesite="lax",
+        path="/",
         max_age=0,
     )
     return {"ok": True}
@@ -273,11 +290,27 @@ async def logout(response: Response) -> dict:
 
 _VALID_PROVIDERS: set[str] = {"kakao", "google", "naver"}
 
+# state / code 파라미터 길이 상한 — 이상치 입력 조기 거부 (provider 요청 낭비 방지)
+_OAUTH_STATE_MAX_LEN = 512
+_OAUTH_CODE_MAX_LEN = 2048
+# 허용 경로 allowlist: /로 시작하되 두 번째 문자가 /이면 거부(프로토콜 상대 경로·open-redirect 방어)
+_NEXT_PATH_RE = re.compile(r"^/(?!/)[a-zA-Z0-9/_\-\.]{0,255}$")
+
+
+def _sanitized_origin() -> str:
+    """oauth_web_origin 기본 검증 — scheme+host 이외 문자 제거."""
+    parsed = urlparse(settings.oauth_web_origin)
+    if not parsed.scheme or not parsed.netloc:
+        # 설정 오류 — 로컬 기본값으로 폴백(운영 배포 시 settings에서 필수 값 강제).
+        return "http://localhost:3000"
+    return f"{parsed.scheme}://{parsed.netloc}"
+
 
 def _oauth_error_redirect(code: str) -> RedirectResponse:
-    origin = settings.oauth_web_origin.rstrip("/")
+    origin = _sanitized_origin()
+    # code는 서버가 고정 발행한 상수 — 추가 검증 불필요하나 방어적으로 quote.
     return RedirectResponse(
-        url=f"{origin}/?oauth_error={code}",
+        url=f"{origin}/?oauth_error={quote(code, safe='')}",
         status_code=302,
     )
 
@@ -289,43 +322,55 @@ def _set_session_cookies(response: RedirectResponse, user: User, persist: bool =
         subscription_status=user.subscription_status,
         persist=persist,
     )
-    cookie_kwargs: dict = dict(
+    secure = _is_secure_env()
+    max_age = 86400 if persist else 3600
+    response.set_cookie(
         key="denvia_session",
         value=token,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
+        path="/",
+        max_age=max_age,
     )
-    if persist:
-        cookie_kwargs["max_age"] = 86400
-    else:
-        cookie_kwargs["max_age"] = 3600
-    response.set_cookie(**cookie_kwargs)
 
     csrf_token = _secrets.token_urlsafe(32)
     response.set_cookie(
         key="denvia_csrf",
         value=csrf_token,
         httponly=False,
-        secure=True,
-        samesite="strict",
-        max_age=cookie_kwargs["max_age"],
+        secure=secure,
+        samesite="lax",
+        path="/",
+        max_age=max_age,
     )
+
+
+def _safe_next(raw: str | None) -> str:
+    """next 쿼리 값이 allowlist(/로 시작하는 상대 경로 + 안전 문자)를 통과하면 반환, 아니면 빈 문자열."""
+    if not raw:
+        return ""
+    if _NEXT_PATH_RE.match(raw):
+        return raw
+    return ""
 
 
 @router.get("/oauth/{provider}/authorize")
 async def oauth_authorize(
     provider: str,
     mode: Literal["login", "signup"] = Query(default="login"),
+    next: str | None = Query(default=None, alias="next"),
 ) -> RedirectResponse:
-    """Provider 동의 페이지로 리다이렉트."""
+    """Provider 동의 페이지로 리다이렉트. 선택적 next 파라미터로 로그인 성공 후 리다이렉트 경로 지정."""
     if provider not in _VALID_PROVIDERS:
         raise HTTPException(
             status_code=404,
             detail={"code": "OAUTH_PROVIDER_UNKNOWN", "message": "지원하지 않는 소셜 로그인입니다."},
         )
     p = get_provider(provider)
-    url = await oauth_start(provider, mode, p, settings.redis_url)
+    url = await oauth_start(
+        provider, mode, p, settings.redis_url, next_path=_safe_next(next)
+    )
     return RedirectResponse(url=url, status_code=302)
 
 
@@ -335,18 +380,36 @@ async def oauth_callback_endpoint(
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
+    error_description: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
     """Provider 콜백 — 302로 프론트로 복귀한다(성공·실패 모두)."""
     if provider not in _VALID_PROVIDERS:
         return _oauth_error_redirect("OAUTH_PROVIDER_UNKNOWN")
 
-    # 사용자 취소
+    # AC-8: 사용자 취소는 access_denied로 좁혀 매핑. 그 외 provider 에러는 UNAVAILABLE로 구분.
     if error:
-        logger.info("auth.oauth.cancelled", provider=provider, trace_id="")
-        return _oauth_error_redirect("OAUTH_CANCELLED")
+        # error 값·설명은 사용자 조작 가능 — 로그/리다이렉트 인젝션 방지
+        safe_error = (error or "")[:64]
+        safe_desc = (error_description or "")[:256]
+        logger.info(
+            "auth.oauth.provider_error",
+            provider=provider,
+            error=re.sub(r"[\x00-\x1f\x7f]", "", safe_error),
+            error_description=re.sub(r"[\x00-\x1f\x7f]", "", safe_desc),
+        )
+        if safe_error == "access_denied":
+            logger.info("auth.oauth.cancelled", provider=provider)
+            return _oauth_error_redirect("OAUTH_CANCELLED")
+        return _oauth_error_redirect("OAUTH_PROVIDER_UNAVAILABLE")
 
     if not code or not state:
+        logger.warning("auth.oauth.state_invalid", provider=provider, reason="missing_params")
+        return _oauth_error_redirect("OAUTH_STATE_INVALID")
+
+    # 이상치 길이 거부 (공격자가 Provider 호출 비용을 낭비하는 것 방지)
+    if len(state) > _OAUTH_STATE_MAX_LEN or len(code) > _OAUTH_CODE_MAX_LEN:
+        logger.warning("auth.oauth.state_invalid", provider=provider, reason="oversize")
         return _oauth_error_redirect("OAUTH_STATE_INVALID")
 
     p = get_provider(provider)
@@ -354,17 +417,26 @@ async def oauth_callback_endpoint(
     try:
         result = await oauth_callback(provider, code, state, p, settings.redis_url, db)
     except OAuthProviderUnavailable:
-        logger.warning("auth.oauth.provider_unavailable", provider=provider, trace_id="")
+        logger.warning("auth.oauth.provider_unavailable", provider=provider)
         return _oauth_error_redirect("OAUTH_PROVIDER_UNAVAILABLE")
     except OAuthProviderInvalidResponse:
-        logger.warning("auth.oauth.provider_invalid_response", provider=provider, trace_id="")
+        # 스펙 AC-10 이벤트 카탈로그와 통합: provider 응답 스키마 이상도 UNAVAILABLE 범주로 로깅
+        logger.warning("auth.oauth.provider_unavailable", provider=provider, reason="invalid_response")
         return _oauth_error_redirect("OAUTH_PROVIDER_UNAVAILABLE")
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         code_val = detail.get("code", "OAUTH_STATE_INVALID")
         return _oauth_error_redirect(code_val)
+    except Exception:
+        # 예상치 못한 예외는 500 HTML 누출 대신 UX-safe 302 리다이렉트로 귀결
+        logger.exception("auth.oauth.callback_unexpected", provider=provider)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return _oauth_error_redirect("OAUTH_PROVIDER_UNAVAILABLE")
 
-    origin = settings.oauth_web_origin.rstrip("/")
+    origin = _sanitized_origin()
     action = result.get("action")
 
     if action in ("login_completed", "signup_completed_full"):
@@ -378,7 +450,13 @@ async def oauth_callback_endpoint(
         if user is None:
             return _oauth_error_redirect("OAUTH_STATE_INVALID")
 
-        redirect_target = f"{origin}/" if action == "login_completed" else f"{origin}/signup/segment"
+        # AC-3: login_completed일 때 state 저장된 next_path가 있으면 해당 경로로, 아니면 `/`.
+        # signup_completed_full은 segment 단계로 고정 (가입 유형 설정 필요).
+        next_path = _safe_next(result.get("next_path"))
+        if action == "login_completed":
+            redirect_target = f"{origin}{next_path}" if next_path else f"{origin}/"
+        else:
+            redirect_target = f"{origin}/signup/segment"
         redirect = RedirectResponse(url=redirect_target, status_code=302)
         _set_session_cookies(redirect, user, persist=False)
         return redirect
@@ -387,7 +465,7 @@ async def oauth_callback_endpoint(
         await db.commit()
         token = result["signup_pending_token"]
         return RedirectResponse(
-            url=f"{origin}/signup/phone-verify?token={token}",
+            url=f"{origin}/signup/phone-verify?token={quote(token, safe='')}",
             status_code=302,
         )
 
@@ -424,12 +502,14 @@ async def oauth_complete(
         role=user.role,
         subscription_status=user.subscription_status,
     )
+    secure = _is_secure_env()
     response.set_cookie(
         key="denvia_session",
         value=token,
         httponly=True,
-        secure=True,
+        secure=secure,
         samesite="lax",
+        path="/",
         max_age=3600,
     )
     csrf_token = _secrets.token_urlsafe(32)
@@ -437,8 +517,9 @@ async def oauth_complete(
         key="denvia_csrf",
         value=csrf_token,
         httponly=False,
-        secure=True,
-        samesite="strict",
+        secure=secure,
+        samesite="lax",
+        path="/",
         max_age=3600,
     )
 

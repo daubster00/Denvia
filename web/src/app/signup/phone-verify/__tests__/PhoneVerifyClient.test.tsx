@@ -65,7 +65,7 @@ describe("PhoneVerifyClient — 3단계 전이", () => {
     });
   });
 
-  it("OAUTH_PHONE_COLLISION → /?oauth_error=OAUTH_PHONE_COLLISION으로 replace", async () => {
+  it("OAUTH_PHONE_COLLISION → /?oauth_error=OAUTH_PHONE_COLLISION으로 push (AC-7 spec)", async () => {
     const { sendSmsOtp, verifySmsOtp, completeOAuthSignup } = await import(
       "@/features/auth/api"
     );
@@ -116,7 +116,7 @@ describe("PhoneVerifyClient — 3단계 전이", () => {
     fireEvent.click(completeBtn);
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith(
+      expect(mockPush).toHaveBeenCalledWith(
         "/?oauth_error=OAUTH_PHONE_COLLISION"
       );
     });

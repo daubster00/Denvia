@@ -1,9 +1,14 @@
 "use client";
 
+import { useRef } from "react";
+
 /** 소셜 로그인 탭 — 3사 버튼 UI. (Story 1.6 구현) */
 export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" } = {}) {
+  const navigatingRef = useRef(false);
   const handleSocialClick = (provider: "kakao" | "naver" | "google") => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
     const params = new URLSearchParams({ mode });
     window.location.href = `${apiBase}/api/v1/auth/oauth/${provider}/authorize?${params}`;
   };

@@ -13,6 +13,9 @@ REDIS_DB_QUOTA = 4       # Quota
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # 환경 — development | staging | production (쿠키 secure 등 분기용)
+    environment: str = "development"
+
     # 데이터베이스
     database_url: str = "postgresql+psycopg://denvia:password@postgres:5432/denvia"
     database_sync_url: str = "postgresql+psycopg://denvia:password@postgres:5432/denvia"

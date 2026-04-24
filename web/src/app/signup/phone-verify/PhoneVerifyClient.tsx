@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -22,50 +22,121 @@ function normalizePhone(p: string): string {
   return p.replace(/\D/g, "");
 }
 
+// server 에러 코드 중 pending 세션 자체가 만료/무효 → `/`로 리다이렉트해야 하는 코드
+const PENDING_FATAL_CODES = new Set([
+  "OAUTH_PENDING_EXPIRED",
+  "OAUTH_PENDING_INVALID",
+  "OAUTH_STATE_INVALID",
+]);
+
 export function PhoneVerifyClient() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token");
+  // 초기 1회만 token을 읽어 이후 history.replaceState로 URL에서 제거해도 유지.
+  const tokenRef = useRef<string | null>(null);
+  if (tokenRef.current === null) {
+    const raw = searchParams?.get("token") ?? "";
+    tokenRef.current = raw.trim() || null;
+  }
+  const token = tokenRef.current;
 
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
+  // OTP 검증 성공 시 잠긴 phone — 이후 사용자가 phone 필드를 수정해도 완료 시 전송되는 번호는 이 값.
+  const [verifiedPhone, setVerifiedPhone] = useState<string | null>(null);
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const smsBoxRef = useRef<HTMLDivElement>(null);
 
-  // token 누락 시 즉시 리다이렉트
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // token 누락 시 즉시 리다이렉트 + 존재 시 URL에서 token 쿼리 제거 (Referer/history 유출 방지)
   useEffect(() => {
     if (!token) {
       router.replace("/?oauth_error=OAUTH_PENDING_EXPIRED");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("token")) {
+        url.searchParams.delete("token");
+        window.history.replaceState({}, "", url.pathname + (url.search || ""));
+      }
     }
   }, [token, router]);
 
+  // OTP 단계 진입 시 SMS 입력 영역으로 스크롤·포커스
+  useEffect(() => {
+    if (step === "sms") {
+      const input = smsBoxRef.current?.querySelector<HTMLInputElement>(
+        'input[aria-label^="인증번호"]'
+      );
+      input?.focus();
+    }
+  }, [step]);
+
+  const handlePendingFatalRedirect = useCallback(
+    (code: string) => {
+      router.replace(`/?oauth_error=${encodeURIComponent(code)}`);
+    },
+    [router]
+  );
+
   const handleSendOtp = useCallback(async () => {
+    if (sending) return;
     setError(null);
     if (!/^010[-\s]?\d{4}[-\s]?\d{4}$/.test(phone)) {
       setError("올바른 휴대폰 번호를 입력하세요.");
       return;
     }
+    setSending(true);
     try {
       await sendSmsOtp(normalizePhone(phone), "signup");
+      if (!isMountedRef.current) return;
       setStep("sms");
     } catch (e) {
-      setError(e instanceof ApiError ? (getErrorMessage(e.code) || e.message) : "오류가 발생했습니다.");
+      if (!isMountedRef.current) return;
+      if (e instanceof ApiError && PENDING_FATAL_CODES.has(e.code)) {
+        handlePendingFatalRedirect(e.code);
+        return;
+      }
+      setError(e instanceof ApiError ? getErrorMessage(e.code) : "오류가 발생했습니다.");
+    } finally {
+      if (isMountedRef.current) setSending(false);
     }
-  }, [phone]);
+  }, [phone, sending, handlePendingFatalRedirect]);
 
   const handleOtpComplete = useCallback(
     async (code: string) => {
       setError(null);
       try {
         const res = await verifySmsOtp(normalizePhone(phone), code, "signup");
+        if (!isMountedRef.current) return;
+        if (!res?.phone_verification_token) {
+          setError("인증 응답이 올바르지 않습니다. 인증번호를 다시 요청해주세요.");
+          return;
+        }
         setPhoneVerificationToken(res.phone_verification_token);
+        setVerifiedPhone(normalizePhone(phone));
       } catch (e) {
-        setError(e instanceof ApiError ? (getErrorMessage(e.code) || e.message) : "오류가 발생했습니다.");
+        if (!isMountedRef.current) return;
+        if (e instanceof ApiError && PENDING_FATAL_CODES.has(e.code)) {
+          handlePendingFatalRedirect(e.code);
+          return;
+        }
+        setError(e instanceof ApiError ? getErrorMessage(e.code) : "오류가 발생했습니다.");
       }
     },
-    [phone]
+    [phone, handlePendingFatalRedirect]
   );
 
   const handleResendOtp = useCallback(async () => {
@@ -73,34 +144,62 @@ export function PhoneVerifyClient() {
   }, [phone]);
 
   const handleComplete = useCallback(async () => {
-    if (!token || !phoneVerificationToken) return;
+    if (submitting) return;
+    if (!token || !phoneVerificationToken || !verifiedPhone) return;
     setSubmitting(true);
     setError(null);
     try {
       await completeOAuthSignup({
         signup_pending_token: token,
-        phone: normalizePhone(phone),
+        phone: verifiedPhone,
         phone_verification_token: phoneVerificationToken,
       });
       await queryClient.invalidateQueries({ queryKey: ["session"] });
+      if (!isMountedRef.current) return;
+      // AC-7: phone collision 외 성공 경로 — push로 /signup/segment 이동 (기존 히스토리 유지)
       router.push("/signup/segment");
     } catch (e) {
+      if (!isMountedRef.current) return;
       if (e instanceof ApiError) {
-        const msg = getErrorMessage(e.code) || e.message;
-        if (e.code === "OAUTH_PHONE_COLLISION" || e.code === "OAUTH_PENDING_INVALID") {
-          router.replace(`/?oauth_error=${e.code}`);
+        // AC-7: OAUTH_PHONE_COLLISION 은 홈으로 push (spec Task 7.1)
+        // OAUTH_PENDING_INVALID 등 pending 세션 만료는 replace로 재진입 차단
+        if (e.code === "OAUTH_PHONE_COLLISION") {
+          router.push(`/?oauth_error=${encodeURIComponent(e.code)}`);
           return;
         }
-        setError(msg);
+        if (PENDING_FATAL_CODES.has(e.code)) {
+          handlePendingFatalRedirect(e.code);
+          return;
+        }
+        setError(getErrorMessage(e.code));
       } else {
         setError("오류가 발생했습니다.");
       }
     } finally {
-      setSubmitting(false);
+      if (isMountedRef.current) setSubmitting(false);
     }
-  }, [token, phoneVerificationToken, phone, queryClient, router]);
+  }, [
+    token,
+    phoneVerificationToken,
+    verifiedPhone,
+    queryClient,
+    router,
+    submitting,
+    handlePendingFatalRedirect,
+  ]);
 
-  if (!token) return null;
+  // token 없는 초기 렌더는 빈 레이아웃(보이지 않음)만 출력 → FOUC 방지 + 즉시 리다이렉트.
+  if (!token) {
+    return (
+      <div
+        aria-hidden="true"
+        style={{ minHeight: "100vh", background: "#FAFAFA" }}
+      />
+    );
+  }
+
+  const sendOtpDisabled = sending;
+  const completeEnabled = Boolean(phoneVerificationToken) && !submitting;
 
   return (
     <div
@@ -150,44 +249,51 @@ export function PhoneVerifyClient() {
           <button
             type="button"
             onClick={handleSendOtp}
+            disabled={sendOtpDisabled}
+            aria-busy={sending}
+            aria-disabled={sendOtpDisabled}
             style={{
               width: "100%",
               padding: "13px 0",
               border: "none",
               borderRadius: 8,
-              background: "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-              color: "#fff",
+              background: sendOtpDisabled
+                ? "#E1E2E4"
+                : "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
+              color: sendOtpDisabled ? "#AEB0B6" : "#fff",
               fontSize: 15,
               fontWeight: 600,
-              cursor: "pointer",
+              cursor: sendOtpDisabled ? "not-allowed" : "pointer",
             }}
           >
-            인증번호 받기
+            {sending ? "전송 중..." : "인증번호 받기"}
           </button>
         ) : (
-          <>
+          <div ref={smsBoxRef} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <SMSCodeInput onComplete={handleOtpComplete} onResend={handleResendOtp} />
             <button
               type="button"
-              disabled={!phoneVerificationToken || submitting}
+              disabled={!completeEnabled}
+              aria-busy={submitting}
+              aria-disabled={!completeEnabled}
               onClick={handleComplete}
               style={{
                 width: "100%",
                 padding: "13px 0",
                 border: "none",
                 borderRadius: 8,
-                background: phoneVerificationToken
+                background: completeEnabled
                   ? "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)"
                   : "#E1E2E4",
-                color: phoneVerificationToken ? "#fff" : "#AEB0B6",
+                color: completeEnabled ? "#fff" : "#AEB0B6",
                 fontSize: 15,
                 fontWeight: 600,
-                cursor: phoneVerificationToken ? "pointer" : "default",
+                cursor: completeEnabled ? "pointer" : "not-allowed",
               }}
             >
               {submitting ? "가입 중..." : "가입 완료"}
             </button>
-          </>
+          </div>
         )}
 
         {error && (

@@ -1,6 +1,9 @@
 import { apiFetch } from "@/lib/api-client";
 import type { SessionUser } from "@/types/api";
 
+/** find-id / 소셜 가입 경로 식별 — 서버 signup_method 응답 타입. */
+export type SignupMethod = "email" | "kakao" | "google" | "naver" | "social";
+
 /** 현재 세션 사용자 정보 조회 */
 export async function fetchMe(): Promise<SessionUser> {
   return apiFetch<SessionUser>("/api/v1/me");
@@ -75,7 +78,7 @@ export async function requestPasswordReset(payload: { email: string; phone: stri
 export async function lookupId(payload: { phone_verification_token: string }) {
   return apiFetch<{
     email_masked: string | null;
-    signup_method: "email" | "kakao" | "google" | "naver" | "social" | null;
+    signup_method: SignupMethod | null;
   }>(
     "/api/v1/auth/find-id",
     { method: "POST", body: JSON.stringify(payload) }
