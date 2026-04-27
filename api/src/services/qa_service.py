@@ -1,12 +1,16 @@
-"""QA 서비스 — echo(Story 2.1) + stream(Story 2.2 SSE streaming)."""
+"""QA 서비스 — echo(Story 2.1) + stream(Story 2.2) + preflight/quota(Story 2.3)."""
 
 import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import structlog
+from fastapi import HTTPException
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.integrations.openai.client import TokenUsage, _RETRY_EXCEPTIONS
@@ -17,10 +21,168 @@ from api.src.schemas.qa import QAEchoResponse
 
 logger = structlog.get_logger(__name__)
 
+# ── KST 상수 ──────────────────────────────────────────────────────────────────
+KST = ZoneInfo("Asia/Seoul")
+
+DEFAULT_FREE_DAILY_QUOTA = 10
+DEFAULT_FREE_DELAY_SECONDS = 0
+DEFAULT_PRO_INTERNAL_CAP = 500
+
+
+# ── quota 키·날짜 헬퍼 ─────────────────────────────────────────────────────────
+
+def _today_key_kst(user_id: int) -> str:
+    return f"quota:user:{user_id}:{datetime.now(tz=KST).strftime('%Y-%m-%d')}"
+
+
+def _next_kst_midnight_iso() -> str:
+    now = datetime.now(tz=KST)
+    nxt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return nxt.isoformat()
+
+
+# ── Redis 조회 헬퍼 ────────────────────────────────────────────────────────────
+
+async def _resolve_int_or_none(redis_runtime: Redis, key: str) -> int | None:
+    raw = await redis_runtime.get(key)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _resolve_bool(redis_runtime: Redis, key: str, default: bool = True) -> bool:
+    raw = await redis_runtime.get(key)
+    if raw is None:
+        return default
+    return str(raw).lower() not in ("0", "false", "off", "no")
+
+
+# ── 한도/지연 결정 ─────────────────────────────────────────────────────────────
+
+async def _resolve_daily_limit(user: User, redis_runtime: Redis) -> tuple[int, str]:
+    """우선순위: users.daily_quota_override > runtime:free_daily_quota > 10. (limit, source) 반환."""
+    if user.subscription_status == "pro":
+        cap = await _resolve_int_or_none(redis_runtime, "runtime:pro_internal_cap")
+        return (cap if cap is not None else DEFAULT_PRO_INTERNAL_CAP, "pro_internal")
+    if user.daily_quota_override is not None:
+        return (user.daily_quota_override, "user_override")
+    runtime_val = await _resolve_int_or_none(redis_runtime, "runtime:free_daily_quota")
+    if runtime_val is not None:
+        return (runtime_val, "runtime")
+    return (DEFAULT_FREE_DAILY_QUOTA, "default")
+
+
+async def _resolve_delay(user: User, redis_runtime: Redis) -> tuple[int, str]:
+    """무료 지연 결정. pro/admin은 0초 강제. 개별 override > 전역 enabled > runtime delay > default."""
+    if user.subscription_status in ("pro", "admin"):
+        return (0, "paid_skip")
+    if user.free_delay_override is not None:
+        return (user.free_delay_override, "user_override")
+    enabled = await _resolve_bool(redis_runtime, "runtime:free_delay_enabled", default=True)
+    if not enabled:
+        return (0, "runtime_disabled")
+    runtime_val = await _resolve_int_or_none(redis_runtime, "runtime:free_delay")
+    if runtime_val is not None:
+        return (runtime_val, "runtime")
+    return (DEFAULT_FREE_DELAY_SECONDS, "default")
+
 _ECHO_ANSWER = "[placeholder] 스트리밍은 Story 2.2에서 구현됩니다"
 
 
 class QAService:
+    async def preflight(
+        self,
+        *,
+        user: User,
+        redis_quota: Redis,
+        redis_runtime: Redis,
+    ) -> None:
+        """Quota INCR + 의도적 지연. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
+
+        admin 사용자: quota·delay 모두 우회 (개발/지원 트래픽).
+        pro 사용자: delay 미적용, 내부 안전 상한(pro_internal_cap)만 검증.
+        free 사용자: quota INCR → 한도 검증 → sleep.
+        """
+        if user.subscription_status == "admin":
+            return
+
+        key = _today_key_kst(user.id)
+        used = await redis_quota.incr(key)
+        if used == 1:
+            await redis_quota.expire(key, 86400)
+
+        limit, src = await _resolve_daily_limit(user, redis_runtime)
+
+        logger.debug(
+            "qa.quota.resolved",
+            user_id=user.id,
+            source=src,
+            daily_limit=limit,
+            used_today=used,
+        )
+
+        if used > limit:
+            is_pro_internal = user.subscription_status == "pro"
+            code = (
+                "QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT"
+                if is_pro_internal
+                else "QUOTA_EXCEEDED"
+            )
+            message = (
+                "일시적 시스템 보호 제한에 도달했습니다. 고객문의로 연락주세요"
+                if is_pro_internal
+                else "오늘의 무료 질문 한도를 모두 사용했습니다."
+            )
+            show_upgrade = (
+                False
+                if is_pro_internal
+                else await _resolve_bool(redis_runtime, "runtime:show_upgrade_prompt", default=True)
+            )
+            show_subscribe = (
+                False
+                if is_pro_internal
+                else await _resolve_bool(redis_runtime, "runtime:show_subscribe_button", default=True)
+            )
+            event_name = (
+                "qa.quota.exceeded_internal" if is_pro_internal else "qa.quota.exceeded"
+            )
+            logger.warning(
+                event_name,
+                user_id=user.id,
+                subscription_status=user.subscription_status,
+                daily_limit=limit,
+                used_today=used,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": code,
+                    "message": message,
+                    "daily_limit": limit,
+                    "used_today": used,
+                    "reset_at": _next_kst_midnight_iso(),
+                    "show_upgrade_prompt": show_upgrade,
+                    "show_subscribe_button": show_subscribe,
+                },
+            )
+
+        logger.info(
+            "qa.quota.consumed",
+            user_id=user.id,
+            subscription_status=user.subscription_status,
+            used_today=used,
+            daily_limit=limit,
+            remaining=limit - used,
+        )
+
+        delay, _dsrc = await _resolve_delay(user, redis_runtime)
+        if delay > 0:
+            logger.info("qa.free_delay.applied", user_id=user.id, delay_seconds=delay)
+            await asyncio.sleep(delay)
+
     async def echo(
         self,
         db: AsyncSession,

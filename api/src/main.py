@@ -78,6 +78,7 @@ async def _ratelimit_handler(request: Request, exc: RateLimitExceeded) -> JSONRe
 async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """HTTPException의 detail을 Denvia 표준 에러 포맷으로 변환한다.
     FastAPI 기본 {"detail": ...} 포맷 사용 금지 (architecture.md §416).
+    Story 2.3: details 필드 지원 추가 (quota 초과 등 추가 정보 전달).
     """
     trace_id = getattr(request.state, "trace_id", None)
     detail = exc.detail
@@ -85,13 +86,19 @@ async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONR
     if isinstance(detail, dict):
         code = detail.get("code", "UNKNOWN_ERROR")
         message = detail.get("message", str(exc.detail))
+        extras = {k: v for k, v in detail.items() if k not in ("code", "message")}
     else:
         code = "UNKNOWN_ERROR"
         message = str(detail) if detail else "알 수 없는 오류가 발생했습니다."
+        extras = {}
+
+    body: dict = {"code": code, "message": message, "trace_id": trace_id}
+    if extras:
+        body["details"] = extras
 
     return JSONResponse(
         status_code=exc.status_code,
-        content={"code": code, "message": message, "trace_id": trace_id},
+        content=body,
         headers=getattr(exc, "headers", None),
     )
 

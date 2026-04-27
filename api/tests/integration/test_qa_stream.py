@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from api.src.integrations.openai.client import TokenUsage
 from api.src.main import app
 from api.src.deps.auth import get_current_user
+from api.src.deps.redis import get_redis_quota, get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.user import User
 
@@ -19,10 +20,12 @@ NEEDS_OPENAI = pytest.mark.skipif(
 )
 
 
-def _make_user(user_id: int = 1, subscription_status: str = "pro") -> MagicMock:
+def _make_user(user_id: int = 1, subscription_status: str = "admin") -> MagicMock:
     user = MagicMock(spec=User)
     user.id = user_id
     user.subscription_status = subscription_status
+    user.daily_quota_override = None
+    user.free_delay_override = None
     return user
 
 
@@ -40,6 +43,21 @@ def _make_db(log_id: int = 1):
         yield db
 
     return _gen
+
+
+def _make_admin_user(user_id: int = 1) -> MagicMock:
+    """admin 사용자 — preflight 우회 (quota/delay 없음)."""
+    user = MagicMock(spec=User)
+    user.id = user_id
+    user.subscription_status = "admin"
+    user.daily_quota_override = None
+    user.free_delay_override = None
+    return user
+
+
+def _make_redis_mock() -> AsyncMock:
+    """preflight를 통과시키기 위한 Redis mock (admin user는 INCR 미발생)."""
+    return AsyncMock()
 
 
 def _parse_sse_lines(text: str) -> list[dict]:
@@ -72,6 +90,7 @@ class TestQAStreamEndpoint:
         """POST /api/v1/qa/stream이 text/event-stream을 반환한다."""
         user = _make_user()
         db_gen = _make_db()
+        redis_mock = _make_redis_mock()
 
         async def _mock_stream(self, db, user, question_text):
             yield {"event": "token", "data": json.dumps({"delta": "답변"})}
@@ -79,6 +98,8 @@ class TestQAStreamEndpoint:
 
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = db_gen
+        app.dependency_overrides[get_redis_quota] = lambda: redis_mock
+        app.dependency_overrides[get_redis_runtime] = lambda: redis_mock
 
         from unittest.mock import patch
         with patch("api.src.services.qa_service.QAService.stream", _mock_stream):
@@ -95,6 +116,7 @@ class TestQAStreamEndpoint:
         """응답 본문에 event: token과 event: done이 존재한다."""
         user = _make_user()
         db_gen = _make_db()
+        redis_mock = _make_redis_mock()
 
         async def _mock_stream(self, db, user, question_text):
             yield {"event": "token", "data": json.dumps({"delta": "치료"})}
@@ -103,6 +125,8 @@ class TestQAStreamEndpoint:
 
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = db_gen
+        app.dependency_overrides[get_redis_quota] = lambda: redis_mock
+        app.dependency_overrides[get_redis_runtime] = lambda: redis_mock
 
         from unittest.mock import patch
         with patch("api.src.services.qa_service.QAService.stream", _mock_stream):
@@ -121,6 +145,7 @@ class TestQAStreamEndpoint:
         """룰 매칭 질의 — event: rule_matched + token + done."""
         user = _make_user()
         db_gen = _make_db(log_id=20)
+        redis_mock = _make_redis_mock()
 
         async def _mock_stream(self, db, user, question_text):
             yield {"event": "rule_matched", "data": json.dumps({"procedure_count": 1})}
@@ -129,6 +154,8 @@ class TestQAStreamEndpoint:
 
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = db_gen
+        app.dependency_overrides[get_redis_quota] = lambda: redis_mock
+        app.dependency_overrides[get_redis_runtime] = lambda: redis_mock
 
         from unittest.mock import patch
         with patch("api.src.services.qa_service.QAService.stream", _mock_stream):
@@ -148,9 +175,12 @@ class TestQAStreamEndpoint:
         """question_text가 빈 문자열이면 인증 통과 후 422 Unprocessable Entity."""
         user = _make_user()
         db_gen = _make_db()
+        redis_mock = _make_redis_mock()
 
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = db_gen
+        app.dependency_overrides[get_redis_quota] = lambda: redis_mock
+        app.dependency_overrides[get_redis_runtime] = lambda: redis_mock
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
@@ -163,9 +193,12 @@ class TestQAStreamEndpoint:
         """question_text가 2001자 이상이면 422 Unprocessable Entity."""
         user = _make_user()
         db_gen = _make_db()
+        redis_mock = _make_redis_mock()
 
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = db_gen
+        app.dependency_overrides[get_redis_quota] = lambda: redis_mock
+        app.dependency_overrides[get_redis_runtime] = lambda: redis_mock
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(

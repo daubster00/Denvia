@@ -6,18 +6,62 @@ from datetime import datetime, timezone
 import sentry_sdk
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Response
+from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import get_current_user
+from api.src.deps.redis import get_redis_quota, get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.auth import PasswordChangeRequest, SegmentRequest, SessionUserResponse
+from api.src.schemas.me import QuotaResponse
+from api.src.services.qa_service import (
+    _next_kst_midnight_iso,
+    _resolve_bool,
+    _resolve_daily_limit,
+    _resolve_delay,
+    _today_key_kst,
+)
 from api.src.utils.argon2 import hash_password
 from api.src.utils.jwt import encode_session_jwt
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["me"])
+
+
+@router.get("/me/quota", response_model=QuotaResponse)
+async def get_my_quota(
+    current_user: User = Depends(get_current_user),
+    redis_quota: AsyncRedis = Depends(get_redis_quota),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> QuotaResponse:
+    """현재 사용자의 일일 Q&A 한도 현황을 반환한다 (AC-6)."""
+    raw = await redis_quota.get(_today_key_kst(current_user.id))
+    used = int(raw) if raw is not None else 0
+    limit, _src = await _resolve_daily_limit(current_user, redis_runtime)
+    delay, _dsrc = await _resolve_delay(current_user, redis_runtime)
+    is_pro = current_user.subscription_status == "pro"
+    show_upgrade = (
+        False
+        if is_pro
+        else await _resolve_bool(redis_runtime, "runtime:show_upgrade_prompt", default=True)
+    )
+    show_subscribe = (
+        False
+        if is_pro
+        else await _resolve_bool(redis_runtime, "runtime:show_subscribe_button", default=True)
+    )
+    return QuotaResponse(
+        subscription_status=current_user.subscription_status,
+        daily_limit=limit,
+        used_today=used,
+        remaining=max(limit - used, 0),
+        reset_at=_next_kst_midnight_iso(),
+        show_upgrade_prompt=show_upgrade,
+        show_subscribe_button=show_subscribe,
+        delay_seconds=delay,
+    )
 
 
 @router.get("/me", response_model=SessionUserResponse)

@@ -1,5 +1,16 @@
 /** API 공용 타입 정의 — snake_case 단일 정책 (camelCase 변환 금지) */
 
+export interface QuotaResponse {
+  subscription_status: "free" | "pro" | "blocked" | "admin";
+  daily_limit: number;
+  used_today: number;
+  remaining: number;
+  reset_at: string;
+  show_upgrade_prompt: boolean;
+  show_subscribe_button: boolean;
+  delay_seconds: number;
+}
+
 export interface SessionUser {
   user_id: number;
   email: string;

@@ -1,16 +1,19 @@
 /**
  * useQAStream 훅 단위 테스트
  *
- * msw 2.x SSE 지원을 활용해 fetchEventSource를 모킹한다.
+ * fetchEventSource를 vi.mock으로 모킹.
  * - 토큰 누적 → useQAStore.messages에 반영
  * - error 이벤트 → status='error'
  * - AbortController: 두 번째 submit 시 첫 요청이 abort 신호 수신
+ * - Story 2.3: 429 분기 → useQuotaStore.lock + clearMessages
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useQAStream } from "../useQAStream";
 import { useQAStore } from "@/stores/qa-store";
+import { useQuotaStore } from "@/stores/quota-store";
 
 // fetchEventSource 모킹
 vi.mock("@microsoft/fetch-event-source", () => ({
@@ -21,12 +24,20 @@ import { fetchEventSource } from "@microsoft/fetch-event-source";
 
 const mockedFetchEventSource = vi.mocked(fetchEventSource);
 
-function resetStore() {
+function makeWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+}
+
+function resetStores() {
   useQAStore.setState({ messages: [] });
+  useQuotaStore.setState({ locked: false, payload: null });
 }
 
 beforeEach(() => {
-  resetStore();
+  resetStores();
   vi.clearAllMocks();
 });
 
@@ -38,7 +49,7 @@ describe("useQAStream", () => {
   it("submit이 user + assistant 메시지를 즉시 추가한다", async () => {
     mockedFetchEventSource.mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useQAStream());
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await result.current.submit("임플란트 질문");
@@ -59,7 +70,7 @@ describe("useQAStream", () => {
       opts.onmessage?.({ event: "done", data: '{"qa_log_id":1,"total_tokens":5,"cost_usd":0,"latency_ms":100,"rule_matched":false}', id: "", retry: undefined });
     });
 
-    const { result } = renderHook(() => useQAStream());
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await result.current.submit("치료비");
@@ -81,7 +92,7 @@ describe("useQAStream", () => {
       });
     });
 
-    const { result } = renderHook(() => useQAStream());
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await result.current.submit("질문");
@@ -99,7 +110,7 @@ describe("useQAStream", () => {
       opts.onmessage?.({ event: "done", data: '{"qa_log_id":5,"total_tokens":0,"cost_usd":0,"latency_ms":30,"rule_matched":true}', id: "", retry: undefined });
     });
 
-    const { result } = renderHook(() => useQAStream());
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await result.current.submit("장애인 발치 가산");
@@ -111,14 +122,11 @@ describe("useQAStream", () => {
   });
 
   it("두 번째 submit 시 이전 AbortController의 abort가 호출된다", async () => {
-    const abortSpy = vi.fn();
     let callCount = 0;
 
-    // 첫 번째 호출은 AbortController를 스파이, 두 번째 호출은 바로 완료
     mockedFetchEventSource.mockImplementation(async (_url, opts) => {
       callCount++;
       if (callCount === 1) {
-        // 첫 번째는 signal abort를 대기하다가 AbortError 발생 (abort 시 즉시 throw)
         return new Promise<void>((_resolve, reject) => {
           const sig = opts.signal;
           if (sig?.aborted) {
@@ -130,7 +138,6 @@ describe("useQAStream", () => {
           }
         });
       }
-      // 두 번째 호출은 즉시 done
       opts.onmessage?.({
         event: "done",
         data: '{"qa_log_id":2,"total_tokens":0,"cost_usd":0,"latency_ms":10,"rule_matched":false}',
@@ -139,20 +146,16 @@ describe("useQAStream", () => {
       });
     });
 
-    const { result } = renderHook(() => useQAStream());
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
 
-    // 첫 번째 submit 비동기 시작 (기다리지 않음)
-    const firstPromise = act(() => { result.current.submit("첫 번째 질문"); });
+    act(() => { result.current.submit("첫 번째 질문"); });
 
-    // 두 번째 submit 즉시 실행 → 첫 번째 abort
     await act(async () => {
       await result.current.submit("두 번째 질문");
     });
 
-    // fetchEventSource가 두 번 호출됨
     expect(mockedFetchEventSource).toHaveBeenCalledTimes(2);
-    // 첫 번째 signal은 abort됨
-    const firstCallSignal = (mockedFetchEventSource.mock.calls[0][1] as any).signal as AbortSignal;
+    const firstCallSignal = (mockedFetchEventSource.mock.calls[0][1] as { signal: AbortSignal }).signal;
     expect(firstCallSignal.aborted).toBe(true);
   }, 10000);
 
@@ -161,14 +164,99 @@ describe("useQAStream", () => {
       Object.assign(new Error("AbortError"), { name: "AbortError" })
     );
 
-    const { result } = renderHook(() => useQAStream());
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
 
     await act(async () => {
       await result.current.submit("질문");
     });
 
     const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
-    // AbortError면 setError 호출 안 됨 → status는 pending 유지
     expect(asst?.status).toBe("pending");
+  });
+
+  // ── Story 2.3: 429 분기 테스트 ────────────────────────────────────────────
+
+  it("429 QUOTA_EXCEEDED → useQuotaStore.lock + clearMessages (AC-7)", async () => {
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      const fakeResponse = {
+        status: 429,
+        ok: false,
+        json: async () => ({
+          code: "QUOTA_EXCEEDED",
+          details: {
+            daily_limit: 10,
+            used_today: 11,
+            reset_at: "2026-04-28T00:00:00+09:00",
+            show_upgrade_prompt: true,
+            show_subscribe_button: true,
+          },
+        }),
+      } as unknown as Response;
+      await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(fakeResponse);
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("테스트 질문");
+    });
+
+    expect(useQuotaStore.getState().locked).toBe(true);
+    expect(useQuotaStore.getState().payload?.reason).toBe("QUOTA_EXCEEDED");
+    expect(useQuotaStore.getState().payload?.dailyLimit).toBe(10);
+    // 1문 1답 정책: 한도 초과 시 messages 초기화
+    expect(useQAStore.getState().messages.length).toBe(0);
+  });
+
+  it("429 QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT → store.lock with internal reason", async () => {
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      const fakeResponse = {
+        status: 429,
+        ok: false,
+        json: async () => ({
+          code: "QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT",
+          details: {
+            daily_limit: 500,
+            used_today: 501,
+            reset_at: null,
+            show_upgrade_prompt: false,
+            show_subscribe_button: false,
+          },
+        }),
+      } as unknown as Response;
+      await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(fakeResponse);
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const state = useQuotaStore.getState();
+    expect(state.locked).toBe(true);
+    expect(state.payload?.reason).toBe("QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT");
+    expect(state.payload?.showUpgradePrompt).toBe(false);
+    expect(state.payload?.showSubscribeButton).toBe(false);
+  });
+
+  it("기타 4xx → quotaStore 미잠금 (기존 동작 유지)", async () => {
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      const fakeResponse = {
+        status: 403,
+        ok: false,
+        json: async () => ({}),
+      } as unknown as Response;
+      try {
+        await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(fakeResponse);
+      } catch {
+        // 기존 setError 분기
+      }
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    expect(useQuotaStore.getState().locked).toBe(false);
   });
 });

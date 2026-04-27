@@ -27,6 +27,12 @@ DEFAULTS = {
     "runtime:rag_k": "5",
     "runtime:rag_temperature": "0.0",
     "runtime:show_upgrade_prompt": "true",
+    # Story 2.3 — 무료 quota + 의도적 지연 + 구독 버튼 토글
+    "runtime:free_daily_quota": "10",
+    "runtime:free_delay_enabled": "true",
+    "runtime:free_delay": "3",
+    "runtime:pro_internal_cap": "500",
+    "runtime:show_subscribe_button": "true",
 }
 
 

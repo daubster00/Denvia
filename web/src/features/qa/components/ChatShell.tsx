@@ -2,8 +2,11 @@
 
 import { useEffect, useRef } from "react";
 import { useQAStore } from "@/stores/qa-store";
+import { useQuotaStore } from "@/stores/quota-store";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatMessage } from "@/features/qa/components/ChatMessage";
+import { QuotaLock } from "@/features/qa/components/QuotaLock";
+import { FreeDelayBanner } from "@/features/qa/components/FreeDelayBanner";
 import styles from "@/styles/chat-shell.module.css";
 
 interface ChatShellProps {
@@ -12,6 +15,15 @@ interface ChatShellProps {
   onSubmit: (text: string) => void;
   isStreaming: boolean;
   onRetry?: () => void;
+  /** useQuota 훅에서 내려받은 데이터 (AC-8, AC-9) */
+  quotaData?: {
+    subscription_status: string;
+    remaining: number;
+    daily_limit: number;
+    delay_seconds: number;
+  } | null;
+  /** FreeDelayBanner 1회 노출 트리거 — submit 직후 true (AC-9) */
+  showDelayBanner?: boolean;
 }
 
 /**
@@ -20,6 +32,11 @@ interface ChatShellProps {
  * `useQAStore.messages.length`만 의존하여 hero ↔ inline variant 자동 전환.
  * - messages.length === 0: hero (수직 중앙 정렬, 메시지 영역 미렌더)
  * - messages.length >= 1: inline (메시지 영역 + 하단 입력창)
+ *
+ * Story 2.3 추가:
+ * - QuotaLock: useQuotaStore.locked 시 inputBottom 위에 인라인 표시
+ * - FreeDelayBanner: 첫 질의 후 1회 노출 (localStorage 영속)
+ * - 남은 횟수 caption: inputBottom 아래
  *
  * 별도 UI 상태 머신·local state 도입 금지(이중 진실 회피, AC-1 구현 메모).
  * 애니메이션은 chat-shell.module.css의 keyframes로 처리 (Framer Motion 등 신규 의존 금지 — NFR-P5).
@@ -30,6 +47,8 @@ export function ChatShell({
   onSubmit,
   isStreaming,
   onRetry,
+  quotaData,
+  showDelayBanner = false,
 }: ChatShellProps) {
   const messages = useQAStore((s) => s.messages);
   const isHero = messages.length === 0;
@@ -41,10 +60,26 @@ export function ChatShell({
     }
   }, [messages, isHero]);
 
+  const isFree = quotaData?.subscription_status === "free";
+  const isPro = quotaData?.subscription_status === "pro";
+
+  const remainingCaption = quotaData ? (
+    isPro ? (
+      <span style={{ fontSize: 12, color: "#9B9DA3", marginTop: 4, display: "block" }}>
+        Pro — 무제한
+      </span>
+    ) : (
+      <span style={{ fontSize: 12, color: "#9B9DA3", marginTop: 4, display: "block" }}>
+        오늘 남은 질문: {Math.min(quotaData.remaining, quotaData.daily_limit)}/{quotaData.daily_limit}
+      </span>
+    )
+  ) : null;
+
   if (isHero) {
     return (
       <div className={styles.shellHero}>
         <div className={styles.inputCenter}>
+          <FreeDelayBanner show={showDelayBanner && isFree && (quotaData?.delay_seconds ?? 0) > 0} />
           <ChatInput
             variant="hero"
             interactive
@@ -53,6 +88,8 @@ export function ChatShell({
             onSubmit={onSubmit}
             loading={isStreaming}
           />
+          <QuotaLock />
+          {remainingCaption}
         </div>
       </div>
     );
@@ -80,6 +117,8 @@ export function ChatShell({
         <div ref={bottomRef} />
       </div>
       <div className={styles.inputBottom}>
+        <FreeDelayBanner show={showDelayBanner && isFree && (quotaData?.delay_seconds ?? 0) > 0} />
+        <QuotaLock />
         <ChatInput
           variant="inline"
           value={inputValue}
@@ -87,6 +126,7 @@ export function ChatShell({
           onSubmit={onSubmit}
           loading={isStreaming}
         />
+        {remainingCaption}
       </div>
     </div>
   );

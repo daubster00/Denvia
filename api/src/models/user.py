@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, SmallInteger, String, Text
+from sqlalchemy import BigInteger, Boolean, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -25,6 +25,8 @@ class User(Base):
     must_reset_password: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    daily_quota_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    free_delay_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     withdrawn_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     updated_at: Mapped[datetime] = mapped_column(nullable=False)

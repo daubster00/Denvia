@@ -371,6 +371,28 @@ async def test_qa_feedback_unique_qa_log_id(run_migrations):
 
 
 @pytest.mark.asyncio
+async def test_0007_user_quota_override_columns(run_migrations):
+    """Story 2.3: users.daily_quota_override / free_delay_override 컬럼이 nullable INT로 존재한다."""
+    engine = create_async_engine(DB_URL)
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            text(
+                "SELECT column_name, is_nullable, data_type "
+                "FROM information_schema.columns "
+                "WHERE table_name='users' AND column_name IN ('daily_quota_override','free_delay_override')"
+            )
+        )
+        rows = {row[0]: (row[1], row[2]) for row in result.fetchall()}
+    await engine.dispose()
+    assert "daily_quota_override" in rows, "daily_quota_override 컬럼이 존재해야 함"
+    assert "free_delay_override" in rows, "free_delay_override 컬럼이 존재해야 함"
+    assert rows["daily_quota_override"][0] == "YES", "daily_quota_override는 nullable이어야 함"
+    assert rows["free_delay_override"][0] == "YES", "free_delay_override는 nullable이어야 함"
+    assert "int" in rows["daily_quota_override"][1].lower(), "daily_quota_override는 integer 타입이어야 함"
+    assert "int" in rows["free_delay_override"][1].lower(), "free_delay_override는 integer 타입이어야 함"
+
+
+@pytest.mark.asyncio
 async def test_qa_feedback_rating_check_constraint(run_migrations):
     """rating CHECK 제약 — 'good'/'bad' 외 값은 IntegrityError."""
     from sqlalchemy.exc import IntegrityError

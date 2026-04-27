@@ -1,6 +1,6 @@
 # RAG 통합 런북
 
-> **최종 수정일:** 2026-04-24
+> **최종 수정일:** 2026-04-27 (Story 2.3: 트래픽 제어 표 §0 추가)
 > **작성자:** Hyung woo
 > **승인자:** (인수자 검토 시 기입)
 > **버전:** v0.1 (§0·§8만)
@@ -17,6 +17,20 @@
 ## §0. 수정 정책
 
 > 참조: [ADR-0002 링크](./adr/0002-rag-integration-contract.md) — 본 섹션의 SSOT.
+
+### 트래픽 제어 표 (Story 2.3 추가)
+
+RAG 호출 이전 단계(preflight)에서 quota·sleep을 제어하는 Redis 키 목록.
+
+| Redis DB | 키 | 설명 | 기본값 |
+|---|---|---|---|
+| DB 4 | `quota:user:{user_id}:{YYYY-MM-DD(KST)}` | 일일 Q&A INCR 카운터 — TTL 86400s | (없음) |
+| DB 3 | `runtime:free_daily_quota` | 무료 사용자 일일 한도 | `10` |
+| DB 3 | `runtime:free_delay_enabled` | 무료 지연 전역 ON/OFF | `true` |
+| DB 3 | `runtime:free_delay` | 무료 지연 초 | `3` |
+| DB 3 | `runtime:pro_internal_cap` | 유료 내부 안전 상한 | `500` |
+| DB 3 | `runtime:show_upgrade_prompt` | 구독 유도 토글 | `true` |
+| DB 3 | `runtime:show_subscribe_button` | 구독 버튼 노출 토글 | `true` |
 
 ### 배경
 
