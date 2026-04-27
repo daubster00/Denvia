@@ -14,7 +14,6 @@ celery_app = Celery(
     broker=broker_url,
     backend=result_backend,
     include=[
-        "api.src.workers.tasks",
         "api.src.workers.notification_tasks",  # Story 4.1: 알림 큐 태스크
         "api.src.workers.retention_tasks",     # Story 5.1: 감사 로그 retention
     ],

@@ -2,6 +2,7 @@
 
 import type { QAMessage } from "@/stores/qa-store";
 import { AdvisoryChip } from "./AdvisoryChip";
+import { AnswerFeedback } from "./AnswerFeedback";
 
 interface ChatMessageProps {
   message: QAMessage;
@@ -102,6 +103,7 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           <>
             <p style={{ margin: "0 0 10px" }}>{message.content}</p>
             <AdvisoryChip />
+            {message.qaLogId != null && <AnswerFeedback qaLogId={message.qaLogId} />}
           </>
         )}
       </div>

@@ -1,5 +1,17 @@
 /** API 공용 타입 정의 — snake_case 단일 정책 (camelCase 변환 금지) */
 
+export interface FeedbackCreateRequest {
+  qa_log_id: number;
+  rating: "good" | "bad";
+}
+
+export interface FeedbackResponse {
+  qa_log_id: number;
+  rating: "good" | "bad";
+  change_count: number;
+  action: "created" | "updated" | "unchanged";
+}
+
 export interface QuotaResponse {
   subscription_status: "free" | "pro" | "blocked" | "admin";
   daily_limit: number;

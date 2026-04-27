@@ -33,3 +33,7 @@ _bmad-output/
 node_modules/
 dist/
 build/
+
+# RAG 인덱스 데이터 — 런타임 volume 마운트로 처리. 빌드 컨텍스트에 포함하면
+# Git Bash에서 만든 절대경로 심볼릭 링크(`/d/...`)가 broken symlink로 보여 빌드가 실패한다.
+api/data/

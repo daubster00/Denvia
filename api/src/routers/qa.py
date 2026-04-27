@@ -1,4 +1,4 @@
-"""QA 라우터 — POST /api/v1/qa/echo (Story 2.1) + POST /api/v1/qa/stream (Story 2.2/2.3)."""
+"""QA 라우터 — POST /api/v1/qa/echo (Story 2.1) + POST /api/v1/qa/stream (Story 2.2/2.3) + POST /api/v1/qa/feedback (Story 2.4)."""
 
 from typing import Annotated
 
@@ -11,7 +11,8 @@ from api.src.deps.auth import get_current_user
 from api.src.deps.redis import get_redis_quota, get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.user import User
-from api.src.schemas.qa import QAEchoRequest, QAEchoResponse, QAStreamRequest
+from api.src.schemas.qa import FeedbackCreateRequest, FeedbackResponse, QAEchoRequest, QAEchoResponse, QAStreamRequest
+from api.src.services.qa_feedback_service import upsert_feedback
 from api.src.services.qa_service import QAService
 
 router = APIRouter(prefix="/api/v1/qa", tags=["qa"])
@@ -51,3 +52,12 @@ async def qa_stream(
         _qa_service.stream(db=db, user=user, question_text=body.question_text),
         media_type="text/event-stream",
     )
+
+
+@router.post("/feedback", response_model=FeedbackResponse, status_code=200)
+async def qa_feedback(
+    body: FeedbackCreateRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_session)],
+) -> FeedbackResponse:
+    return await upsert_feedback(db=db, user=user, qa_log_id=body.qa_log_id, rating=body.rating)

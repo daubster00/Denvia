@@ -22,6 +22,16 @@ services:
       - "8000:8000"
     env_file:
       - ../.env
+    environment:
+      # .env의 *_URL은 host-run 용도(localhost). 컨테이너에서는 compose 서비스명으로 덮어씀.
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      - DATABASE_SYNC_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      # vendor/rag(`from rag.run_qa import ...`) 임포트 가능하도록 명시
+      # — 빌드된 이미지에 PYTHONPATH가 누락된 경우에도 안전.
+      - PYTHONPATH=/workspace/vendor
+      # RAG 인덱스 절대 경로 (uvicorn working dir이 /workspace라 상대경로 'data/faiss/current'는 못 찾음)
+      - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,6 +39,8 @@ services:
         condition: service_healthy
     volumes:
       - ../api:/workspace/api
+      # vendor/rag — 클라이언트 인수 RAG 자산. host 변경을 즉시 반영.
+      - ../vendor:/workspace/vendor:ro
       # 호스트의 Windows .venv가 컨테이너 Linux .venv를 덮어쓰지 못하게 named volume으로 분리
       - api_venv:/workspace/api/.venv
 
@@ -39,11 +51,17 @@ services:
     command: uv --project /workspace/api run celery -A api.src.workers.celery_app worker --loglevel=info
     env_file:
       - ../.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      - DATABASE_SYNC_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      - PYTHONPATH=/workspace/vendor
     depends_on:
       - redis
       - postgres
     volumes:
       - ../api:/workspace/api
+      - ../vendor:/workspace/vendor:ro
       - api_venv:/workspace/api/.venv
 
   beat:
@@ -53,10 +71,16 @@ services:
     command: uv --project /workspace/api run celery -A api.src.workers.celery_app beat --loglevel=info
     env_file:
       - ../.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      - DATABASE_SYNC_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      - PYTHONPATH=/workspace/vendor
     depends_on:
       - redis
     volumes:
       - ../api:/workspace/api
+      - ../vendor:/workspace/vendor:ro
       - api_venv:/workspace/api/.venv
 
   postgres:

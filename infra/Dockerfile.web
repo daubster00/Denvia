@@ -1,22 +1,44 @@
-# multi-stage: deps → builder → runner
+# 모노레포(pnpm workspace) 구조로 빌드한다.
+# build context = 프로젝트 루트 (docker-compose의 web.build.context: ..)
+# web/package.json이 vendor/montage-web/packages/* 의 wds 패키지들을 workspace:^ 로 참조하므로
+# 루트 매니페스트 + 워크스페이스 자식들의 매니페스트를 함께 가져와 한 번에 install 한다.
+
+# ── 1) deps: 의존성만 설치 (캐시 효율을 위해 소스와 분리)
 FROM node:22-alpine AS deps
-WORKDIR /app
-COPY web/package.json web/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+WORKDIR /repo
 
+# 루트 lockfile + workspace 설정 (이 모노레포는 루트 package.json 없이 pnpm-workspace.yaml로 정의)
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# 자식 워크스페이스의 매니페스트만 먼저 복사 (소스 변경에 install이 다시 안 돌게)
+COPY web/package.json web/
+COPY vendor/montage-web/packages ./vendor/montage-web/packages
+
+RUN corepack enable && pnpm install --frozen-lockfile --filter web...
+
+# ── 2) builder: 소스 복사 후 Next.js 빌드
 FROM node:22-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY web/ .
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+WORKDIR /repo
 
+# deps 단계의 결과를 그대로 가져옴 (node_modules 포함)
+COPY --from=deps /repo /repo
+
+# 실제 소스
+COPY web/ web/
+
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /repo/web
+RUN corepack enable && pnpm build
+
+# ── 3) runner: 빌드 결과 + node_modules 그대로 두고 next start
+# 모노레포 + Next 16 조합에서 standalone output이 산출되지 않아 일반 start 방식 사용.
+# 이미지 사이즈는 다소 크지만 동작 보장.
 FROM node:22-alpine AS runner
-WORKDIR /app
+WORKDIR /repo
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+ENV PORT=3000
+COPY --from=builder /repo /repo
+WORKDIR /repo/web
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "corepack enable && pnpm start"]

@@ -17,6 +17,11 @@ services:
     command: uv run uvicorn api.src.main:app --host 0.0.0.0 --port 8000
     env_file:
       - ../.env
+    environment:
+      # vendor/rag(`from rag.run_qa import ...`) 임포트 안전망 — 이미지 빌드 시 ENV가 누락된 적 있음.
+      - PYTHONPATH=/workspace/vendor
+      # RAG 인덱스 절대 경로
+      - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,6 +36,8 @@ services:
     command: uv run celery -A api.src.workers.celery_app worker --loglevel=info
     env_file:
       - ../.env
+    environment:
+      - PYTHONPATH=/workspace/vendor
     depends_on:
       - redis
       - postgres
@@ -43,6 +50,8 @@ services:
     command: uv run celery -A api.src.workers.celery_app beat --loglevel=info
     env_file:
       - ../.env
+    environment:
+      - PYTHONPATH=/workspace/vendor
     depends_on:
       - redis
 
