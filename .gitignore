@@ -64,7 +64,7 @@ api/data/faiss/
 기획자료/
 RAG 코드/
 _bmad-output/
-_bmad-output.zip
+_bmad-output*.zip
 
 # Claude Code 워크트리/로컬 산출물
 .claude/worktrees/
