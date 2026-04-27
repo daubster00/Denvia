@@ -285,6 +285,130 @@ async def test_oauth_identity_on_delete_cascade(run_migrations):
         await engine.dispose()
 
 
+# ── Story 2.1: qa_logs · qa_feedback ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_qa_logs_table_exists(run_migrations):
+    """qa_logs 테이블이 생성되었는지 확인."""
+    engine = create_async_engine(DB_URL)
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            text(
+                "SELECT tablename FROM pg_tables "
+                "WHERE schemaname='public' AND tablename='qa_logs'"
+            )
+        )
+        row = result.fetchone()
+    await engine.dispose()
+    assert row is not None, "qa_logs 테이블이 존재해야 함"
+
+
+@pytest.mark.asyncio
+async def test_qa_feedback_table_exists(run_migrations):
+    """qa_feedback 테이블이 생성되었는지 확인."""
+    engine = create_async_engine(DB_URL)
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            text(
+                "SELECT tablename FROM pg_tables "
+                "WHERE schemaname='public' AND tablename='qa_feedback'"
+            )
+        )
+        row = result.fetchone()
+    await engine.dispose()
+    assert row is not None, "qa_feedback 테이블이 존재해야 함"
+
+
+@pytest.mark.asyncio
+async def test_qa_feedback_unique_qa_log_id(run_migrations):
+    """uq_qa_feedback_qa_log_id UNIQUE 제약 — qa_log 1건당 피드백 1건만 허용."""
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_async_engine(DB_URL)
+    qa_log_id: int | None = None
+    try:
+        async with engine.begin() as conn:
+            row = await conn.execute(
+                text(
+                    "INSERT INTO qa_logs(question_text, rule_matched, created_at) "
+                    "VALUES ('테스트 질문', false, NOW()) RETURNING id"
+                )
+            )
+            qa_log_id = row.scalar_one()
+
+        # 첫 번째 피드백 — 성공
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO qa_feedback(qa_log_id, rating, change_count, created_at, updated_at) "
+                    "VALUES (:lid, 'good', 0, NOW(), NOW())"
+                ),
+                {"lid": qa_log_id},
+            )
+
+        # 동일 qa_log_id로 두 번째 피드백 — UNIQUE 위반
+        raised = False
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO qa_feedback(qa_log_id, rating, change_count, created_at, updated_at) "
+                        "VALUES (:lid, 'bad', 0, NOW(), NOW())"
+                    ),
+                    {"lid": qa_log_id},
+                )
+        except IntegrityError:
+            raised = True
+        assert raised, "동일 qa_log_id 피드백 중복은 UNIQUE 위반이어야 함"
+    finally:
+        if qa_log_id is not None:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("DELETE FROM qa_logs WHERE id=:lid"), {"lid": qa_log_id}
+                )
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_qa_feedback_rating_check_constraint(run_migrations):
+    """rating CHECK 제약 — 'good'/'bad' 외 값은 IntegrityError."""
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_async_engine(DB_URL)
+    qa_log_id: int | None = None
+    try:
+        async with engine.begin() as conn:
+            row = await conn.execute(
+                text(
+                    "INSERT INTO qa_logs(question_text, rule_matched, created_at) "
+                    "VALUES ('rating 체크 테스트', false, NOW()) RETURNING id"
+                )
+            )
+            qa_log_id = row.scalar_one()
+
+        raised = False
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO qa_feedback(qa_log_id, rating, change_count, created_at, updated_at) "
+                        "VALUES (:lid, 'meh', 0, NOW(), NOW())"
+                    ),
+                    {"lid": qa_log_id},
+                )
+        except IntegrityError:
+            raised = True
+        assert raised, "rating='meh'은 CHECK 위반이어야 함"
+    finally:
+        if qa_log_id is not None:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("DELETE FROM qa_logs WHERE id=:lid"), {"lid": qa_log_id}
+                )
+        await engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_oauth_identity_not_null_constraints(run_migrations):
     """provider/provider_sub/user_id/linked_at 각각 NULL 삽입 거부."""
