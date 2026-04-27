@@ -10,6 +10,7 @@ import { PhoneNumberField } from "./PhoneNumberField";
 import { SMSCodeInput } from "./SMSCodeInput";
 import { useSessionStore } from "@/stores/session-store";
 import { ApiError } from "@/types/api";
+import styles from "@/styles/auth-forms.module.css";
 
 type Step = "form" | "sms";
 
@@ -45,7 +46,6 @@ export function SignupForm() {
   const {
     register,
     handleSubmit,
-    getValues,
     setValue,
     setError,
     clearErrors,
@@ -125,22 +125,17 @@ export function SignupForm() {
     }
   };
 
-  const inputStyle = (hasError: boolean): React.CSSProperties => ({
-    width: "100%",
-    padding: "10px 12px",
-    border: `1px solid ${hasError ? "#EF4444" : "#E1E2E4"}`,
-    borderRadius: 8,
-    fontSize: 14,
-    outline: "none",
-    boxSizing: "border-box",
-  });
+  const inputClass = (hasError: boolean) =>
+    `${styles.input} ${hasError ? styles.inputError : ""}`;
+
+  const submitDisabled = submitting || !phoneVerificationToken;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className={styles.formColumn}>
       {/* 이메일 */}
       <div>
-        <label htmlFor="signup-email" style={{ display: "block", marginBottom: 4, fontSize: 14, fontWeight: 500 }}>
-          이메일 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
+        <label htmlFor="signup-email" className={styles.fieldLabel}>
+          이메일 <span aria-label="필수" className={styles.required}>*</span>
         </label>
         <input
           id="signup-email"
@@ -148,11 +143,11 @@ export function SignupForm() {
           autoComplete="email"
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? "signup-email-error" : undefined}
-          style={inputStyle(!!errors.email)}
+          className={inputClass(!!errors.email)}
           {...register("email")}
         />
         {errors.email && (
-          <p id="signup-email-error" role="alert" style={{ color: "#EF4444", fontSize: 12, marginTop: 4 }}>
+          <p id="signup-email-error" role="alert" className={styles.fieldError}>
             {errors.email.message}
           </p>
         )}
@@ -160,8 +155,8 @@ export function SignupForm() {
 
       {/* 비밀번호 */}
       <div>
-        <label htmlFor="signup-password" style={{ display: "block", marginBottom: 4, fontSize: 14, fontWeight: 500 }}>
-          비밀번호 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
+        <label htmlFor="signup-password" className={styles.fieldLabel}>
+          비밀번호 <span aria-label="필수" className={styles.required}>*</span>
         </label>
         <input
           id="signup-password"
@@ -169,11 +164,11 @@ export function SignupForm() {
           autoComplete="new-password"
           aria-invalid={!!errors.password}
           aria-describedby={errors.password ? "signup-password-error" : undefined}
-          style={inputStyle(!!errors.password)}
+          className={inputClass(!!errors.password)}
           {...register("password")}
         />
         {errors.password && (
-          <p id="signup-password-error" role="alert" style={{ color: "#EF4444", fontSize: 12, marginTop: 4 }}>
+          <p id="signup-password-error" role="alert" className={styles.fieldError}>
             {errors.password.message}
           </p>
         )}
@@ -199,18 +194,7 @@ export function SignupForm() {
           <button
             type="button"
             onClick={requestSms}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              padding: "10px 0",
-              background: "#F3F0FF",
-              color: "#7C3AED",
-              border: "1px solid #DDD6FE",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            className={styles.smsRequestBtn}
           >
             인증번호 전송
           </button>
@@ -220,7 +204,7 @@ export function SignupForm() {
       {/* SMS OTP 입력 */}
       {step === "sms" && (
         <div>
-          <p style={{ fontSize: 13, color: "#5A5C63", marginBottom: 8 }}>
+          <p className={styles.smsHelp}>
             휴대폰으로 전송된 6자리 인증번호를 입력하세요.
           </p>
           <SMSCodeInput
@@ -230,7 +214,7 @@ export function SignupForm() {
             disabled={!!phoneVerificationToken}
           />
           {phoneVerificationToken && (
-            <p style={{ color: "#16A34A", fontSize: 13, marginTop: 6, textAlign: "center" }}>
+            <p className={styles.smsVerified}>
               ✓ 인증이 완료되었습니다.
             </p>
           )}
@@ -239,26 +223,14 @@ export function SignupForm() {
 
       {/* 전송 요청 전 에러 */}
       {smsError && step === "form" && (
-        <p role="alert" style={{ color: "#EF4444", fontSize: 13 }}>{smsError}</p>
+        <p role="alert" className={styles.inlineErrorText}>{smsError}</p>
       )}
 
       {/* 가입 완료 버튼 */}
       <button
         type="submit"
-        disabled={submitting || !phoneVerificationToken}
-        style={{
-          padding: "12px 0",
-          background: phoneVerificationToken
-            ? "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)"
-            : "#E1E2E4",
-          color: phoneVerificationToken ? "#fff" : "#AEB0B6",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: phoneVerificationToken ? "pointer" : "default",
-          marginTop: 4,
-        }}
+        disabled={submitDisabled}
+        className={`${styles.primaryBtn} ${!phoneVerificationToken ? styles.primaryBtnDisabled : ""}`}
       >
         {submitting ? "처리 중..." : "회원가입"}
       </button>

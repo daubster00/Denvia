@@ -7,6 +7,7 @@ import { Typography } from "@wanteddev/wds";
 import { useSessionStore } from "@/stores/session-store";
 import { SegmentSelect } from "@/features/auth/SegmentSelect";
 import { fetchMe, setSegment } from "@/features/auth/api";
+import styles from "../signup-shell.module.css";
 
 /**
  * /signup/segment — 가입유형·연차 설정 페이지 (AC-5, AC-6).
@@ -54,27 +55,9 @@ export default function SegmentPage() {
   if (isPending || !user || user.segment) return null;
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px 16px",
-        background: "#FAFAFA",
-      }}
-    >
-      <div
-        style={{
-          width: "min(420px, 100%)",
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-          padding: "32px 28px",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+    <div className={styles.shell}>
+      <div className={styles.cardSegment}>
+        <div className={styles.headerStackSegment}>
           <Typography
             as="h1"
             variant="heading1"

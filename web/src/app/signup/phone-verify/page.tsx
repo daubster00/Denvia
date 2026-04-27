@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { PhoneVerifyClient } from "./PhoneVerifyClient";
+import styles from "../signup-shell.module.css";
 
 export const metadata = {
   title: "소셜 가입 휴대폰 인증 — Denvia",
@@ -14,12 +15,7 @@ export const metadata = {
 export default function PhoneVerifyPage() {
   return (
     <Suspense
-      fallback={
-        <div
-          aria-hidden="true"
-          style={{ minHeight: "100vh", background: "#FAFAFA" }}
-        />
-      }
+      fallback={<div aria-hidden="true" className={styles.shellPlaceholder} />}
     >
       <PhoneVerifyClient />
     </Suspense>

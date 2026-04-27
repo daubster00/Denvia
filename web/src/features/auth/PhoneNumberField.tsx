@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import styles from "@/styles/auth-forms.module.css";
 
 interface PhoneNumberFieldProps {
   value: string;
@@ -54,8 +55,8 @@ export function PhoneNumberField({ value, onChange, error, id = "phone", autoFoc
 
   return (
     <div>
-      <label htmlFor={id} style={{ display: "block", marginBottom: 4, fontSize: 14, fontWeight: 500 }}>
-        휴대폰 번호 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
+      <label htmlFor={id} className={styles.fieldLabel}>
+        휴대폰 번호 <span aria-label="필수" className={styles.required}>*</span>
       </label>
       <input
         ref={inputRef}
@@ -69,18 +70,10 @@ export function PhoneNumberField({ value, onChange, error, id = "phone", autoFoc
         autoFocus={autoFocus}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          border: `1px solid ${error ? "#EF4444" : "#E1E2E4"}`,
-          borderRadius: 8,
-          fontSize: 14,
-          outline: "none",
-          boxSizing: "border-box",
-        }}
+        className={error ? `${styles.input} ${styles.inputError}` : styles.input}
       />
       {error && (
-        <p id={`${id}-error`} role="alert" style={{ color: "#EF4444", fontSize: 12, marginTop: 4 }}>
+        <p id={`${id}-error`} role="alert" className={styles.fieldError}>
           {error}
         </p>
       )}

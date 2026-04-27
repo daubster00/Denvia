@@ -15,6 +15,7 @@ import {
 } from "@wanteddev/wds-icon";
 
 import { useAlertStore } from "@/stores/alert-store";
+import styles from "./AppAlert.module.css";
 
 /**
  * 전역 단일 AppAlert — `useAlertStore.show(...)`로 어디서든 트리거.
@@ -37,13 +38,13 @@ export function AppAlert() {
 
   const { level, title, description, actions } = current;
   const Icon = level === "info" ? IconCircleInfoFill : IconCircleExclamationFill;
-  // WDS 아이콘은 currentColor를 사용 → 부모 span의 color로 전달
-  const iconCssColor =
+  // WDS 아이콘은 currentColor를 사용 → 부모 span의 클래스로 전달
+  const iconLevelClass =
     level === "error"
-      ? "#EF4444"
+      ? styles.iconWrapError
       : level === "warning"
-        ? "#F59E0B"
-        : "#10B981";
+        ? styles.iconWrapWarning
+        : styles.iconWrapInfo;
 
   const resolvedActions: NonNullable<typeof actions> =
     actions && actions.length > 0
@@ -54,17 +55,7 @@ export function AppAlert() {
     <Alert open={true} onOpenChange={handleOpenChange}>
       <AlertContainer>
         <AlertContent>
-          <span
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: 12,
-              color: iconCssColor,
-              fontSize: 48,
-              lineHeight: 1,
-            }}
-          >
+          <span className={`${styles.iconWrap} ${iconLevelClass}`}>
             <Icon width="1em" height="1em" />
           </span>
           <AlertHeading align="center">{title}</AlertHeading>

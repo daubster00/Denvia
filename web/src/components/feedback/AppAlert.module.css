@@ -1,0 +1,22 @@
+/* 전역 단일 AppAlert — 아이콘 컨테이너 */
+
+.iconWrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 48px;
+  line-height: 1;
+}
+
+.iconWrapInfo {
+  color: #10b981;
+}
+
+.iconWrapWarning {
+  color: #f59e0b;
+}
+
+.iconWrapError {
+  color: #ef4444;
+}

@@ -6,6 +6,7 @@ import { EmailLoginTab } from "./EmailLoginTab";
 import { FindPasswordPopup } from "./FindPasswordPopup";
 import { FindIdPopup } from "./FindIdPopup";
 import { SignupForm } from "./SignupForm";
+import styles from "@/styles/login-popup.module.css";
 
 type View = "buttons" | "email" | "signup" | "find-password" | "find-id";
 type Mode = "login" | "signup";
@@ -67,10 +68,6 @@ export function LoginPopup() {
     }
   }
 
-  const prefersReducedMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
   const loginSuffix = mode === "login" ? "로 로그인" : "로 가입하기";
 
   const title =
@@ -98,10 +95,7 @@ export function LoginPopup() {
   return (
     <>
       {/* 배경 오버레이 — 클릭해도 닫히지 않음 (UX Spec §1439) */}
-      <div
-        aria-hidden="true"
-        style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", zIndex: 999 }}
-      />
+      <div aria-hidden="true" className={styles.overlay} />
 
       {/* 팝업 다이얼로그 */}
       <div
@@ -109,46 +103,21 @@ export function LoginPopup() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-popup-title"
-        style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          zIndex: 1000,
-          width: "min(400px, calc(100vw - 32px))",
-          minWidth: 320,
-          backgroundColor: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-          padding: "24px 28px 32px",
-          animation: prefersReducedMotion ? "none" : "fadeIn 300ms ease",
-        }}
+        className={styles.dialog}
       >
         {/* 헤더 — 뒤로 버튼(email/find-password/find-id 뷰) + 제목 + 닫기 */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 24, gap: 8 }}>
+        <div className={styles.header}>
           {(view === "email" || view === "find-password" || view === "find-id") && (
             <button
               type="button"
               onClick={() => setView(view === "email" ? "buttons" : "email")}
               aria-label="이전 화면으로"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "4px 8px 4px 0",
-                color: "#5A5C63",
-                fontSize: 20,
-                lineHeight: 1,
-                flexShrink: 0,
-              }}
+              className={styles.backBtn}
             >
               ←
             </button>
           )}
-          <h2
-            id="login-popup-title"
-            style={{ margin: 0, fontSize: 20, fontWeight: 700, flex: 1 }}
-          >
+          <h2 id="login-popup-title" className={styles.title}>
             {title}
           </h2>
           <button
@@ -156,16 +125,7 @@ export function LoginPopup() {
             type="button"
             onClick={closePopup}
             aria-label="팝업 닫기"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 4,
-              color: "#70737C",
-              fontSize: 20,
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
+            className={styles.closeBtn}
           >
             ✕
           </button>
@@ -174,12 +134,11 @@ export function LoginPopup() {
         {/* 컨텐츠 */}
         {view === "buttons" ? (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className={styles.buttonStack}>
               {/* 네이버 */}
               <LoginButton
                 label={`네이버${loginSuffix}`}
-                bgColor="#03C75A"
-                textColor="#fff"
+                variant="naver"
                 onClick={() => handleSocial("naver")}
                 icon={<NaverIcon />}
                 ariaLabel={`네이버${loginSuffix}`}
@@ -188,8 +147,7 @@ export function LoginPopup() {
               {/* 카카오 */}
               <LoginButton
                 label={`카카오${loginSuffix}`}
-                bgColor="#FEE500"
-                textColor="#191919"
+                variant="kakao"
                 onClick={() => handleSocial("kakao")}
                 icon={<KakaoIcon />}
                 ariaLabel={`카카오${loginSuffix}`}
@@ -198,27 +156,23 @@ export function LoginPopup() {
               {/* 구글 */}
               <LoginButton
                 label={`구글${loginSuffix}`}
-                bgColor="#fff"
-                textColor="#191919"
-                border="1px solid #DADCE0"
+                variant="google"
                 onClick={() => handleSocial("google")}
                 icon={<GoogleIcon />}
                 ariaLabel={`구글${loginSuffix}`}
               />
 
               {/* 구분선 */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0" }}>
-                <div style={{ flex: 1, height: 1, backgroundColor: "#E1E2E4" }} />
-                <span style={{ fontSize: 12, color: "#AEB0B6", flexShrink: 0 }}>또는</span>
-                <div style={{ flex: 1, height: 1, backgroundColor: "#E1E2E4" }} />
+              <div className={styles.divider}>
+                <div className={styles.dividerLine} />
+                <span className={styles.dividerLabel}>또는</span>
+                <div className={styles.dividerLine} />
               </div>
 
               {/* 이메일 — 로그인 모드: 이메일 로그인 폼 / 가입 모드: 가입 폼 */}
               <LoginButton
                 label={`이메일${loginSuffix}`}
-                bgColor="#F7F7F8"
-                textColor="#171719"
-                border="1px solid #E1E2E4"
+                variant="email"
                 onClick={() => setView(mode === "signup" ? "signup" : "email")}
                 icon={<EmailIcon />}
                 ariaLabel={`이메일${loginSuffix}`}
@@ -226,14 +180,14 @@ export function LoginPopup() {
             </div>
 
             {/* 로그인 ↔ 회원가입 전환 */}
-            <p style={{ margin: "20px 0 0", textAlign: "center", fontSize: 14, color: "#70737C" }}>
+            <p className={styles.modeSwitch}>
               {mode === "login" ? (
                 <>
                   아직 회원이 아니신가요?{" "}
                   <button
                     type="button"
                     onClick={() => setMode("signup")}
-                    style={{ background: "none", border: "none", color: "#7C3AED", fontWeight: 600, fontSize: 14, cursor: "pointer", padding: 0 }}
+                    className={styles.modeSwitchBtn}
                   >
                     회원가입
                   </button>
@@ -244,7 +198,7 @@ export function LoginPopup() {
                   <button
                     type="button"
                     onClick={() => setMode("login")}
-                    style={{ background: "none", border: "none", color: "#7C3AED", fontWeight: 600, fontSize: 14, cursor: "pointer", padding: 0 }}
+                    className={styles.modeSwitchBtn}
                   >
                     로그인
                   </button>
@@ -266,63 +220,40 @@ export function LoginPopup() {
           />
         )}
       </div>
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translate(-50%, -48%); }
-          to   { opacity: 1; transform: translate(-50%, -50%); }
-        }
-        button:focus-visible {
-          outline: 2px solid #8B5CF6;
-          outline-offset: 2px;
-        }
-        input:focus-visible {
-          outline: 2px solid #8B5CF6;
-          border-color: #8B5CF6 !important;
-        }
-      `}</style>
     </>
   );
 }
 
 /* ── 공통 버튼 ── */
 
+type SocialVariant = "naver" | "kakao" | "google" | "email";
+
 interface LoginButtonProps {
   label: string;
-  bgColor: string;
-  textColor: string;
-  border?: string;
+  variant: SocialVariant;
   onClick: () => void;
   icon: React.ReactNode;
   ariaLabel: string;
 }
 
-function LoginButton({ label, bgColor, textColor, border, onClick, icon, ariaLabel }: LoginButtonProps) {
+const variantClass: Record<SocialVariant, string> = {
+  naver: styles.socialBtnNaver,
+  kakao: styles.socialBtnKakao,
+  google: styles.socialBtnGoogle,
+  email: styles.socialBtnEmail,
+};
+
+function LoginButton({ label, variant, onClick, icon, ariaLabel }: LoginButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        width: "100%",
-        height: 48,
-        padding: "0 16px",
-        backgroundColor: bgColor,
-        border: border ?? "none",
-        borderRadius: 8,
-        cursor: "pointer",
-        boxSizing: "border-box",
-      }}
+      className={`${styles.socialBtn} ${variantClass[variant]}`}
     >
-      <span style={{ width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        {icon}
-      </span>
-      <span style={{ flex: 1, textAlign: "center", fontSize: 15, fontWeight: 600, color: textColor }}>
-        {label}
-      </span>
-      <span style={{ width: 24, flexShrink: 0 }} aria-hidden="true" />
+      <span className={styles.socialIcon}>{icon}</span>
+      <span className={styles.socialLabel}>{label}</span>
+      <span className={styles.socialSpacer} aria-hidden="true" />
     </button>
   );
 }

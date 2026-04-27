@@ -1,5 +1,7 @@
 "use client";
 
+import styles from "./CustomerInquiryFAB.module.css";
+
 /**
  * Story 2.7 — 우측 하단 고객문의 Floating Action Button (FR32 부분 이행).
  *
@@ -14,47 +16,13 @@ export function CustomerInquiryFAB() {
   if (!KAKAO_URL) return null;
 
   return (
-    <>
-      <button
-        type="button"
-        aria-label="고객문의 — 카카오톡 채널 열기"
-        onClick={() =>
-          window.open(KAKAO_URL, "_blank", "noopener,noreferrer")
-        }
-        className="denvia-customer-fab"
-        style={{
-          position: "fixed",
-          right: 24,
-          bottom: 24,
-          width: 56,
-          height: 56,
-          borderRadius: "50%",
-          border: "none",
-          background:
-            "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-          color: "#fff",
-          fontSize: 24,
-          cursor: "pointer",
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 90,
-        }}
-      >
-        <span aria-hidden="true">💬</span>
-      </button>
-      <style>{`
-        @media (max-width: 767px) {
-          .denvia-customer-fab {
-            right: 16px !important;
-            bottom: 16px !important;
-            width: 48px !important;
-            height: 48px !important;
-            font-size: 20px !important;
-          }
-        }
-      `}</style>
-    </>
+    <button
+      type="button"
+      aria-label="고객문의 — 카카오톡 채널 열기"
+      onClick={() => window.open(KAKAO_URL, "_blank", "noopener,noreferrer")}
+      className={styles.fab}
+    >
+      <span aria-hidden="true">💬</span>
+    </button>
   );
 }

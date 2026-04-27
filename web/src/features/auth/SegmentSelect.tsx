@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Select, Option, Typography } from "@wanteddev/wds";
 import { ApiError } from "@/types/api";
+import styles from "./SegmentSelect.module.css";
 
 type SegmentValue = "doctor" | "hygienist" | "student_other";
 
@@ -15,19 +16,6 @@ const SEGMENT_OPTIONS = [
   { value: "hygienist" as const, label: "② 치과위생사", needsYears: true },
   { value: "student_other" as const, label: "③ 치위생과 학생·기타", needsYears: false },
 ];
-
-const btnBase: React.CSSProperties = {
-  width: "100%",
-  padding: "14px 16px",
-  border: "1.5px solid #E1E2E4",
-  borderRadius: 10,
-  background: "#fff",
-  fontSize: 15,
-  fontWeight: 500,
-  cursor: "pointer",
-  textAlign: "left",
-  transition: "border-color 0.15s",
-};
 
 /**
  * 가입유형 선택 컴포넌트 (F-106, UX-DR11).
@@ -71,7 +59,7 @@ export function SegmentSelect({ onComplete }: SegmentSelectProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <form onSubmit={handleSubmit} noValidate className={styles.form}>
       <Typography as="p" variant="body2-reading" color="semantic.label.alternative">
         가입유형을 선택하면 맞춤 정보를 제공합니다.
       </Typography>
@@ -81,12 +69,11 @@ export function SegmentSelect({ onComplete }: SegmentSelectProps) {
           key={opt.value}
           type="button"
           onClick={() => { setSelected(opt.value); setYears(""); setError(undefined); }}
-          style={{
-            ...btnBase,
-            borderColor: selected === opt.value ? "#8B5CF6" : "#E1E2E4",
-            background: selected === opt.value ? "#F5F3FF" : "#fff",
-            color: selected === opt.value ? "#6D28D9" : "#171719",
-          }}
+          className={
+            selected === opt.value
+              ? `${styles.optionBtn} ${styles.optionBtnActive}`
+              : styles.optionBtn
+          }
         >
           {opt.label}
         </button>
@@ -102,7 +89,7 @@ export function SegmentSelect({ onComplete }: SegmentSelectProps) {
             display="block"
             sx={{ marginBottom: "6px" }}
           >
-            연차 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
+            연차 <span aria-label="필수" className={styles.required}>*</span>
           </Typography>
           <Select
             value={years}
@@ -135,19 +122,11 @@ export function SegmentSelect({ onComplete }: SegmentSelectProps) {
       <button
         type="submit"
         disabled={submitting || !selected}
-        style={{
-          padding: "13px 0",
-          background: selected
-            ? "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)"
-            : "#E1E2E4",
-          color: selected ? "#fff" : "#AEB0B6",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: selected ? "pointer" : "default",
-          marginTop: 4,
-        }}
+        className={
+          selected
+            ? styles.submitBtn
+            : `${styles.submitBtn} ${styles.submitBtnDisabled}`
+        }
       >
         {submitting ? "처리 중..." : "시작하기"}
       </button>

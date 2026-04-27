@@ -15,6 +15,7 @@ import {
   IconSetting,
   IconChevronRight,
 } from "@wanteddev/wds-icon";
+import styles from "./AdminSidebar.module.css";
 
 interface MenuItem {
   icon: React.ComponentType<{ size?: number; color?: string }>;
@@ -54,19 +55,12 @@ export function AdminSidebar() {
 
       <nav
         aria-label="관리자 메뉴"
-        style={{
-          width: isTabletExpanded ? 240 : undefined,
-          position: isTabletExpanded ? "fixed" : undefined,
-          top: isTabletExpanded ? 0 : undefined,
-          left: isTabletExpanded ? 0 : undefined,
-          bottom: isTabletExpanded ? 0 : undefined,
-          zIndex: isTabletExpanded ? 50 : undefined,
-        }}
         className={[
           "bg-white border-r border-gray-200 flex flex-col overflow-hidden transition-all",
           "hidden md:flex",
           "lg:w-[240px]",
           !isTabletExpanded ? "md:w-[64px]" : "md:w-[240px]",
+          isTabletExpanded ? styles.tabletOverlay : "",
         ]
           .filter(Boolean)
           .join(" ")}

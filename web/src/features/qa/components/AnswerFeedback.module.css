@@ -1,0 +1,35 @@
+/* 답변 피드백 — GOOD/BAD 버튼 (Story 2.4) */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  border: 1px solid #e1e2e4;
+  background: none;
+  color: #5a5c63;
+}
+
+.btnActive {
+  border: none;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #ffffff;
+}
+
+.btnDisabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.errorText {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #dc2626;
+}

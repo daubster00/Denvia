@@ -1,0 +1,73 @@
+/* 공통 가입 페이지 셸 — phone-verify, segment 공유 */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: #fafafa;
+}
+
+.shellPlaceholder {
+  min-height: 100vh;
+  background: #fafafa;
+}
+
+.card {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cardSegment {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  padding: 32px 28px;
+}
+
+.headerStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.headerStackSegment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+/* phone-verify 전용 */
+.primaryBtn {
+  width: 100%;
+  padding: 13px 0;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryBtnDisabled {
+  background: #e1e2e4;
+  color: #aeb0b6;
+  cursor: not-allowed;
+}
+
+.smsStack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}

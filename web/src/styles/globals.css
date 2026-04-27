@@ -7,6 +7,7 @@
   --color-primary-light: #8B5CF6;
   --color-primary-dark: #6D28D9;
   --color-accent: #D946EF;
+  color-scheme: light;
 
   /* 반응형 브레이크포인트 참조용 */
   --bp-mobile: 768px;    /* < 768px */
@@ -30,4 +31,8 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
+}
+
+body {
+  font-family: 'Pretendard Variable', Pretendard, sans-serif;
 }

@@ -1,0 +1,52 @@
+/* SMS 6자리 OTP 입력 (UX-DR7) */
+
+.cellRow {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.cell {
+  width: 44px;
+  height: 52px;
+  border: 1.5px solid #e1e2e4;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+  outline: none;
+  caret-color: transparent;
+  box-sizing: border-box;
+}
+
+.cellError {
+  border-color: #ef4444;
+}
+
+.errorText {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 6px;
+  text-align: center;
+}
+
+.cooldownRow {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 13px;
+  color: #70737c;
+}
+
+.resendBtn {
+  background: none;
+  border: none;
+  color: #7c3aed;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+
+.resendBtnDisabled {
+  cursor: default;
+}

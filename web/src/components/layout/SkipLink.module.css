@@ -1,0 +1,20 @@
+/* WCAG 2.4.1 — 접근성 Skip link */
+
+.skipLink {
+  position: fixed;
+  top: -100px;
+  left: 8px;
+  z-index: 9999;
+  padding: 8px 16px;
+  background-color: #7c3aed;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.1s;
+}
+
+.skipLink:focus {
+  top: 8px;
+}

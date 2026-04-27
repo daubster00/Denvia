@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { useSessionStore } from "@/stores/session-store";
+import styles from "./ChatInput.module.css";
 
 interface ChatInputProps {
   variant?: "hero" | "inline";
@@ -62,7 +63,7 @@ export function ChatInput({
 
   if (isReadonlyHero) {
     return (
-      <div style={{ position: "relative", width: "100%", maxWidth: 640 }}>
+      <div className={styles.wrapper}>
         <input
           type="text"
           readOnly
@@ -70,41 +71,20 @@ export function ChatInput({
           aria-label="질문 입력 — 로그인 후 이용 가능"
           onClick={() => openPopup("email")}
           onFocus={() => openPopup("email")}
-          style={{
-            width: "100%",
-            padding: "16px 52px 16px 20px",
-            fontSize: 16,
-            border: "1.5px solid #E1E2E4",
-            borderRadius: 12,
-            outline: "none",
-            cursor: "pointer",
-            backgroundColor: "#F7F7F8",
-            color: "#5A5C63",
-            boxSizing: "border-box",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-            transition: "border-color 0.15s, box-shadow 0.15s",
-          }}
+          className={`${styles.input} ${styles.inputReadonly}`}
         />
-        <span
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            right: 16,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "#AEB0B6",
-            fontSize: 20,
-            pointerEvents: "none",
-          }}
-        >
+        <span aria-hidden="true" className={styles.iconHint}>
           ↑
         </span>
       </div>
     );
   }
 
+  const trimmed = (value ?? "").trim();
+  const sendDisabled = loading || !trimmed;
+
   return (
-    <div style={{ position: "relative", width: "100%", maxWidth: 640 }}>
+    <div className={styles.wrapper}>
       <textarea
         ref={inputRef}
         value={value}
@@ -115,45 +95,20 @@ export function ChatInput({
         maxLength={2000}
         rows={1}
         disabled={loading}
-        style={{
-          width: "100%",
-          padding: "16px 52px 16px 20px",
-          fontSize: 16,
-          border: "1.5px solid #E1E2E4",
-          borderRadius: 12,
-          outline: "none",
-          cursor: loading ? "not-allowed" : "text",
-          backgroundColor: "#fff",
-          boxSizing: "border-box",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-          transition: "border-color 0.15s, box-shadow 0.15s",
-          resize: "none",
-          overflow: "hidden",
-          fontFamily: "inherit",
-        }}
+        className={styles.input}
       />
       <button
         type="button"
         aria-label="질문 전송"
-        disabled={loading || !(value ?? "").trim()}
+        disabled={sendDisabled}
         onClick={() => {
-          const text = (value ?? "").trim();
-          if (text && !loading) onSubmit?.(text);
+          if (trimmed && !loading) onSubmit?.(trimmed);
         }}
-        style={{
-          position: "absolute",
-          right: 12,
-          top: "50%",
-          transform: "translateY(-50%)",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: loading || !(value ?? "").trim() ? "#AEB0B6" : "#7C3AED",
-          fontSize: 20,
-          padding: 4,
-          display: "flex",
-          alignItems: "center",
-        }}
+        className={
+          sendDisabled
+            ? `${styles.sendBtn} ${styles.sendBtnDisabled}`
+            : styles.sendBtn
+        }
       >
         ↑
       </button>

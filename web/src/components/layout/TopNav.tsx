@@ -3,6 +3,7 @@
 import { useSessionStore } from "@/stores/session-store";
 import { LogoLink } from "@/components/brand/LogoLink";
 import { useLogout } from "@/features/auth/hooks/useLogout";
+import styles from "./TopNav.module.css";
 
 interface TopNavProps {
   onResetChat?: () => void;
@@ -22,20 +23,7 @@ export function TopNav({ onResetChat }: TopNavProps) {
   const handleLogout = useLogout();
 
   return (
-    <header
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-        backgroundColor: "#fff",
-        borderBottom: "1px solid #E1E2E4",
-        height: "var(--topnav-height, 64px)",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 24px",
-        justifyContent: "space-between",
-      }}
-    >
+    <header className={styles.header}>
       <LogoLink onResetChat={onResetChat} />
 
       <nav aria-label="주요 메뉴">
@@ -43,67 +31,25 @@ export function TopNav({ onResetChat }: TopNavProps) {
           <button
             type="button"
             onClick={() => openPopup("email")}
-            style={{
-              padding: "8px 20px",
-              background:
-                "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            className={styles.loginBtn}
           >
             로그인
           </button>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 14,
-                color: "#5A5C63",
-                maxWidth: 200,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user.email}
-            </span>
+          <div className={styles.userMenu}>
+            <span className={styles.userEmail}>{user.email}</span>
             <button
               type="button"
               onClick={() => {
                 void handleLogout();
               }}
-              style={{
-                padding: "8px 16px",
-                background: "transparent",
-                color: "#5A5C63",
-                border: "1px solid #E1E2E4",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
+              className={styles.logoutBtn}
             >
               로그아웃
             </button>
           </div>
         )}
       </nav>
-
-      <style>{`
-        @media (max-width: 767px) {
-          header { height: 56px !important; padding: 0 16px !important; }
-        }
-      `}</style>
     </header>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import styles from "./ConfirmDialog.module.css";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -46,15 +47,7 @@ export function ConfirmDialog({
   return (
     <div
       role="presentation"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.4)",
-      }}
+      className={styles.overlay}
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
@@ -64,72 +57,42 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby={description ? "confirm-dialog-desc" : undefined}
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: 12,
-          padding: "24px",
-          width: "100%",
-          maxWidth: 400,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
-        }}
+        className={styles.dialog}
       >
         <h2
           id="confirm-dialog-title"
-          style={{
-            fontSize: 17,
-            fontWeight: 600,
-            color: "#111827",
-            marginBottom: description ? 8 : 20,
-          }}
+          className={
+            description
+              ? `${styles.title} ${styles.titleWithDescription}`
+              : styles.title
+          }
         >
           {title}
         </h2>
         {description && (
-          <p
-            id="confirm-dialog-desc"
-            style={{
-              fontSize: 14,
-              color: "#6B7280",
-              marginBottom: 20,
-              lineHeight: 1.5,
-            }}
-          >
+          <p id="confirm-dialog-desc" className={styles.description}>
             {description}
           </p>
         )}
 
         {/* 정방향(확인) 항상 오른쪽 — UX-DR27 */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <div className={styles.actions}>
           <button
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: "1px solid #E5E7EB",
-              backgroundColor: "#F9FAFB",
-              color: "#374151",
-              fontSize: 14,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
+            className={styles.cancelBtn}
           >
             {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: "none",
-              backgroundColor: danger ? "#DC2626" : "#7C3AED",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            className={
+              danger
+                ? `${styles.confirmBtn} ${styles.confirmBtnDanger}`
+                : styles.confirmBtn
+            }
           >
             {confirmLabel}
           </button>

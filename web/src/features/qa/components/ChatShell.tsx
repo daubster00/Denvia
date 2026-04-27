@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { useQAStore } from "@/stores/qa-store";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatMessage } from "@/features/qa/components/ChatMessage";
-import { QuotaLock } from "@/features/qa/components/QuotaLock";
 import { FreeDelayBanner } from "@/features/qa/components/FreeDelayBanner";
 import styles from "@/styles/chat-shell.module.css";
 
@@ -33,9 +32,11 @@ interface ChatShellProps {
  * - messages.length >= 1: inline (메시지 영역 + 하단 입력창)
  *
  * Story 2.3 추가:
- * - QuotaLock: useQuotaStore.locked 시 inputBottom 위에 인라인 표시
  * - FreeDelayBanner: 첫 질의 후 1회 노출 (localStorage 영속)
  * - 남은 횟수 caption: inputBottom 아래
+ * - 한도 차단(429): 본 컴포넌트는 인라인 박스 렌더 책임 없음. useQAStream 이
+ *   useAlertStore.show() 로 글로벌 AppAlert 모달을 띄우고 clearMessages 로
+ *   shellHero 로 자동 복귀시킨다.
  *
  * 별도 UI 상태 머신·local state 도입 금지(이중 진실 회피, AC-1 구현 메모).
  * 애니메이션은 chat-shell.module.css의 keyframes로 처리 (Framer Motion 등 신규 의존 금지 — NFR-P5).
@@ -64,11 +65,9 @@ export function ChatShell({
 
   const remainingCaption = quotaData ? (
     isPro ? (
-      <span style={{ fontSize: 12, color: "#9B9DA3", marginTop: 4, display: "block" }}>
-        Pro — 무제한
-      </span>
+      <span className={styles.remainingCaption}>Pro — 무제한</span>
     ) : (
-      <span style={{ fontSize: 12, color: "#9B9DA3", marginTop: 4, display: "block" }}>
+      <span className={styles.remainingCaption}>
         오늘 남은 질문: {Math.min(quotaData.remaining, quotaData.daily_limit)}/{quotaData.daily_limit}
       </span>
     )
@@ -87,7 +86,6 @@ export function ChatShell({
             onSubmit={onSubmit}
             loading={isStreaming}
           />
-          <QuotaLock />
           {remainingCaption}
         </div>
       </div>
@@ -117,7 +115,6 @@ export function ChatShell({
       </div>
       <div className={styles.inputBottom}>
         <FreeDelayBanner show={showDelayBanner && isFree && (quotaData?.delay_seconds ?? 0) > 0} />
-        <QuotaLock />
         <ChatInput
           variant="inline"
           value={inputValue}

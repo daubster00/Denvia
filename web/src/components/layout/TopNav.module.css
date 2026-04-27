@@ -1,0 +1,58 @@
+/* 상단 네비게이션 — 로그인 상태별 분기 */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: #fff;
+  border-bottom: 1px solid #e1e2e4;
+  height: var(--topnav-height, 64px);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  justify-content: space-between;
+}
+
+.loginBtn {
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.userMenu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.userEmail {
+  font-size: 14px;
+  color: #5a5c63;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  padding: 8px 16px;
+  background: transparent;
+  color: #5a5c63;
+  border: 1px solid #e1e2e4;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .header {
+    height: 56px;
+    padding: 0 16px;
+  }
+}

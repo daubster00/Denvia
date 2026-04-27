@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { sendSmsOtp, verifySmsOtp, lookupId } from "./api";
 import { PhoneNumberField } from "./PhoneNumberField";
 import { SMSCodeInput } from "./SMSCodeInput";
+import authStyles from "@/styles/auth-forms.module.css";
+import styles from "@/styles/find-id.module.css";
 
 interface FindIdPopupProps {
   onBack: () => void;
@@ -70,7 +72,7 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
 
   if (step === "phone") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className={styles.column}>
         <PhoneNumberField
           id="find-id-phone"
           value={phone}
@@ -83,16 +85,7 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
           onClick={handleSendOtp}
           disabled={sendingOtp}
           aria-busy={sendingOtp}
-          style={{
-            padding: "12px 0",
-            background: sendingOtp ? "#C4B5FD" : "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            fontSize: 15,
-            fontWeight: 600,
-            cursor: sendingOtp ? "not-allowed" : "pointer",
-          }}
+          className={`${authStyles.primaryBtn} ${sendingOtp ? authStyles.primaryBtnLoading : ""}`}
         >
           {sendingOtp ? "전송 중..." : "인증번호 전송"}
         </button>
@@ -102,8 +95,8 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
 
   if (step === "otp") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <p style={{ margin: 0, fontSize: 14, color: "#70737C", textAlign: "center" }}>
+      <div className={styles.column}>
+        <p className={styles.otpHelper}>
           {phone}으로 인증번호를 전송했습니다.
         </p>
         <SMSCodeInput
@@ -122,9 +115,9 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
     if (result.email_masked && result.signup_method === "email") {
       return (
         <>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#171719" }}>가입 이메일</p>
-          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#7C3AED" }}>{result.email_masked}</p>
-          <p style={{ margin: 0, fontSize: 13, color: "#70737C" }}>이메일로 로그인해주세요.</p>
+          <p className={styles.resultLabel}>가입 이메일</p>
+          <p className={styles.resultEmail}>{result.email_masked}</p>
+          <p className={styles.resultHint}>이메일로 로그인해주세요.</p>
         </>
       );
     }
@@ -135,7 +128,7 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
     ) {
       const label = PROVIDER_LABELS[result.signup_method];
       return (
-        <p style={{ margin: 0, fontSize: 14, color: "#171719", lineHeight: 1.6 }}>
+        <p className={styles.resultBody}>
           이 휴대폰은 {label} 계정으로 가입되어 있습니다.
           <br />
           {label} 로그인을 이용해주세요.
@@ -144,7 +137,7 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
     }
     if (result.signup_method === "social") {
       return (
-        <p style={{ margin: 0, fontSize: 14, color: "#171719", lineHeight: 1.6 }}>
+        <p className={styles.resultBody}>
           이 휴대폰은 소셜 계정으로 가입되어 있습니다.
           <br />
           소셜 로그인을 이용해주세요.
@@ -152,29 +145,19 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
       );
     }
     return (
-      <p style={{ margin: 0, fontSize: 14, color: "#70737C", lineHeight: 1.6 }}>
+      <p className={styles.resultEmpty}>
         해당 휴대폰으로 가입된 계정이 없거나 소셜 가입일 수 있습니다.
       </p>
     );
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "center" }}>
+    <div className={styles.columnCentered}>
       {getResultMessage()}
       <button
         type="button"
         onClick={onBack}
-        style={{
-          padding: "12px 0",
-          background: "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: "pointer",
-          marginTop: 8,
-        }}
+        className={`${authStyles.primaryBtn} ${styles.backBtn}`}
       >
         로그인 화면으로 돌아가기
       </button>

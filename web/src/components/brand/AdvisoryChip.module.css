@@ -1,0 +1,13 @@
+/* 면책 고지 칩 — 브랜드 큰 사이즈 (NFR-C6) */
+
+.chip {
+  display: inline-block;
+  padding: 6px 12px;
+  background-color: #f7f7f8;
+  border: 1px solid #e1e2e4;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #5a5c63;
+  margin: 0;
+  line-height: 1.4;
+}

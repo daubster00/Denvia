@@ -1,0 +1,182 @@
+/* 인증/회원가입 폼 공통 스타일 — EmailLoginTab, SignupForm, FindIdPopup, FindPasswordPopup, reset-password 공유 */
+
+.formColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.required {
+  color: #7c3aed;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e1e2e4;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.input:focus-visible {
+  outline: 2px solid #8b5cf6;
+  border-color: #8b5cf6;
+}
+
+.inputError {
+  border-color: #ef4444;
+}
+
+.fieldError {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.serverErrorBanner {
+  color: #ef4444;
+  font-size: 13px;
+  margin: 0;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+}
+
+.inlineErrorText {
+  color: #ef4444;
+  font-size: 13px;
+}
+
+.primaryBtn {
+  padding: 12px 0;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.primaryBtn:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.primaryBtnLoading {
+  background: #c4b5fd;
+  cursor: not-allowed;
+}
+
+.primaryBtnDisabled {
+  background: #e1e2e4;
+  color: #aeb0b6;
+  cursor: default;
+}
+
+.persistRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.persistCheckbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #7c3aed;
+}
+
+.persistLabel {
+  font-size: 14px;
+}
+
+.linkRow {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.linkBtn {
+  background: none;
+  border: none;
+  color: #70737c;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.linkBtnAccent {
+  background: none;
+  border: none;
+  color: #7c3aed;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.smsRequestBtn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px 0;
+  background: #f3f0ff;
+  color: #7c3aed;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.smsHelp {
+  font-size: 13px;
+  color: #5a5c63;
+  margin-bottom: 8px;
+}
+
+.smsVerified {
+  color: #16a34a;
+  font-size: 13px;
+  margin-top: 6px;
+  text-align: center;
+}
+
+/* FindPasswordPopup 제출 후 안내 */
+.successPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.successText {
+  margin: 0;
+  font-size: 15px;
+  color: #171719;
+  line-height: 1.6;
+}
+
+.backBtn {
+  padding: 12px 0;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}

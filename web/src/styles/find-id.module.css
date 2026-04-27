@@ -1,0 +1,59 @@
+/* FindIdPopup — 아이디 찾기 결과 화면 */
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.columnCentered {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+}
+
+.otpHelper {
+  margin: 0;
+  font-size: 14px;
+  color: #70737c;
+  text-align: center;
+}
+
+.resultLabel {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #171719;
+}
+
+.resultEmail {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #7c3aed;
+}
+
+.resultHint {
+  margin: 0;
+  font-size: 13px;
+  color: #70737c;
+}
+
+.resultBody {
+  margin: 0;
+  font-size: 14px;
+  color: #171719;
+  line-height: 1.6;
+}
+
+.resultEmpty {
+  margin: 0;
+  font-size: 14px;
+  color: #70737c;
+  line-height: 1.6;
+}
+
+.backBtn {
+  margin-top: 8px;
+}

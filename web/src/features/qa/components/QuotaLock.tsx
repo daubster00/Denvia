@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useQuotaStore } from "@/stores/quota-store";
+import styles from "./QuotaLock.module.css";
 
 export function QuotaLock() {
   const { locked, payload, dismiss } = useQuotaStore();
@@ -18,39 +19,18 @@ export function QuotaLock() {
     : "내일 다시 오시거나, Pro로 계속 진료에 활용해보세요.";
 
   return (
-    <div
-      role="alert"
-      style={{
-        border: "1.5px dashed #C7C7CC",
-        backgroundColor: "#FAFAFA",
-        padding: "16px 20px",
-        borderRadius: 12,
-        margin: "12px 0",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        maxWidth: 640,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div role="alert" className={styles.lock}>
+      <div className={styles.headRow}>
         <span aria-hidden="true">잠금</span>
-        <strong style={{ fontSize: 14 }}>{headline}</strong>
+        <strong className={styles.head}>{headline}</strong>
       </div>
-      <p style={{ margin: 0, fontSize: 13, color: "#5A5C63" }}>{body}</p>
-      <div style={{ display: "flex", gap: 8 }}>
+      <p className={styles.body}>{body}</p>
+      <div className={styles.actions}>
         {!isInternal && (
           <button
             type="button"
             onClick={dismiss}
-            style={{
-              padding: "8px 16px",
-              fontSize: 13,
-              border: "1px solid #E1E2E4",
-              borderRadius: 8,
-              background: "transparent",
-              color: "#5A5C63",
-              cursor: "pointer",
-            }}
+            className={styles.tomorrowBtn}
           >
             내일 다시
           </button>
@@ -59,15 +39,7 @@ export function QuotaLock() {
           <button
             type="button"
             onClick={() => router.push("/subscribe")}
-            style={{
-              padding: "8px 16px",
-              fontSize: 13,
-              border: "none",
-              borderRadius: 8,
-              background: "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-              color: "#fff",
-              cursor: "pointer",
-            }}
+            className={styles.upgradeBtn}
           >
             Pro로 계속
           </button>

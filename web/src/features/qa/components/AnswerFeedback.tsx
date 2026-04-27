@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { submitFeedback } from "@/features/qa/api/qa-feedback";
+import styles from "./AnswerFeedback.module.css";
 
 interface AnswerFeedbackProps {
   qaLogId: number;
@@ -38,46 +39,24 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
 
   const isPending = mutation.isPending;
 
-  const activeStyle: React.CSSProperties = {
-    padding: "4px 10px",
-    borderRadius: 8,
-    border: "none",
-    background: "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-    cursor: "pointer",
-    fontSize: 13,
-    color: "#FFFFFF",
-  };
-
-  const inactiveStyle: React.CSSProperties = {
-    padding: "4px 10px",
-    borderRadius: 8,
-    border: "1px solid #E1E2E4",
-    background: "none",
-    cursor: "pointer",
-    fontSize: 13,
-    color: "#5A5C63",
-  };
-
-  const disabledStyle: React.CSSProperties = {
-    cursor: "not-allowed",
-    opacity: 0.6,
-  };
+  const buttonClass = (active: boolean) =>
+    [
+      styles.btn,
+      active ? styles.btnActive : "",
+      isPending ? styles.btnDisabled : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
   return (
-    <div
-      style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}
-      aria-label="답변 피드백"
-    >
+    <div className={styles.row} aria-label="답변 피드백">
       <button
         type="button"
         aria-label="도움이 됐어요"
         aria-pressed={rating === "good"}
         disabled={isPending}
         onClick={() => mutation.mutate("good")}
-        style={{
-          ...(rating === "good" ? activeStyle : inactiveStyle),
-          ...(isPending ? disabledStyle : {}),
-        }}
+        className={buttonClass(rating === "good")}
       >
         👍
       </button>
@@ -87,19 +66,12 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
         aria-pressed={rating === "bad"}
         disabled={isPending}
         onClick={() => mutation.mutate("bad")}
-        style={{
-          ...(rating === "bad" ? activeStyle : inactiveStyle),
-          ...(isPending ? disabledStyle : {}),
-        }}
+        className={buttonClass(rating === "bad")}
       >
         👎
       </button>
       {errorText && (
-        <span
-          role="status"
-          aria-live="polite"
-          style={{ marginLeft: 4, fontSize: 12, color: "#DC2626" }}
-        >
+        <span role="status" aria-live="polite" className={styles.errorText}>
           {errorText}
         </span>
       )}

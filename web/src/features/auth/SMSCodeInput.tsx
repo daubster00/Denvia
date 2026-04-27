@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import styles from "./SMSCodeInput.module.css";
 
 interface SMSCodeInputProps {
   length?: number;
@@ -97,22 +98,11 @@ export function SMSCodeInput({
     }
   };
 
-  const cellStyle = (hasError: boolean): React.CSSProperties => ({
-    width: 44,
-    height: 52,
-    border: `1.5px solid ${hasError ? "#EF4444" : "#E1E2E4"}`,
-    borderRadius: 8,
-    textAlign: "center",
-    fontSize: 22,
-    fontWeight: 600,
-    outline: "none",
-    caretColor: "transparent",
-    boxSizing: "border-box",
-  });
+  const cellClass = error ? `${styles.cell} ${styles.cellError}` : styles.cell;
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+      <div className={styles.cellRow}>
         {digits.map((d, i) => (
           <input
             key={i}
@@ -128,18 +118,18 @@ export function SMSCodeInput({
             onKeyDown={(e) => handleKeyDown(i, e)}
             onPaste={i === 0 ? handlePaste : undefined}
             onFocus={(e) => e.target.select()}
-            style={cellStyle(!!error)}
+            className={cellClass}
           />
         ))}
       </div>
 
       {error && (
-        <p role="alert" style={{ color: "#EF4444", fontSize: 12, marginTop: 6, textAlign: "center" }}>
+        <p role="alert" className={styles.errorText}>
           {error}
         </p>
       )}
 
-      <div style={{ marginTop: 10, textAlign: "center", fontSize: 13, color: "#70737C" }}>
+      <div className={styles.cooldownRow}>
         {cooldown > 0 ? (
           <span>재전송 ({cooldown}초 후)</span>
         ) : (
@@ -147,15 +137,11 @@ export function SMSCodeInput({
             type="button"
             onClick={handleResend}
             disabled={resending}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#7C3AED",
-              fontSize: 13,
-              cursor: resending ? "default" : "pointer",
-              fontWeight: 600,
-              padding: 0,
-            }}
+            className={
+              resending
+                ? `${styles.resendBtn} ${styles.resendBtnDisabled}`
+                : styles.resendBtn
+            }
           >
             {resending ? "전송 중..." : "인증번호 재전송"}
           </button>

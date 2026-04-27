@@ -1,0 +1,66 @@
+/* 채팅 입력 — hero / inline 공용 */
+
+.wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+}
+
+.input {
+  width: 100%;
+  padding: 16px 52px 16px 20px;
+  font-size: 16px;
+  border: 1.5px solid #e1e2e4;
+  border-radius: 12px;
+  outline: none;
+  background-color: #fff;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+  cursor: text;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+}
+
+.inputReadonly {
+  cursor: pointer;
+  background-color: #f7f7f8;
+  color: #5a5c63;
+}
+
+.iconHint {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #aeb0b6;
+  font-size: 20px;
+  pointer-events: none;
+}
+
+.sendBtn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  color: #7c3aed;
+}
+
+.sendBtnDisabled {
+  color: #aeb0b6;
+  cursor: not-allowed;
+}

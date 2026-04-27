@@ -15,6 +15,7 @@ import { PhoneNumberField } from "@/features/auth/PhoneNumberField";
 import { SMSCodeInput } from "@/features/auth/SMSCodeInput";
 import { ApiError } from "@/types/api";
 import { getErrorMessage } from "@/lib/error-copy";
+import styles from "../signup-shell.module.css";
 
 type Step = "phone" | "sms";
 
@@ -190,42 +191,16 @@ export function PhoneVerifyClient() {
 
   // token 없는 초기 렌더는 빈 레이아웃(보이지 않음)만 출력 → FOUC 방지 + 즉시 리다이렉트.
   if (!token) {
-    return (
-      <div
-        aria-hidden="true"
-        style={{ minHeight: "100vh", background: "#FAFAFA" }}
-      />
-    );
+    return <div aria-hidden="true" className={styles.shellPlaceholder} />;
   }
 
   const sendOtpDisabled = sending;
   const completeEnabled = Boolean(phoneVerificationToken) && !submitting;
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px 16px",
-        background: "#FAFAFA",
-      }}
-    >
-      <div
-        style={{
-          width: "min(420px, 100%)",
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-          padding: "32px 28px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 20,
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className={styles.shell}>
+      <div className={styles.card}>
+        <div className={styles.headerStack}>
           <Typography
             as="h1"
             variant="heading1"
@@ -252,24 +227,16 @@ export function PhoneVerifyClient() {
             disabled={sendOtpDisabled}
             aria-busy={sending}
             aria-disabled={sendOtpDisabled}
-            style={{
-              width: "100%",
-              padding: "13px 0",
-              border: "none",
-              borderRadius: 8,
-              background: sendOtpDisabled
-                ? "#E1E2E4"
-                : "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-              color: sendOtpDisabled ? "#AEB0B6" : "#fff",
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: sendOtpDisabled ? "not-allowed" : "pointer",
-            }}
+            className={
+              sendOtpDisabled
+                ? `${styles.primaryBtn} ${styles.primaryBtnDisabled}`
+                : styles.primaryBtn
+            }
           >
             {sending ? "전송 중..." : "인증번호 받기"}
           </button>
         ) : (
-          <div ref={smsBoxRef} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div ref={smsBoxRef} className={styles.smsStack}>
             <SMSCodeInput onComplete={handleOtpComplete} onResend={handleResendOtp} />
             <button
               type="button"
@@ -277,19 +244,11 @@ export function PhoneVerifyClient() {
               aria-busy={submitting}
               aria-disabled={!completeEnabled}
               onClick={handleComplete}
-              style={{
-                width: "100%",
-                padding: "13px 0",
-                border: "none",
-                borderRadius: 8,
-                background: completeEnabled
-                  ? "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)"
-                  : "#E1E2E4",
-                color: completeEnabled ? "#fff" : "#AEB0B6",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: completeEnabled ? "pointer" : "not-allowed",
-              }}
+              className={
+                completeEnabled
+                  ? styles.primaryBtn
+                  : `${styles.primaryBtn} ${styles.primaryBtnDisabled}`
+              }
             >
               {submitting ? "가입 중..." : "가입 완료"}
             </button>

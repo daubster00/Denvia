@@ -1,0 +1,49 @@
+/* 가입유형 선택 (F-106, UX-DR11) */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.optionBtn {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid #e1e2e4;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s;
+  color: #171719;
+}
+
+.optionBtnActive {
+  border-color: #8b5cf6;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.required {
+  color: #7c3aed;
+}
+
+.submitBtn {
+  padding: 13px 0;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.submitBtnDisabled {
+  background: #e1e2e4;
+  color: #aeb0b6;
+  cursor: default;
+}

@@ -1,0 +1,55 @@
+/* 관리자 레이아웃 + 대시보드 */
+
+.adminShell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.adminBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mobileWarning {
+  display: none;
+  padding: 8px 16px;
+  background-color: #fef3c7;
+  border-bottom: 1px solid #fde68a;
+}
+
+.mobileWarning p {
+  font-size: 13px;
+  color: #92400e;
+  margin: 0;
+}
+
+.adminMain {
+  flex: 1;
+  overflow: auto;
+}
+
+@media (max-width: 767px) {
+  .mobileWarning {
+    display: block;
+  }
+}
+
+/* 대시보드 페이지 */
+.dashboardPage {
+  padding: 32px;
+}
+
+.dashboardTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.dashboardCaption {
+  font-size: 14px;
+  color: #6b7280;
+}

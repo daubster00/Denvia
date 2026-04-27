@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import styles from "./SocialLoginTab.module.css";
 
 /** 소셜 로그인 탭 — 3사 버튼 UI. (Story 1.6 구현) */
 export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" } = {}) {
@@ -14,28 +15,15 @@ export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className={styles.column}>
       {/* 카카오 */}
       <button
         type="button"
         onClick={() => handleSocialClick("kakao")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          padding: "12px 0",
-          backgroundColor: "#FEE500",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: "pointer",
-          color: "#000",
-        }}
+        className={`${styles.btn} ${styles.btnKakao}`}
         aria-label="카카오로 로그인"
       >
-        <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>💬</span>
+        <span aria-hidden="true" className={styles.kakaoIcon}>💬</span>
         카카오로 계속하기
       </button>
 
@@ -43,23 +31,10 @@ export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" }
       <button
         type="button"
         onClick={() => handleSocialClick("naver")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          padding: "12px 0",
-          backgroundColor: "#03C75A",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: "pointer",
-          color: "#fff",
-        }}
+        className={`${styles.btn} ${styles.btnNaver}`}
         aria-label="네이버로 로그인"
       >
-        <span aria-hidden="true" style={{ fontWeight: 900, fontSize: 16, fontFamily: "sans-serif" }}>N</span>
+        <span aria-hidden="true" className={styles.naverIcon}>N</span>
         네이버로 계속하기
       </button>
 
@@ -67,20 +42,7 @@ export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" }
       <button
         type="button"
         onClick={() => handleSocialClick("google")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          padding: "12px 0",
-          backgroundColor: "#fff",
-          border: "1px solid #E1E2E4",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: "pointer",
-          color: "#000",
-        }}
+        className={`${styles.btn} ${styles.btnGoogle}`}
         aria-label="구글로 로그인"
       >
         <GoogleColorIcon />

@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { requestPasswordReset } from "./api";
 import { PhoneNumberField } from "./PhoneNumberField";
+import styles from "@/styles/auth-forms.module.css";
 
 const emailOnlySchema = z.object({
   email: z.string().email("올바른 이메일을 입력하세요."),
@@ -54,25 +55,11 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
 
   if (submitted) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "center", padding: "8px 0" }}>
-        <p style={{ margin: 0, fontSize: 15, color: "#171719", lineHeight: 1.6 }}>
+      <div className={styles.successPanel}>
+        <p className={styles.successText}>
           등록된 휴대폰으로 임시 비밀번호를 보내드렸습니다. SMS를 확인해주세요.
         </p>
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            padding: "12px 0",
-            background: "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            fontSize: 15,
-            fontWeight: 600,
-            cursor: "pointer",
-            marginTop: 8,
-          }}
-        >
+        <button type="button" onClick={onBack} className={styles.backBtn}>
           로그인 화면으로 돌아가기
         </button>
       </div>
@@ -80,10 +67,14 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      className={styles.formColumn}
+    >
       <div>
-        <label htmlFor="find-pw-email" style={{ display: "block", marginBottom: 4, fontSize: 14, fontWeight: 500 }}>
-          이메일 <span aria-label="필수" style={{ color: "#7C3AED" }}>*</span>
+        <label htmlFor="find-pw-email" className={styles.fieldLabel}>
+          이메일 <span aria-label="필수" className={styles.required}>*</span>
         </label>
         <input
           id="find-pw-email"
@@ -91,19 +82,15 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
           autoComplete="email"
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? "find-pw-email-error" : undefined}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            border: `1px solid ${errors.email ? "#EF4444" : "#E1E2E4"}`,
-            borderRadius: 8,
-            fontSize: 14,
-            outline: "none",
-            boxSizing: "border-box",
-          }}
+          className={
+            errors.email
+              ? `${styles.input} ${styles.inputError}`
+              : styles.input
+          }
           {...register("email")}
         />
         {errors.email && (
-          <p id="find-pw-email-error" role="alert" style={{ color: "#EF4444", fontSize: 12, marginTop: 4 }}>
+          <p id="find-pw-email-error" role="alert" className={styles.fieldError}>
             {errors.email.message}
           </p>
         )}
@@ -120,17 +107,11 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
         type="submit"
         disabled={isSubmitting}
         aria-busy={isSubmitting}
-        style={{
-          padding: "12px 0",
-          background: isSubmitting ? "#C4B5FD" : "linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%)",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 15,
-          fontWeight: 600,
-          cursor: isSubmitting ? "not-allowed" : "pointer",
-          marginTop: 4,
-        }}
+        className={
+          isSubmitting
+            ? `${styles.primaryBtn} ${styles.primaryBtnLoading}`
+            : styles.primaryBtn
+        }
       >
         {isSubmitting ? "전송 중..." : "임시 비밀번호 받기"}
       </button>

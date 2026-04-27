@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" data-theme="light" style={{ colorScheme: "light" }}>
+    <html lang="ko" data-theme="light">
       {/* Pretendard Variable — CDN Dynamic Subset (font-display: swap) */}
       <head>
         <link
@@ -39,7 +39,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
       </head>
-      <body style={{ fontFamily: "'Pretendard Variable', Pretendard, sans-serif" }}>
+      <body>
         {/* Skip link — 포커스 시 표시, WCAG 2.4.1 (UX-DR24) */}
         <SkipLink />
         <Providers>
