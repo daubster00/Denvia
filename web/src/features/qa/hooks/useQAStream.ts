@@ -90,5 +90,10 @@ export function useQAStream() {
     }
   }
 
-  return { submit };
+  function abort() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }
+
+  return { submit, abort };
 }

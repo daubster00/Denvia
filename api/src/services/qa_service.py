@@ -198,6 +198,7 @@ class QAService:
             question_text=question_text,
             answer_text=_ECHO_ANSWER,
             rule_matched=False,
+            status="completed",
         )
         db.add(log)
         await db.flush()
@@ -224,7 +225,9 @@ class QAService:
 
         yield 형식: {"event": "token", "data": json.dumps(...)} — sse-starlette 호환.
         AC-4: 요청 시작 시 즉시 INSERT → 종료 시 UPDATE 패턴.
-        AC-7: GeneratorExit(클라이언트 단절)은 finally 블록에서 처리.
+        AC-7: 클라이언트 단절은 GeneratorExit 또는 asyncio.CancelledError로 전달될 수 있다.
+            asyncio.CancelledError는 BaseException 하위라 except Exception에 잡히지 않으므로
+            GeneratorExit과 함께 명시적으로 처리해 status='aborted' commit을 보장한다.
         AC-8: question_text/answer_text/delta는 절대 logger에 전달 금지 (PII).
         """
         from rag.run_qa import (
@@ -299,6 +302,7 @@ class QAService:
             log.output_tokens = usage.output_tokens
             log.cost_usd = Decimal(str(usage.cost_usd))
             log.latency_ms = latency_ms
+            log.status = "completed"
             await db.commit()
 
             yield {
@@ -325,16 +329,21 @@ class QAService:
                 procedure_count=len(procedures) if use_rule else 0,
             )
 
-        except GeneratorExit:
-            # AC-7: 클라이언트 단절 처리
+        except (GeneratorExit, asyncio.CancelledError) as exc:
+            # AC-7: 클라이언트 단절/요청 취소 처리
+            # GeneratorExit: 소비자가 aclose() 또는 close() 호출 시
+            # asyncio.CancelledError: FastAPI/Starlette가 요청 취소 시 generator로 전달
+            # 둘 다 BaseException 하위이므로 일반 except Exception 블록에 잡히지 않는다.
             aborted = True
             latency_ms = int((time.perf_counter() - t0) * 1000)
             log.latency_ms = latency_ms
+            log.status = "aborted"
             await db.commit()
             logger.info(
                 "qa.stream.aborted",
                 qa_log_id=qa_log_id,
                 reason="client_disconnect",
+                exc_type=type(exc).__name__,
             )
             raise
 
@@ -342,6 +351,7 @@ class QAService:
             # AC-6: tenacity 최종 실패 또는 기타 예외
             latency_ms = int((time.perf_counter() - t0) * 1000)
             log.latency_ms = latency_ms
+            log.status = "error"
             await db.commit()
 
             code = "OPENAI_TIMEOUT" if isinstance(exc, _RETRY_EXCEPTIONS) else "INTERNAL_ERROR"

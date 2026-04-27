@@ -15,6 +15,7 @@ from api.src.routers import health
 from api.src.routers import me
 from api.src.routers import auth
 from api.src.routers import qa
+from api.src.routers import events as client_events
 from api.src.routers.admin import events as admin_events
 from api.src.routers.admin import audit_logs as admin_audit_logs
 from api.src.settings import settings
@@ -108,5 +109,6 @@ app.include_router(health.router)
 app.include_router(me.router)
 app.include_router(auth.router)
 app.include_router(qa.router)
+app.include_router(client_events.router)
 app.include_router(admin_events.router, prefix="/api/v1")
 app.include_router(admin_audit_logs.router, prefix="/api/v1")

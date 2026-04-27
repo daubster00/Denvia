@@ -1,46 +1,17 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { TopNav } from "@/components/layout/TopNav";
-import { ChatShell } from "@/features/qa/components/ChatShell";
-import { CustomerInquiryFAB } from "@/components/feedback/CustomerInquiryFAB";
-import { useQAStore } from "@/stores/qa-store";
-import { useQAStream } from "@/features/qa/hooks/useQAStream";
-import { useQuota } from "@/features/qa/hooks/useQuota";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
+/**
+ * /chat 은 더 이상 별도 라우트가 아니다.
+ * 통합 홈(/)이 인증 상태에 따라 hero ↔ chat shell 을 직접 전환한다.
+ * 직접 진입 또는 북마크 호환성을 위해 / 로 redirect 한다.
+ */
 export default function ChatPage() {
-  const [inputValue, setInputValue] = useState("");
-  const [showDelayBanner, setShowDelayBanner] = useState(false);
-  const messages = useQAStore((s) => s.messages);
-  const stream = useQAStream();
-  const lastUserTextRef = useRef<string>("");
-  const { data: quotaData } = useQuota();
-
-  async function handleSubmit(text: string) {
-    lastUserTextRef.current = text;
-    setInputValue("");
-    // AC-9: submit 직후 FreeDelayBanner 트리거
-    setShowDelayBanner(true);
-    await stream.submit(text);
-  }
-
-  const isStreaming = messages.some(
-    (m) => m.role === "assistant" && m.status === "pending"
-  );
-
-  return (
-    <>
-      <TopNav />
-      <ChatShell
-        inputValue={inputValue}
-        onInputChange={setInputValue}
-        onSubmit={handleSubmit}
-        isStreaming={isStreaming}
-        onRetry={() => stream.submit(lastUserTextRef.current)}
-        quotaData={quotaData}
-        showDelayBanner={showDelayBanner}
-      />
-      <CustomerInquiryFAB />
-    </>
-  );
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/");
+  }, [router]);
+  return null;
 }

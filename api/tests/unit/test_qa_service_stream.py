@@ -243,3 +243,121 @@ async def test_stream_inserts_immediately_then_updates():
     # 스트림 완료 후 log row가 업데이트됨 (answer_text가 설정됨)
     assert added.answer_text is not None
     assert added.latency_ms is not None
+
+
+# ---------------------------------------------------------------------------
+# Story 2.5: status 컬럼 검증
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_stream_success_sets_status_completed():
+    """성공 경로: log.status == 'completed'."""
+    svc = QAService()
+    db = _make_db(log_id=60)
+    user = _make_user()
+
+    async def _mock_stream(query, on_complete):
+        yield "답변"
+        on_complete(TokenUsage(1, 2, 3, 0.001), "답변")
+
+    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
+
+    with (
+        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
+        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
+        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream),
+    ):
+        await _collect(svc.stream(db=db, user=user, question_text="치료비"))
+
+    added: QALog = db.add.call_args[0][0]
+    assert added.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_stream_exception_sets_status_error():
+    """Exception 경로: log.status == 'error'."""
+    import openai
+
+    svc = QAService()
+    db = _make_db(log_id=70)
+    user = _make_user()
+
+    async def _mock_stream_raises(query, on_complete):
+        raise openai.APITimeoutError("timeout")
+        yield  # make it a generator
+
+    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
+
+    with (
+        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
+        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
+        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream_raises),
+    ):
+        await _collect(svc.stream(db=db, user=user, question_text="임플란트"))
+
+    added: QALog = db.add.call_args[0][0]
+    assert added.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_stream_cancelled_error_sets_status_aborted():
+    """Story 2.5 review issue 2: asyncio.CancelledError 경로도 status='aborted'.
+
+    FastAPI/Starlette/sse-starlette가 클라이언트 abort 시 generator로 전달하는
+    asyncio.CancelledError는 BaseException 하위라 except Exception에 잡히지 않는다.
+    명시적 except로 status='aborted' commit이 보장되어야 한다.
+    """
+    import asyncio
+
+    svc = QAService()
+    db = _make_db(log_id=80)
+    user = _make_user()
+
+    async def _mock_stream_cancelled(query, on_complete):
+        raise asyncio.CancelledError()
+        yield  # make it a generator
+
+    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
+
+    with (
+        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
+        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
+        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream_cancelled),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await _collect(svc.stream(db=db, user=user, question_text="중단된 질문"))
+
+    added: QALog = db.add.call_args[0][0]
+    assert added.status == "aborted"
+    assert added.latency_ms is not None
+    # abort는 error 이벤트로 기록되지 않아야 함 — db.commit이 INSERT + abort UPDATE 두 번만 호출
+    assert db.commit.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_stream_aclose_sets_status_aborted():
+    """Story 2.5 review issue 2 보강: 소비자 aclose()(GeneratorExit) 경로도 status='aborted'."""
+    svc = QAService()
+    db = _make_db(log_id=85)
+    user = _make_user()
+
+    async def _mock_stream_many(query, on_complete):
+        for ch in ["a", "b", "c"]:
+            yield ch
+        on_complete(TokenUsage(0, 0, 0, 0.0), "abc")
+
+    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
+
+    with (
+        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
+        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
+        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream_many),
+    ):
+        gen = svc.stream(db=db, user=user, question_text="중단")
+        first = await gen.__anext__()
+        assert first["event"] == "token"
+        await gen.aclose()
+
+    added: QALog = db.add.call_args[0][0]
+    assert added.status == "aborted"
+    assert added.latency_ms is not None

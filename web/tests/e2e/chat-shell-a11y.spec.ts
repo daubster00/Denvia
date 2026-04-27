@@ -26,8 +26,8 @@ test.describe("Story 2.7 — 접근성 (axe)", () => {
     );
   });
 
-  test("hero 상태(messages=0) /chat — axe 위반 0건 (심각·중대)", async ({ page }) => {
-    await page.goto("/chat");
+  test("hero 상태(messages=0) / — axe 위반 0건 (심각·중대)", async ({ page }) => {
+    await page.goto("/");
     await expect(
       page.getByRole("button", { name: "고객문의 — 카카오톡 채널 열기" })
     ).toBeVisible();
@@ -41,10 +41,10 @@ test.describe("Story 2.7 — 접근성 (axe)", () => {
     expect(critical).toEqual([]);
   });
 
-  test("inline 상태(messages>=1) /chat — axe 위반 0건 (심각·중대, color-contrast 제외)", async ({ page }) => {
+  test("inline 상태(messages>=1) / — axe 위반 0건 (심각·중대, color-contrast 제외)", async ({ page }) => {
     // AdvisoryChip(Story 2.1)의 #70737C on #F7F7F8 contrast 3.3:1은 본 스토리 비범위.
     // Story 2.1 책임으로 별도 트래킹. 본 스토리는 chat-first 전환·미니 TopNav·FAB 영역 a11y만 커버.
-    await page.goto("/chat");
+    await page.goto("/");
     await page.evaluate(() => {
       const stored = sessionStorage.getItem("denvia-qa-store");
       const parsed = stored
@@ -95,7 +95,7 @@ test.describe("Story 2.7 — prefers-reduced-motion", () => {
         body: JSON.stringify(MOCK_USER),
       })
     );
-    await page.goto("/chat");
+    await page.goto("/");
     await expect(page.getByRole("textbox", { name: "질문 입력" })).toBeVisible();
 
     // sanity: prefers-reduced-motion이 실제 매칭되는지 먼저 확인
@@ -162,7 +162,7 @@ test.describe("Story 2.7 — 키보드 Tab 순서 (로그인 후, hero 상태)",
         body: JSON.stringify(MOCK_USER),
       })
     );
-    await page.goto("/chat");
+    await page.goto("/");
     await expect(page.getByRole("textbox", { name: "질문 입력" })).toBeVisible();
 
     // 페이지 시작 시 활성 textarea가 자동 포커스되므로, body로 포커스 리셋 후 Tab 시작

@@ -238,6 +238,65 @@ describe("useQAStream", () => {
     expect(state.payload?.showSubscribeButton).toBe(false);
   });
 
+  // ── Story 2.5: abort() 노출 테스트 ──────────────────────────────────────────
+
+  it("abort()가 반환값으로 노출된다", () => {
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    expect(typeof result.current.abort).toBe("function");
+  });
+
+  it("abort() 호출 시 abortRef가 null이 된다 (stale ref 방지)", async () => {
+    mockedFetchEventSource.mockImplementation(
+      () =>
+        new Promise<void>(() => {
+          // 영원히 pending — abort로만 종료
+        }),
+    );
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+
+    act(() => {
+      result.current.submit("질문");
+    });
+
+    act(() => {
+      result.current.abort();
+    });
+
+    // abort 후 두 번째 submit이 새 AbortController로 정상 동작해야 함
+    mockedFetchEventSource.mockResolvedValueOnce(undefined);
+    await act(async () => {
+      await result.current.submit("새 질문");
+    });
+
+    expect(mockedFetchEventSource).toHaveBeenCalledTimes(2);
+  });
+
+  it("abort() 후 submit 재호출이 정상 동작한다", async () => {
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({
+        event: "done",
+        data: '{"qa_log_id":10,"total_tokens":0,"cost_usd":0,"latency_ms":5,"rule_matched":false}',
+        id: "",
+        retry: undefined,
+      });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+
+    act(() => {
+      result.current.abort();
+    });
+
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const messages = useQAStore.getState().messages;
+    expect(messages.length).toBe(2);
+    expect(messages[1].status).toBe("complete");
+  });
+
   it("기타 4xx → quotaStore 미잠금 (기존 동작 유지)", async () => {
     mockedFetchEventSource.mockImplementation(async (_url, opts) => {
       const fakeResponse = {

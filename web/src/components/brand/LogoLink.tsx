@@ -8,12 +8,14 @@ interface LogoLinkProps {
   onResetChat?: () => void;
 }
 
-/** Denvia 로고 링크 — 좌측 상단 배치, 클릭 시 onResetChat 자리만 준비 (Epic 2) */
+/** Denvia 로고 링크 — 좌측 상단 배치, 채팅 컨텍스트에서 onResetChat 연결 (F-306) */
 export function LogoLink({ onResetChat }: LogoLinkProps) {
+  const ariaLabel = onResetChat ? "대화 초기화 및 홈으로" : "Denvia 홈";
+
   return (
     <Link
       href="/"
-      aria-label="Denvia 홈"
+      aria-label={ariaLabel}
       onClick={() => onResetChat?.()}
       style={{ display: "flex", alignItems: "center", textDecoration: "none" }}
     >

@@ -26,7 +26,7 @@ test.describe("Story 2.7 — 미니 TopNav user 분기", () => {
       })
     );
 
-    await page.goto("/chat");
+    await page.goto("/");
 
     await expect(page.getByText("doc@denvia.com")).toBeVisible();
     await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
@@ -68,7 +68,7 @@ test.describe("Story 2.7 — 미니 TopNav user 분기", () => {
       });
     });
 
-    await page.goto("/chat");
+    await page.goto("/");
     await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
 
     await page.getByRole("button", { name: "로그아웃" }).click();
