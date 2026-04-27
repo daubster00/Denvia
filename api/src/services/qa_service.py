@@ -27,6 +27,10 @@ KST = ZoneInfo("Asia/Seoul")
 DEFAULT_FREE_DAILY_QUOTA = 10
 DEFAULT_FREE_DELAY_SECONDS = 0
 DEFAULT_PRO_INTERNAL_CAP = 500
+# admin은 preflight에서 quota/delay 모두 우회한다(qa_service.preflight 참고).
+# /me/quota 응답에서도 일반 limit 계산을 타지 않도록 충분히 큰 sentinel을 사용해
+# UI가 "제한된 값"으로 오해하지 않게 한다.
+ADMIN_UNLIMITED_LIMIT = 999_999
 
 
 # ── quota 키·날짜 헬퍼 ─────────────────────────────────────────────────────────

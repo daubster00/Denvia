@@ -16,6 +16,7 @@ from api.src.models.user import User
 from api.src.schemas.auth import PasswordChangeRequest, SegmentRequest, SessionUserResponse
 from api.src.schemas.me import QuotaResponse
 from api.src.services.qa_service import (
+    ADMIN_UNLIMITED_LIMIT,
     _next_kst_midnight_iso,
     _resolve_bool,
     _resolve_daily_limit,
@@ -36,7 +37,23 @@ async def get_my_quota(
     redis_quota: AsyncRedis = Depends(get_redis_quota),
     redis_runtime: AsyncRedis = Depends(get_redis_runtime),
 ) -> QuotaResponse:
-    """현재 사용자의 일일 Q&A 한도 현황을 반환한다 (AC-6)."""
+    """현재 사용자의 일일 Q&A 한도 현황을 반환한다 (AC-6).
+
+    admin은 preflight에서 quota/delay를 우회하므로(qa_service.preflight),
+    /me/quota 응답도 동일한 정책으로 일관되게 unlimited 형태로 반환한다.
+    """
+    if current_user.subscription_status == "admin":
+        return QuotaResponse(
+            subscription_status="admin",
+            daily_limit=ADMIN_UNLIMITED_LIMIT,
+            used_today=0,
+            remaining=ADMIN_UNLIMITED_LIMIT,
+            reset_at=_next_kst_midnight_iso(),
+            show_upgrade_prompt=False,
+            show_subscribe_button=False,
+            delay_seconds=0,
+        )
+
     raw = await redis_quota.get(_today_key_kst(current_user.id))
     used = int(raw) if raw is not None else 0
     limit, _src = await _resolve_daily_limit(current_user, redis_runtime)

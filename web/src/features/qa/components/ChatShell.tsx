@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { useQAStore } from "@/stores/qa-store";
-import { useQuotaStore } from "@/stores/quota-store";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatMessage } from "@/features/qa/components/ChatMessage";
 import { QuotaLock } from "@/features/qa/components/QuotaLock";

@@ -94,6 +94,38 @@ class TestGetMyQuotaEndpoint:
         assert body["remaining"] == body["daily_limit"]
 
     @pytest.mark.asyncio
+    async def test_admin_user_bypasses_quota_consistent_with_preflight(self):
+        """admin — preflight 우회와 일관: 큰 unlimited sentinel·used_today=0·delay 0·prompt 비노출.
+
+        Redis에 잔존 quota 키가 있더라도 admin은 0으로 보고해야 한다.
+        """
+        from api.src.services.qa_service import ADMIN_UNLIMITED_LIMIT
+
+        user = _make_user(subscription_status="admin")
+        app.dependency_overrides[get_current_user] = lambda: user
+        # 잔존 키가 있어도 admin 분기는 무시해야 한다.
+        app.dependency_overrides[get_redis_quota] = lambda: _make_redis_quota("42")
+        app.dependency_overrides[get_redis_runtime] = lambda: _make_redis_runtime({
+            "runtime:free_daily_quota": "10",
+            "runtime:free_delay": "3",
+            "runtime:show_upgrade_prompt": "true",
+            "runtime:show_subscribe_button": "true",
+        })
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            res = await client.get("/api/v1/me/quota")
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["subscription_status"] == "admin"
+        assert body["daily_limit"] == ADMIN_UNLIMITED_LIMIT
+        assert body["remaining"] == ADMIN_UNLIMITED_LIMIT
+        assert body["used_today"] == 0
+        assert body["delay_seconds"] == 0
+        assert body["show_upgrade_prompt"] is False
+        assert body["show_subscribe_button"] is False
+
+    @pytest.mark.asyncio
     async def test_pro_user_returns_cap_and_zero_delay(self):
         """유료 사용자 — daily_limit=500, delay_seconds=0, show_upgrade_prompt=false."""
         user = _make_user(subscription_status="pro")
