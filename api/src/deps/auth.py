@@ -50,3 +50,18 @@ async def get_current_user_optional(
     if not denvia_session:
         return None
     return await get_current_user(denvia_session=denvia_session, db=db)
+
+
+async def require_admin(
+    user: User = Depends(get_current_user),
+) -> User:
+    """관리자 role 검증 — 미인증은 get_current_user가 401, 일반 유저는 403."""
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ADMIN_ACCESS_REQUIRED",
+                "message": "관리자 권한이 필요합니다.",
+            },
+        )
+    return user
