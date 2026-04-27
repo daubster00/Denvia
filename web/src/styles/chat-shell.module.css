@@ -1,0 +1,89 @@
+/* Story 2.7 — Chat-First 전환 애니메이션 (CSS-only, NFR-P5 번들 크기 정책 준수) */
+
+.shellHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - var(--topnav-height, 64px));
+  padding: 0 16px;
+}
+
+.shellInline {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--topnav-height, 64px));
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 0 16px;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 150ms ease-out;
+}
+
+.inputCenter {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  justify-content: center;
+  animation: slideToCenter 300ms ease-out;
+}
+
+.inputBottom {
+  padding-top: 8px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  animation: slideToBottom 300ms ease-out;
+}
+
+@keyframes slideToBottom {
+  from {
+    transform: translateY(-40vh);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideToCenter {
+  from {
+    transform: translateY(40vh);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inputCenter,
+  .inputBottom,
+  .messages {
+    animation: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .shellHero,
+  .shellInline {
+    min-height: calc(100vh - 56px);
+    height: calc(100vh - 56px);
+  }
+}
