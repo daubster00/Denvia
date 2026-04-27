@@ -7,23 +7,25 @@ on:
     branches: [main]
 
 jobs:
-  # RAG 코드 변경 감지 — 변경 시 PR 차단
+  # vendor/rag 변경 감지 — CODEOWNERS 수동 승인 레이블 부착 (Story 2.1 재설정)
+  # 이전: 자동 exit 1 차단 + "^RAG 코드/" 패턴(no-op). 현재: 레이블 + CODEOWNERS 승인.
   pathspec-check:
-    name: RAG 코드 변경 감지
+    name: vendor/rag 변경 감지
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: RAG 코드 디렉터리 변경 감지
+      - name: vendor/rag 디렉터리 변경 감지
         run: |
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD)
-          if echo "$CHANGED" | grep -q "^RAG 코드/"; then
-            echo "❌ RAG 코드 디렉터리 변경이 감지되었습니다. 이 디렉터리는 수정 금지입니다."
-            exit 1
+          if echo "$CHANGED" | grep -q "^vendor/rag/"; then
+            echo "⚠️  vendor/rag 변경 감지 — CODEOWNERS(@daubster00) 수동 승인 필요"
+            echo "rag-modified=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ vendor/rag 변경 없음"
           fi
-          echo "✅ RAG 코드 변경 없음"
 
   # web: ESLint + TypeScript + Vitest
   web:

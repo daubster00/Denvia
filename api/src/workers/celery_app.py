@@ -16,6 +16,7 @@ celery_app = Celery(
     include=[
         "api.src.workers.tasks",
         "api.src.workers.notification_tasks",  # Story 4.1: 알림 큐 태스크
+        "api.src.workers.retention_tasks",     # Story 5.1: 감사 로그 retention
     ],
 )
 
@@ -40,6 +41,11 @@ celery_app.conf.update(
         "dispatch-deferred-hourly": {
             "task": "notification_tasks.dispatch_deferred",
             "schedule": crontab(minute=5),
+        },
+        # audit_logs 1년 이상 레코드 삭제 — 매일 03:00 KST (NFR-S7)
+        "retention-audit-logs-daily": {
+            "task": "retention_tasks.delete_old_audit_logs",
+            "schedule": crontab(hour=3, minute=0),
         },
     },
 )

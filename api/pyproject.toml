@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.136.0",
     "httpx>=0.28.1",
     "langchain>=1.2.15",
+    "langchain-community>=0.3.0",
     "langchain-openai>=1.1.16",
     "openai>=2.32.0",
     "psycopg[binary]>=3.3.3",
@@ -24,6 +25,7 @@ dependencies = [
     "python-ulid>=3.1.0",
     "redis>=6.4.0",
     "sentry-sdk[fastapi]>=2.58.0",
+    "sse-starlette>=2.1.0",
     "slowapi>=0.1.9",
     "sqlalchemy[asyncio]>=2.0.49",
     "structlog>=25.5.0",
@@ -33,6 +35,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "fakeredis>=2.26.0",
     "mypy>=1.20.2",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
@@ -42,6 +45,7 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["..", "../vendor"]
 
 [build-system]
 requires = ["hatchling"]

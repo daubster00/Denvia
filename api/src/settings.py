@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     messaging_provider: str = "stub"           # stub | aligo | nhn_cloud
     alimtalk_template_map_json: str = "{}"     # {"billing.first_charge_success": "KA01234", ...}
 
+    # RAG 통합 (Story 2.1)
+    faiss_current_path: str = "data/faiss/current"
+    faiss_index_a_path: str = "data/faiss/index_a"
+    faiss_index_b_path: str = "data/faiss/index_b"
+
     # OAuth 3종 (Story 1.6) — 개발자 개인 키, 인수 시 교체
     kakao_client_id: str = ""
     kakao_client_secret: str = ""

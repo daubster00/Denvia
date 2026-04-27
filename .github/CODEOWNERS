@@ -1,0 +1,2 @@
+# CODEOWNERS — vendor/rag 수정 시 @daubster00 수동 승인 필요 (ADR-0002)
+vendor/rag/ @daubster00

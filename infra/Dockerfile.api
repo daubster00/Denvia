@@ -13,6 +13,10 @@ RUN uv sync --frozen --no-dev
 
 # 소스 복사
 COPY api/ ./
+COPY vendor/ /workspace/vendor/
+
+# PYTHONPATH — vendor/ 아래 rag 패키지를 직접 임포트 가능하도록
+ENV PYTHONPATH=/workspace/vendor:$PYTHONPATH
 
 # uvicorn은 /workspace에서 실행 — `api.src.main`이 네임스페이스 패키지로 해석됨
 WORKDIR /workspace
