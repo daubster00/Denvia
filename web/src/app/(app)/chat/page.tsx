@@ -1,17 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { AuthenticatedQAExperience } from "@/app/_components/QAHomeExperience";
 
 /**
- * /chat 은 더 이상 별도 라우트가 아니다.
- * 통합 홈(/)이 인증 상태에 따라 hero ↔ chat shell 을 직접 전환한다.
- * 직접 진입 또는 북마크 호환성을 위해 / 로 redirect 한다.
+ * /chat 직접 진입용 Q&A 화면.
+ * 통합 홈(/)과 같은 인증 후 채팅 경험을 렌더하되 URL은 /chat에 유지한다.
  */
 export default function ChatPage() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace("/");
-  }, [router]);
-  return null;
+  return <AuthenticatedQAExperience />;
 }

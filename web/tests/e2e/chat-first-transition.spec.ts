@@ -3,11 +3,11 @@ import { test, expect } from "@playwright/test";
 /**
  * Story 2.7 — Chat-First 전환 E2E (AC-1, AC-3, AC-4).
  *
- * 통합 홈(/) 라우팅으로 변경됨:
- * - 비로그인: 히어로 카피 + readonly ChatInput
- * - 로그인 + messages=0: 히어로 카피 + 활성 ChatInput (interactive hero)
- * - 로그인 + messages>=1: ChatShell inline (히어로 카피 숨김)
- * /chat 은 / 로 redirect.
+ * /(메인) ↔ /chat 분리 라우팅:
+ * - / 비로그인: 히어로 카피 + readonly ChatInput
+ * - / 로그인: 히어로 카피 + 활성 ChatInput — 제출 시 /chat 으로 이동
+ * - / 는 messages 존재 여부와 무관하게 항상 hero 만 렌더 (ChatShell 미렌더).
+ * - /chat: messages=0 → 활성 hero ChatInput / messages>=1 → ChatShell.
  *
  * 라이브 백엔드 의존성을 제거하기 위해 /api/v1/me, /api/v1/qa/stream을 page.route로 mock.
  */
@@ -44,7 +44,7 @@ test.describe("Story 2.7 — Chat-First 자동 전환", () => {
     await expect(page.getByRole("log", { name: "대화 내역" })).toHaveCount(0);
   });
 
-  test("AC-1: 메시지를 직접 주입하여 hero → inline 전환 검증 (히어로 카피 숨김 + 메시지 영역 노출)", async ({ page }) => {
+  test("AC-1: /chat 에서 messages>=1 시 ChatShell inline 노출 (히어로 카피 숨김 + 메시지 영역 노출)", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("textbox", { name: "질문 입력" })).toBeVisible();
 
@@ -73,7 +73,8 @@ test.describe("Story 2.7 — Chat-First 자동 전환", () => {
       sessionStorage.setItem("denvia-qa-store", JSON.stringify(parsed));
     });
 
-    await page.reload();
+    // /(메인)은 메시지가 있어도 항상 hero — ChatShell 은 /chat 에서만 렌더된다.
+    await page.goto("/chat");
 
     // inline 상태: 메시지 영역 + 메시지 본문 + 하단 입력창 모두 보여야 한다.
     await expect(page.getByRole("log", { name: "대화 내역" })).toBeVisible();
@@ -91,9 +92,9 @@ test.describe("Story 2.7 — Chat-First 자동 전환", () => {
     await expect(fab).toBeVisible();
   });
 
-  test("/chat 직접 진입 시 / 로 redirect 된다", async ({ page }) => {
+  test("/chat 직접 진입 시 messages=0 → 활성 hero ChatInput 노출", async ({ page }) => {
     await page.goto("/chat");
-    await page.waitForURL("**/");
+    await expect(page).toHaveURL(/\/chat$/);
     await expect(page.getByRole("textbox", { name: "질문 입력" })).toBeVisible();
   });
 

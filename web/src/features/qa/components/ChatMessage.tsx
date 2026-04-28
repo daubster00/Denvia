@@ -3,14 +3,16 @@
 import type { QAMessage } from "@/stores/qa-store";
 import { AdvisoryChip } from "./AdvisoryChip";
 import { AnswerFeedback } from "./AnswerFeedback";
+import { QuestionReFrame } from "./QuestionReFrame";
 import styles from "./ChatMessage.module.css";
 
 interface ChatMessageProps {
   message: QAMessage;
   onRetry?: () => void;
+  onPickReframeOption?: (option: string) => void;
 }
 
-export function ChatMessage({ message, onRetry }: ChatMessageProps) {
+export function ChatMessage({ message, onRetry, onPickReframeOption }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isPending = message.status === "pending";
   const isError = message.status === "error";
@@ -47,8 +49,15 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           </div>
         ) : (
           <>
+            {/* message.content는 reframe 유무와 무관하게 1회만 표시 — UI/DB SoT 단일화 (AC-5/AC-6) */}
             <p className={styles.assistantText}>{message.content}</p>
             <AdvisoryChip />
+            {message.reframe != null && onPickReframeOption != null && (
+              <QuestionReFrame
+                options={message.reframe.options}
+                onPickOption={onPickReframeOption}
+              />
+            )}
             {message.qaLogId != null && <AnswerFeedback qaLogId={message.qaLogId} />}
           </>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, type RefObject } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import styles from "./ChatInput.module.css";
 
@@ -17,6 +17,8 @@ interface ChatInputProps {
   onChange?: (v: string) => void;
   onSubmit?: (v: string) => void;
   loading?: boolean;
+  /** Story 2.6: 외부 ref 주입 — chip 클릭 후 포커스 이동. 부재 시 내부 useRef 사용. */
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 /**
@@ -32,11 +34,14 @@ export function ChatInput({
   onChange,
   onSubmit,
   loading = false,
+  inputRef: externalRef,
 }: ChatInputProps) {
   const openPopup = useSessionStore((s) => s.openPopup);
   const isHero = variant === "hero";
   const isReadonlyHero = isHero && !interactive;
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const internalRef = useRef<HTMLTextAreaElement>(null);
+  // 외부 ref 우선, 부재 시 내부 ref — 기존 자동 포커스 effect 보존 (Story 2.6)
+  const inputRef = externalRef ?? internalRef;
 
   useEffect(() => {
     if (isReadonlyHero) return;

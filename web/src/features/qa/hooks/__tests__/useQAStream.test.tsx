@@ -5,7 +5,7 @@
  * - 토큰 누적 → useQAStore.messages에 반영
  * - error 이벤트 → status='error'
  * - AbortController: 두 번째 submit 시 첫 요청이 abort 신호 수신
- * - Story 2.3: 429 분기 → useQuotaStore.lock + clearMessages
+ * - Story 2.3: 429 분기 → useAlertStore.show + clearMessages (글로벌 AppAlert 모달)
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
@@ -13,11 +13,17 @@ import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useQAStream } from "../useQAStream";
 import { useQAStore } from "@/stores/qa-store";
-import { useQuotaStore } from "@/stores/quota-store";
+import { useAlertStore } from "@/stores/alert-store";
 
 // fetchEventSource 모킹
 vi.mock("@microsoft/fetch-event-source", () => ({
   fetchEventSource: vi.fn(),
+}));
+
+// next/navigation useRouter 모킹 — useQAStream 이 'Pro로 계속' 버튼 onClick 에서 사용
+const mockPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, replace: vi.fn() }),
 }));
 
 import { fetchEventSource } from "@microsoft/fetch-event-source";
@@ -33,7 +39,7 @@ function makeWrapper() {
 
 function resetStores() {
   useQAStore.setState({ messages: [] });
-  useQuotaStore.setState({ locked: false, payload: null });
+  useAlertStore.setState({ current: null });
 }
 
 beforeEach(() => {
@@ -176,7 +182,7 @@ describe("useQAStream", () => {
 
   // ── Story 2.3: 429 분기 테스트 ────────────────────────────────────────────
 
-  it("429 QUOTA_EXCEEDED → useQuotaStore.lock + clearMessages (AC-7)", async () => {
+  it("429 QUOTA_EXCEEDED → useAlertStore.show(warning) + clearMessages (AC-7)", async () => {
     mockedFetchEventSource.mockImplementation(async (_url, opts) => {
       const fakeResponse = {
         status: 429,
@@ -200,14 +206,20 @@ describe("useQAStream", () => {
       await result.current.submit("테스트 질문");
     });
 
-    expect(useQuotaStore.getState().locked).toBe(true);
-    expect(useQuotaStore.getState().payload?.reason).toBe("QUOTA_EXCEEDED");
-    expect(useQuotaStore.getState().payload?.dailyLimit).toBe(10);
+    const alert = useAlertStore.getState().current;
+    expect(alert).not.toBeNull();
+    expect(alert?.level).toBe("warning");
+    expect(alert?.title).toBe("오늘의 10회를 모두 사용했어요.");
+    expect(alert?.dedupeKey).toBe("QUOTA_EXCEEDED");
+    expect(alert?.actions?.map((a) => a.label)).toEqual(["내일 다시", "Pro로 계속"]);
+    // "Pro로 계속" 클릭 시 router.push("/subscribe")
+    alert?.actions?.find((a) => a.label === "Pro로 계속")?.onClick?.();
+    expect(mockPush).toHaveBeenCalledWith("/subscribe");
     // 1문 1답 정책: 한도 초과 시 messages 초기화
     expect(useQAStore.getState().messages.length).toBe(0);
   });
 
-  it("429 QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT → store.lock with internal reason", async () => {
+  it("429 QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT → 단일 '확인' 버튼 + 고객문의 안내", async () => {
     mockedFetchEventSource.mockImplementation(async (_url, opts) => {
       const fakeResponse = {
         status: 429,
@@ -231,11 +243,36 @@ describe("useQAStream", () => {
       await result.current.submit("질문");
     });
 
-    const state = useQuotaStore.getState();
-    expect(state.locked).toBe(true);
-    expect(state.payload?.reason).toBe("QUOTA_EXCEEDED_INTERNAL_SAFETY_LIMIT");
-    expect(state.payload?.showUpgradePrompt).toBe(false);
-    expect(state.payload?.showSubscribeButton).toBe(false);
+    const alert = useAlertStore.getState().current;
+    expect(alert?.title).toBe("일시적 시스템 보호 제한에 도달했습니다.");
+    expect(alert?.description).toBe("고객문의로 연락주세요.");
+    expect(alert?.actions?.map((a) => a.label)).toEqual(["확인"]);
+  });
+
+  it("show_subscribe_button=false → 'Pro로 계속' 버튼 미노출 ('내일 다시'만)", async () => {
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      const fakeResponse = {
+        status: 429,
+        ok: false,
+        json: async () => ({
+          code: "QUOTA_EXCEEDED",
+          details: {
+            daily_limit: 10,
+            used_today: 11,
+            show_subscribe_button: false,
+          },
+        }),
+      } as unknown as Response;
+      await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(fakeResponse);
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const alert = useAlertStore.getState().current;
+    expect(alert?.actions?.map((a) => a.label)).toEqual(["내일 다시"]);
   });
 
   // ── Story 2.5: abort() 노출 테스트 ──────────────────────────────────────────
@@ -297,7 +334,170 @@ describe("useQAStream", () => {
     expect(messages[1].status).toBe("complete");
   });
 
-  it("기타 4xx → quotaStore 미잠금 (기존 동작 유지)", async () => {
+  // ── Story 2.6: reframe 이벤트 테스트 ─────────────────────────────────────────
+
+  it("유효한 reframe 이벤트 → markReframe 호출 및 store 갱신", async () => {
+    const reframeData = {
+      follow_up_question: "어느 치아인지 알려주세요?",
+      options: ["상악 전치", "하악 구치", "어금니"],
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "token", data: '{"delta":"어느 치아인지?"}', id: "", retry: undefined });
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":20,"total_tokens":10,"cost_usd":0.001,"latency_ms":500,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("임플란트 치료");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeDefined();
+    expect(asst?.reframe?.followUpQuestion).toBe("어느 치아인지 알려주세요?");
+    expect(asst?.reframe?.options).toHaveLength(3);
+    // content가 followUpQuestion으로 교체되어야 함 (UI/DB SoT 단일화)
+    expect(asst?.content).toBe("어느 치아인지 알려주세요?");
+  });
+
+  it("reframe payload options 2개 → markReframe 미호출 + console.warn", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reframeData = {
+      follow_up_question: "질문?",
+      options: ["가", "나"],  // 2개 — 3개 미만 → 유효성 실패
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":21,"total_tokens":5,"cost_usd":0,"latency_ms":100,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[useQAStream]"),
+      expect.anything(),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("reframe payload options 5개 → markReframe 미호출", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reframeData = {
+      follow_up_question: "질문?",
+      options: ["가", "나", "다", "라", "마"],  // 5개 — 4개 초과
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":22,"total_tokens":0,"cost_usd":0,"latency_ms":50,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeUndefined();
+    warnSpy.mockRestore();
+  });
+
+  it("reframe payload option 빈 문자열(trim 후) → markReframe 미호출", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reframeData = {
+      follow_up_question: "질문?",
+      options: ["가", "  ", "다"],  // trim 후 빈 문자열
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":23,"total_tokens":0,"cost_usd":0,"latency_ms":50,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeUndefined();
+    warnSpy.mockRestore();
+  });
+
+  it("reframe payload option 121자 → markReframe 미호출", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reframeData = {
+      follow_up_question: "질문?",
+      options: ["가".repeat(121), "나", "다"],  // 121자 초과
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":24,"total_tokens":0,"cost_usd":0,"latency_ms":50,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeUndefined();
+    warnSpy.mockRestore();
+  });
+
+  it("reframe payload option \\n 포함 → markReframe 미호출", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reframeData = {
+      follow_up_question: "질문?",
+      options: ["가\n나", "다", "라"],  // 개행 포함
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":25,"total_tokens":0,"cost_usd":0,"latency_ms":50,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeUndefined();
+    warnSpy.mockRestore();
+  });
+
+  it("reframe payload follow_up_question 빈 문자열 → markReframe 미호출", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reframeData = {
+      follow_up_question: "   ",  // trim 후 빈 문자열
+      options: ["가", "나", "다"],
+    };
+
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      opts.onmessage?.({ event: "reframe", data: JSON.stringify(reframeData), id: "", retry: undefined });
+      opts.onmessage?.({ event: "done", data: '{"qa_log_id":26,"total_tokens":0,"cost_usd":0,"latency_ms":50,"rule_matched":false}', id: "", retry: undefined });
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
+    expect(asst?.reframe).toBeUndefined();
+    warnSpy.mockRestore();
+  });
+
+  it("기타 4xx → AppAlert 미노출 (기존 setError 분기)", async () => {
     mockedFetchEventSource.mockImplementation(async (_url, opts) => {
       const fakeResponse = {
         status: 403,
@@ -316,6 +516,6 @@ describe("useQAStream", () => {
       await result.current.submit("질문");
     });
 
-    expect(useQuotaStore.getState().locked).toBe(false);
+    expect(useAlertStore.getState().current).toBeNull();
   });
 });

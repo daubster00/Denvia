@@ -7,12 +7,16 @@ import { ChatMessage } from "@/features/qa/components/ChatMessage";
 import { FreeDelayBanner } from "@/features/qa/components/FreeDelayBanner";
 import styles from "@/styles/chat-shell.module.css";
 
+import type { RefObject } from "react";
+
 interface ChatShellProps {
   inputValue: string;
   onInputChange: (v: string) => void;
   onSubmit: (text: string) => void;
   isStreaming: boolean;
   onRetry?: () => void;
+  onPickReframeOption?: (option: string) => void;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
   /** useQuota 훅에서 내려받은 데이터 (AC-8, AC-9) */
   quotaData?: {
     subscription_status: string;
@@ -47,6 +51,8 @@ export function ChatShell({
   onSubmit,
   isStreaming,
   onRetry,
+  onPickReframeOption,
+  inputRef,
   quotaData,
   showDelayBanner = false,
 }: ChatShellProps) {
@@ -109,6 +115,7 @@ export function ChatShell({
                 ? onRetry
                 : undefined
             }
+            onPickReframeOption={onPickReframeOption}
           />
         ))}
         <div ref={bottomRef} />
@@ -121,6 +128,7 @@ export function ChatShell({
           onChange={onInputChange}
           onSubmit={onSubmit}
           loading={isStreaming}
+          inputRef={inputRef}
         />
         {remainingCaption}
       </div>

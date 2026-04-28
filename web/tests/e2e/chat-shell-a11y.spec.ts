@@ -41,7 +41,7 @@ test.describe("Story 2.7 — 접근성 (axe)", () => {
     expect(critical).toEqual([]);
   });
 
-  test("inline 상태(messages>=1) / — axe 위반 0건 (심각·중대, color-contrast 제외)", async ({ page }) => {
+  test("inline 상태(messages>=1) /chat — axe 위반 0건 (심각·중대, color-contrast 제외)", async ({ page }) => {
     // AdvisoryChip(Story 2.1)의 #70737C on #F7F7F8 contrast 3.3:1은 본 스토리 비범위.
     // Story 2.1 책임으로 별도 트래킹. 본 스토리는 chat-first 전환·미니 TopNav·FAB 영역 a11y만 커버.
     await page.goto("/");
@@ -68,7 +68,8 @@ test.describe("Story 2.7 — 접근성 (axe)", () => {
       ];
       sessionStorage.setItem("denvia-qa-store", JSON.stringify(parsed));
     });
-    await page.reload();
+    // ChatShell 렌더링은 /chat 에서만 수행된다 (/(메인)은 항상 hero).
+    await page.goto("/chat");
 
     await expect(page.getByRole("log", { name: "대화 내역" })).toBeVisible();
 
@@ -115,7 +116,7 @@ test.describe("Story 2.7 — prefers-reduced-motion", () => {
     });
     expect(heroAnimation).toBe("none");
 
-    // inline 상태로 전환
+    // inline 상태로 전환 — ChatShell 은 /chat 에서만 렌더된다.
     await page.evaluate(() => {
       const stored = sessionStorage.getItem("denvia-qa-store");
       const parsed = stored
@@ -132,7 +133,7 @@ test.describe("Story 2.7 — prefers-reduced-motion", () => {
       ];
       sessionStorage.setItem("denvia-qa-store", JSON.stringify(parsed));
     });
-    await page.reload();
+    await page.goto("/chat");
     await expect(page.getByRole("log", { name: "대화 내역" })).toBeVisible();
 
     const inlineAnimations = await page.evaluate(() => {
