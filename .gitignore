@@ -20,6 +20,7 @@ dist/
 .env.local
 .env.*.local
 .env.production
+.env.backup.*
 
 # OS
 .DS_Store
@@ -63,8 +64,16 @@ api/data/faiss/
 자료/
 기획자료/
 RAG 코드/
+에러화면/
 _bmad-output/
 _bmad-output*.zip
 
 # Claude Code 워크트리/로컬 산출물
 .claude/worktrees/
+
+# Codex 툴 마커
+.codex
+
+# Celery 런타임 산출물
+celerybeat-schedule
+celerybeat-schedule.*

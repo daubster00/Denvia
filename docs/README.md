@@ -22,6 +22,7 @@
 
 | 제목 | 경로 | 목적 |
 |---|---|---|
+| 개발 환경 실행 가이드 | [DEVELOPMENT.md](./DEVELOPMENT.md) | Docker 개발 환경·hot reload·Windows/WSL 경로 안내 |
 | 운영 매뉴얼 | [OPERATIONS.md](./OPERATIONS.md) | 일상 운영·모니터링·스케줄 작업 |
 | 인시던트 런북 | [RUNBOOK_INCIDENT.md](./RUNBOOK_INCIDENT.md) | 장애 대응 절차·에스컬레이션 |
 | 온보딩 가이드 | [ONBOARDING.md](./ONBOARDING.md) | 인수자 개발팀 최초 세팅·환경 구성 |

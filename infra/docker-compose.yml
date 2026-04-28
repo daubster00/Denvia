@@ -2,45 +2,63 @@ services:
   web:
     build:
       context: ..
-      dockerfile: infra/Dockerfile.web
+      dockerfile: infra/Dockerfile.web.dev
+    working_dir: /workspace
+    command: >
+      sh -c "corepack enable &&
+      pnpm config set store-dir /pnpm/store &&
+      pnpm install --frozen-lockfile &&
+      pnpm --dir /workspace/web exec next dev --webpack --hostname 0.0.0.0 --port 3000"
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     depends_on:
       - api
     volumes:
-      - ../web:/app
-      - /app/node_modules
-      - /app/.next
+      # Dev: Windows/WSL/Claude/Codex/Docker all edit and run the same checkout.
+      - ..:/workspace
+      # Keep Linux dependency/build folders inside Docker volumes so Windows files do not mask them.
+      - root_node_modules:/workspace/node_modules
+      - web_node_modules:/workspace/web/node_modules
+      - web_next:/workspace/web/.next
+      - pnpm_store:/pnpm/store
 
   api:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
+    working_dir: /workspace
+    command: >
+      sh -c "uv --project /workspace/api sync --frozen &&
+      uv --project /workspace/api run uvicorn api.src.main:app
+      --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
     env_file:
       - ../.env
     environment:
       # .env의 *_URL은 host-run 용도(localhost). 컨테이너에서는 compose 서비스명으로 덮어씀.
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
-      - DATABASE_SYNC_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
+      DATABASE_SYNC_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
       # vendor/rag(`from rag.run_qa import ...`) 임포트 가능하도록 명시
       # — 빌드된 이미지에 PYTHONPATH가 누락된 경우에도 안전.
-      - PYTHONPATH=/workspace/vendor
+      PYTHONPATH: /workspace:/workspace/vendor
       # RAG 인덱스 절대 경로 (uvicorn working dir이 /workspace라 상대경로 'data/faiss/current'는 못 찾음)
-      - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
+      FAISS_CURRENT_PATH: /workspace/api/data/faiss/current
+      WATCHFILES_FORCE_POLLING: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ../api:/workspace/api
-      # vendor/rag — 클라이언트 인수 RAG 자산. host 변경을 즉시 반영.
-      - ../vendor:/workspace/vendor:ro
+      # Dev: bind the entire checkout so api/, vendor/, scripts, and docs paths stay identical.
+      - ..:/workspace
       # 호스트의 Windows .venv가 컨테이너 Linux .venv를 덮어쓰지 못하게 named volume으로 분리
       - api_venv:/workspace/api/.venv
 
@@ -48,40 +66,44 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    command: uv --project /workspace/api run celery -A api.src.workers.celery_app worker --loglevel=info
+    working_dir: /workspace
+    command: >
+      sh -c "uv --project /workspace/api sync --frozen &&
+      uv --project /workspace/api run celery -A api.src.workers.celery_app worker --loglevel=info"
     env_file:
       - ../.env
     environment:
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
-      - DATABASE_SYNC_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
-      - PYTHONPATH=/workspace/vendor
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
+      DATABASE_SYNC_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
+      PYTHONPATH: /workspace:/workspace/vendor
     depends_on:
       - redis
       - postgres
     volumes:
-      - ../api:/workspace/api
-      - ../vendor:/workspace/vendor:ro
-      - api_venv:/workspace/api/.venv
+      - ..:/workspace
+      - worker_venv:/workspace/api/.venv
 
   beat:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    command: uv --project /workspace/api run celery -A api.src.workers.celery_app beat --loglevel=info
+    working_dir: /workspace
+    command: >
+      sh -c "uv --project /workspace/api sync --frozen &&
+      uv --project /workspace/api run celery -A api.src.workers.celery_app beat --loglevel=info"
     env_file:
       - ../.env
     environment:
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
-      - DATABASE_SYNC_URL=postgresql+psycopg://denvia:password@postgres:5432/denvia
-      - PYTHONPATH=/workspace/vendor
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
+      DATABASE_SYNC_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
+      PYTHONPATH: /workspace:/workspace/vendor
     depends_on:
       - redis
     volumes:
-      - ../api:/workspace/api
-      - ../vendor:/workspace/vendor:ro
-      - api_venv:/workspace/api/.venv
+      - ..:/workspace
+      - beat_venv:/workspace/api/.venv
 
   postgres:
     image: postgres:16
@@ -127,3 +149,9 @@ volumes:
   postgres_data:
   redis_data:
   api_venv:
+  worker_venv:
+  beat_venv:
+  root_node_modules:
+  web_node_modules:
+  web_next:
+  pnpm_store:
