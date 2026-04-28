@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" data-theme="light">
+    <html lang="ko" data-theme="light" suppressHydrationWarning>
       {/* Pretendard Variable — CDN Dynamic Subset (font-display: swap) */}
       <head>
         <link

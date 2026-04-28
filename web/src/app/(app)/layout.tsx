@@ -6,6 +6,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { fetchMe } from "@/features/auth/api";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const user = useSessionStore((s) => s.user);
   const openPopup = useSessionStore((s) => s.openPopup);
 
   // 인증 판단은 useQuery 결과를 직접 사용 — store의 user는 SessionBootstrap useEffect 다음 tick에서야 채워지므로
@@ -19,12 +20,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    if (!isLoading && isError) {
+    if (!isLoading && isError && user == null) {
       openPopup("email");
     }
-  }, [isLoading, isError, openPopup]);
+  }, [isLoading, isError, user, openPopup]);
 
-  if (isLoading || !data) {
+  if ((isLoading && user == null) || (data == null && user == null)) {
     return null;
   }
 
