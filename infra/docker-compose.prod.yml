@@ -29,6 +29,10 @@ services:
       - PYTHONPATH=/workspace:/workspace/vendor
       # RAG 인덱스 절대 경로
       - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
+      - FAISS_INDEX_A_PATH=/workspace/api/data/faiss/index_a
+      - FAISS_INDEX_B_PATH=/workspace/api/data/faiss/index_b
+    volumes:
+      - api_data:/workspace/api/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,6 +49,11 @@ services:
       - ../.env.production
     environment:
       - PYTHONPATH=/workspace:/workspace/vendor
+      - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
+      - FAISS_INDEX_A_PATH=/workspace/api/data/faiss/index_a
+      - FAISS_INDEX_B_PATH=/workspace/api/data/faiss/index_b
+    volumes:
+      - api_data:/workspace/api/data
     depends_on:
       - redis
       - postgres
@@ -59,6 +68,11 @@ services:
       - ../.env.production
     environment:
       - PYTHONPATH=/workspace:/workspace/vendor
+      - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
+      - FAISS_INDEX_A_PATH=/workspace/api/data/faiss/index_a
+      - FAISS_INDEX_B_PATH=/workspace/api/data/faiss/index_b
+    volumes:
+      - api_data:/workspace/api/data
     depends_on:
       - redis
 
@@ -110,3 +124,4 @@ volumes:
   postgres_data:
   redis_data:
   certbot_www:
+  api_data:
