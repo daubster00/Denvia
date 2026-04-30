@@ -1,13 +1,16 @@
 """RAG 런타임 래퍼 — FastAPI 동일 프로세스에서 vendor/rag 자산을 호출."""
 
 import asyncio
+import json
 import queue
 from collections.abc import AsyncIterator
 
+import redis.asyncio as aioredis
 import structlog
 
 from api.src.integrations.openai.client import TokenUsage, build_chat_llm, capture_usage, with_retry
-from api.src.settings import settings
+from api.src.rag_integration.prompt_injection import PromptOverride, build_prompt_with_overrides
+from api.src.settings import REDIS_DB_RUNTIME_CONFIG, settings
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +29,8 @@ async def ensure_initialized() -> None:
 
 
 def _do_init(faiss_path: str) -> None:
-    from rag.run_qa import init_rag
+    from rag.run_qa import init_rag  # type: ignore[import-untyped]
+
     init_rag(faiss_path=faiss_path)
 
 
@@ -35,7 +39,7 @@ async def run_rule_answer(question_text: str) -> str | None:
 
     question_text는 PII — 로그 출력 금지.
     """
-    from rag.run_qa import apply_scaling_rules, normalize_query, generate_rule_answer, get_syn_dict
+    from rag.run_qa import apply_scaling_rules, generate_rule_answer, get_syn_dict, normalize_query  # type: ignore[import-untyped]
 
     await ensure_initialized()
 
@@ -50,6 +54,40 @@ async def run_rule_answer(question_text: str) -> str | None:
     return await asyncio.to_thread(_run)
 
 
+async def _load_runtime_params() -> dict:
+    """Redis DB 3에서 런타임 구성을 읽는다. 실패 시 기본값 반환."""
+    try:
+        r = aioredis.from_url(
+            settings.redis_url,
+            db=REDIS_DB_RUNTIME_CONFIG,
+            decode_responses=True,
+        )
+        async with r:
+            keys = await r.mget(
+                "runtime:rag_k",
+                "runtime:rag_temperature",
+                "runtime:max_tokens",
+                "runtime:prompt:BASE",
+                "runtime:prompt:치식_위치",
+                "runtime:prompt:치면_방향",
+                "runtime:prompt:마취_산정",
+                "runtime:prompt:브릿지",
+            )
+        return {
+            "rag_k": int(keys[0]) if keys[0] else 5,
+            "rag_temperature": float(keys[1]) if keys[1] else 0.0,
+            "max_tokens": int(keys[2]) if keys[2] else 1024,
+            "prompt_BASE": keys[3],
+            "prompt_치식_위치": keys[4],
+            "prompt_치면_방향": keys[5],
+            "prompt_마취_산정": keys[6],
+            "prompt_브릿지": keys[7],
+        }
+    except Exception as e:
+        logger.warning("query_runner.runtime_params_load_failed", error=str(e))
+        return {"rag_k": 5, "rag_temperature": 0.0, "max_tokens": 1024}
+
+
 async def stream_rag_answer(
     query: str,
     on_complete: callable,
@@ -60,12 +98,27 @@ async def stream_rag_answer(
     on_complete(usage, full_text) 콜백은 스트림 종료 시 qa_logs UPDATE용.
     ADR-0002 §결정 2: return_source_documents=False (D-02, AR15 강제).
     """
-    from rag.run_qa import get_retriever
-    from rag.prompt_builder import build_prompt_template
+    from rag.run_qa import get_retriever  # type: ignore[import-untyped]
     from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
 
     await ensure_initialized()
+    runtime = await _load_runtime_params()
+
+    # 프롬프트 오버라이드 구성 (async context에서 읽어 클로저로 전달)
+    block_ids = ("BASE", "치식_위치", "치면_방향", "마취_산정", "브릿지")
+    overrides: dict[str, PromptOverride] = {}
+    for bid in block_ids:
+        raw = runtime.get(f"prompt_{bid}")
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                overrides[bid] = PromptOverride(
+                    content=parsed.get("content", ""),
+                    enabled=parsed.get("enabled", True),
+                )
+            except Exception:
+                pass  # 파싱 실패 시 해당 블록 fallback
 
     token_queue: queue.Queue[str | None] = queue.Queue()
     accumulated: list[str] = []
@@ -75,7 +128,6 @@ async def stream_rag_answer(
     def _run_sync() -> None:
         """동기 스레드에서 RetrievalQA를 실행하고 토큰을 Queue에 넣는다."""
         try:
-            from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
             from langchain_core.callbacks.base import BaseCallbackHandler
 
             class _QueueCallbackHandler(BaseCallbackHandler):
@@ -84,13 +136,24 @@ async def stream_rag_answer(
                     token_queue.put(token)
 
             handler = _QueueCallbackHandler()
-            llm = build_chat_llm(streaming=True, callbacks=[handler])
 
-            prompt_template_str = build_prompt_template(query)
+            prompt_template_str = build_prompt_with_overrides(query, overrides or None)
+
+            retriever = get_retriever()
+            if hasattr(retriever, "search_kwargs"):
+                retriever.search_kwargs["k"] = runtime["rag_k"]
+
+            llm = build_chat_llm(
+                streaming=True,
+                callbacks=[handler],
+                temperature=runtime["rag_temperature"],
+                max_tokens=runtime["max_tokens"],
+            )
+
             chain = RetrievalQA.from_chain_type(
                 llm=llm,
                 chain_type="stuff",
-                retriever=get_retriever(),
+                retriever=retriever,
                 return_source_documents=False,
                 chain_type_kwargs={
                     "prompt": PromptTemplate.from_template(prompt_template_str)
@@ -109,7 +172,6 @@ async def stream_rag_answer(
 
     try:
         while True:
-            # 큐에서 토큰을 비동기적으로 가져온다
             token = await asyncio.get_event_loop().run_in_executor(
                 None, token_queue.get
             )

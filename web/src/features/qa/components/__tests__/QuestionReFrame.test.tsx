@@ -8,7 +8,7 @@ describe("QuestionReFrame", () => {
   it("Section message 헤드라인이 렌더된다", () => {
     const onPickOption = vi.fn();
     render(<QuestionReFrame options={defaultOptions} onPickOption={onPickOption} />);
-    expect(screen.getByText("정보가 조금 더 필요해요")).toBeDefined();
+    expect(screen.getByText("새 질문에 포함해보세요")).toBeDefined();
   });
 
   it("3개 chip 버튼이 렌더된다", () => {
@@ -32,7 +32,7 @@ describe("QuestionReFrame", () => {
     render(<QuestionReFrame options={defaultOptions} onPickOption={onPickOption} />);
     for (const opt of defaultOptions) {
       expect(
-        screen.getByRole("button", { name: `이 후속 질문으로 다시 물어보기: ${opt}` })
+        screen.getByRole("button", { name: `새 질문에 넣기: ${opt}` })
       ).toBeDefined();
     }
   });

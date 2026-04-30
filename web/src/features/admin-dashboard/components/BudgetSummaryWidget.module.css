@@ -1,0 +1,39 @@
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 14px;
+  color: #475569;
+}
+
+.figureItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 90px;
+}
+
+.figureLabel {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.figureValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.figureValueWarning {
+  color: #b45309;
+}
+
+.figureValueDanger {
+  color: #b91c1c;
+}

@@ -1,0 +1,47 @@
+"""고객 문의 ORM — Story 4.5 사용자 submit, Story 9.3 admin 답변 책임.
+
+body는 plain text(html.escape 적용 후 저장).
+"""
+
+from datetime import datetime
+
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from api.src.models.base import Base
+
+
+class CustomerInquiry(Base):
+    __tablename__ = "customer_inquiries"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        SQLEnum(
+            "open",
+            "in_progress",
+            "resolved",
+            name="inquiry_status_enum",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default="open",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -54,6 +54,16 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["amount_krw", "next_charge_at"],
         category=TemplateCategory.BILLING,
     ),
+    "billing.retry_success": TemplateDefinition(
+        title="결제 재시도 성공",
+        body=(
+            "Denvia 구독 결제가 재시도 후 성공했습니다.\n"
+            "결제 금액: {amount_krw}원\n"
+            "다음 결제일: {next_charge_at}"
+        ),
+        variables=["amount_krw", "next_charge_at"],
+        category=TemplateCategory.BILLING,
+    ),
     "billing.retry_failed_1": TemplateDefinition(
         title="결제 실패 안내 (1차)",
         body=(
@@ -128,6 +138,51 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         body="{title}\n\n{body}",
         variables=["title", "body"],
         category=TemplateCategory.NOTICE,
+    ),
+    # ── 시스템 (system) ──────────────────────────────────────────────────────────
+    "system.rag_rebuild_complete": TemplateDefinition(
+        title="RAG 재빌드 완료",
+        body="Denvia RAG 재빌드가 완료되었습니다.\n활성 청크 수: {chunk_count}",
+        variables=["chunk_count"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    "system.rag_rebuild_failed": TemplateDefinition(
+        title="RAG 재빌드 실패",
+        body="Denvia RAG 재빌드가 실패했습니다.\n오류: {error}",
+        variables=["error"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    # ── 관리자 예산 경고 (Story 5.2) ─────────────────────────────────────────
+    "admin.budget_warning.80": TemplateDefinition(
+        title="[Denvia] 월 예산 80% 도달",
+        body=(
+            "이번 달 OpenAI API 비용이 월 예산의 {percent}%에 도달했습니다.\n"
+            "현재 사용액: ${spent_usd}\n"
+            "월 한도: ${limit_usd}\n"
+            "관리자 대시보드에서 사용 패턴을 점검해주세요."
+        ),
+        variables=["percent", "spent_usd", "limit_usd"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    "admin.budget_warning.95": TemplateDefinition(
+        title="[Denvia] 월 예산 95% 도달 — 경고",
+        body=(
+            "이번 달 OpenAI API 비용이 월 예산의 {percent}%에 도달했습니다.\n"
+            "100% 도달 시 무료 질의가 자동 차단됩니다.\n"
+            "현재 사용액: ${spent_usd} / ${limit_usd}"
+        ),
+        variables=["percent", "spent_usd", "limit_usd"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    "admin.budget_hard_cap_reached": TemplateDefinition(
+        title="[Denvia] 월 예산 소진 — 무료 질의 자동 차단",
+        body=(
+            "월 예산 ${limit_usd}이 소진되어 무료 사용자 질의가 일시 차단되었습니다.\n"
+            "유료 사용자는 영향 없습니다.\n"
+            "다음 달 1일 자동 해제 또는 예산 상향 시 즉시 재개됩니다."
+        ),
+        variables=["limit_usd"],
+        category=TemplateCategory.SYSTEM,
     ),
 }
 

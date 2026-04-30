@@ -1,0 +1,71 @@
+.wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chartBox {
+  width: 100%;
+  flex: 1;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  color: #94a3b8;
+  font-size: 14px;
+  border: 1px dashed #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 14px;
+  color: #475569;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.toneBrand {
+  background-color: #7c3aed;
+  color: #7c3aed;
+}
+
+.toneSuccess {
+  background-color: #059669;
+  color: #059669;
+}
+
+.toneWarning {
+  background-color: #d97706;
+  color: #d97706;
+}
+
+.toneError {
+  background-color: #dc2626;
+  color: #dc2626;
+}
+
+.toneNeutral {
+  background-color: #64748b;
+  color: #64748b;
+}

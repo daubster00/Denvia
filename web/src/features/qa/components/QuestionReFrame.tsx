@@ -3,7 +3,7 @@
 import styles from "./QuestionReFrame.module.css";
 
 // UX-DR26 마이크로카피 — 단일 상수, 매 렌더 랜덤화 금지
-const SECTION_HEADLINE = "정보가 조금 더 필요해요";
+const SECTION_HEADLINE = "새 질문에 포함해보세요";
 
 interface QuestionReFrameProps {
   options: string[];
@@ -24,7 +24,7 @@ export function QuestionReFrame({ options, onPickOption }: QuestionReFrameProps)
           <button
             key={opt}
             type="button"
-            aria-label={`이 후속 질문으로 다시 물어보기: ${opt}`}
+            aria-label={`새 질문에 넣기: ${opt}`}
             onClick={() => onPickOption(opt)}
             className={styles.chip}
           >

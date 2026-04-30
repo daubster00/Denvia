@@ -60,6 +60,16 @@ test-results/
 api/data/faiss/
 !api/data/faiss/.gitkeep
 
+# 루트 레벨 런타임 데이터 (api/data/faiss와 별개로 생성된 로컬 캐시)
+/data/
+
+# 사용자 로컬 launcher 스크립트
+launch-claude.bat
+
+# 관리자 지식 파일 업로드 (런타임 생성 — 디렉터리만 추적)
+api/data/uploads/
+!api/data/uploads/.gitkeep
+
 # 참고 자료 (개발 파일 아님)
 자료/
 기획자료/

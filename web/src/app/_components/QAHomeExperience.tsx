@@ -6,7 +6,8 @@ import { TopNav } from "@/components/layout/TopNav";
 import { AdvisoryChip } from "@/components/brand/AdvisoryChip";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatShell } from "@/features/qa/components/ChatShell";
-import { CustomerInquiryFAB } from "@/components/feedback/CustomerInquiryFAB";
+import { useActivePopup } from "@/features/inbox/hooks/useActivePopup";
+import { PopupModal } from "@/features/inbox/components/PopupModal";
 import { useQAStore } from "@/stores/qa-store";
 import { useQAStream } from "@/features/qa/hooks/useQAStream";
 import { useQuota } from "@/features/qa/hooks/useQuota";
@@ -24,6 +25,9 @@ export function AuthenticatedQAExperience() {
   const lastUserTextRef = useRef<string>("");
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const { data: quotaData } = useQuota();
+  // Story 4.5 — 메인 페이지 진입 시 자동 노출 팝업 (FR31 / F-503).
+  // /(메인) 진입에만 마운트(/chat 등 다른 라우트에서는 미적용).
+  const { data: activePopup } = useActivePopup();
 
   const handleReset = useCallback(() => {
     stream.abort();
@@ -31,7 +35,7 @@ export function AuthenticatedQAExperience() {
     void postClientEvent("qa.conversation.reset");
   }, [stream, clearMessages]);
 
-  // Story 2.6: chip 클릭 → 입력창에 텍스트 삽입 + 포커스 이동 (자동 submit 미수행)
+  // Story 2.6: 새 질문 예시 클릭 → 입력창에 텍스트 삽입 + 포커스 이동 (자동 submit 미수행)
   const handlePickReframeOption = useCallback((option: string) => {
     setInputValue(option);
     // setState 후 다음 paint frame에서 포커스 — 텍스트 갱신 후 안정적 포커스 보장
@@ -89,7 +93,8 @@ export function AuthenticatedQAExperience() {
           showDelayBanner={showDelayBanner}
         />
       )}
-      <CustomerInquiryFAB />
+      {/* Story 4.5 — 메인(/)에서만 자동 팝업 노출 */}
+      {isHero && activePopup ? <PopupModal popup={activePopup} /> : null}
     </>
   );
 }

@@ -8,6 +8,7 @@ import { SessionBootstrap } from "@/features/auth/SessionBootstrap";
 import { LoginPopupMount } from "@/features/auth/LoginPopupMount";
 import { OAuthErrorBanner } from "@/features/auth/OAuthErrorBanner";
 import { AppAlert } from "@/components/feedback/AppAlert";
+import { AppToast } from "@/components/feedback/AppToast";
 import { denviaTokenOverrides } from "@/lib/theme";
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <OAuthErrorBanner />
           </Suspense>
           <AppAlert />
+          <AppToast />
         </SessionBootstrap>
       </ThemeProvider>
     </QueryClientProvider>

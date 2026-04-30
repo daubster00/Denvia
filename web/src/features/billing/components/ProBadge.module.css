@@ -1,0 +1,29 @@
+/* ProBadge — UX-DR10: brand-gradient 배경, 흰 텍스트, radius-full */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--brand-gradient, linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%));
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.sm {
+  font-size: 11px;
+  padding: 2px 8px;
+  gap: 2px;
+}
+
+.md {
+  font-size: 13px;
+  padding: 4px 12px;
+}
+
+.lg {
+  font-size: 15px;
+  padding: 6px 16px;
+  gap: 6px;
+}

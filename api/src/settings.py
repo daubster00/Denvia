@@ -1,4 +1,6 @@
-"""Denvia API 설정 — pydantic-settings 기반 환경변수 로딩."""
+﻿"""Denvia API 설정 — pydantic-settings 기반 환경변수 로딩."""
+
+from decimal import Decimal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,10 +32,21 @@ class Settings(BaseSettings):
     # 관리자 초기 계정
     denvia_admin_email: str = "admin@denvia.local"
     denvia_admin_initial_password: str = "change_me_in_production"
+    denvia_admin_phone: str | None = None  # 5.2: 예산 경고 알림톡 발송 대상
+
+    # 예산 통제 (Story 5.2)
+    denvia_initial_monthly_budget_usd: Decimal = Decimal("100.00")
 
     # Observability
     sentry_dsn_api: str = ""
     sentry_environment: str = "development"
+
+    # 결제 PG (Story 3.1)
+    pg_provider: str = "toss"                         # toss | nicepay (PG_PROVIDER)
+    pro_monthly_price_krw: int = 9900                 # Pro 플랜 월 가격 (원)
+
+    # 토스페이먼츠 (Story 3.2)
+    toss_secret_key: str = ""                         # TOSS_SECRET_KEY — 서버 전용, 절대 프론트 노출 금지
 
     # 메시징 어댑터 (Story 4.1)
     messaging_provider: str = "stub"           # stub | aligo | nhn_cloud

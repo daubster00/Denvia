@@ -38,6 +38,7 @@ beforeEach(() => {
   vi.stubGlobal("EventSource", MockEventSource);
   useAdminEventsStore.setState({
     rebuildProgress: null,
+    activeJobId: null,
     budgetWarning: null,
     killswitchStatus: null,
   });
@@ -48,10 +49,10 @@ afterEach(() => {
 });
 
 describe("useAdminEventsSSE", () => {
-  it("마운트 시 EventSource가 /api/v1/admin/events withCredentials:true로 생성된다", () => {
+  it("마운트 시 EventSource가 API_BASE/api/v1/admin/events withCredentials:true로 생성된다", () => {
     renderHook(() => useAdminEventsSSE());
     expect(MockEventSource.instances).toHaveLength(1);
-    expect(MockEventSource.instances[0].url).toBe("/api/v1/admin/events");
+    expect(MockEventSource.instances[0].url).toMatch(/\/api\/v1\/admin\/events$/);
     expect(MockEventSource.instances[0].withCredentials).toBe(true);
   });
 
@@ -64,11 +65,9 @@ describe("useAdminEventsSSE", () => {
   it("rag_rebuild_progress 이벤트 수신 시 스토어가 업데이트된다", () => {
     renderHook(() => useAdminEventsSSE());
     const es = MockEventSource.instances[0];
-    es.dispatchEvent("rag_rebuild_progress", JSON.stringify({ percent: 30, phase: "indexing" }));
-    expect(useAdminEventsStore.getState().rebuildProgress).toEqual({
-      percent: 30,
-      phase: "indexing",
-    });
+    const payload = { progress: 30, stage: "indexing", job_id: 1, type: "rag_rebuild_progress" };
+    es.dispatchEvent("rag_rebuild_progress", JSON.stringify(payload));
+    expect(useAdminEventsStore.getState().rebuildProgress).toEqual(payload);
   });
 
   it("budget_warning 이벤트 수신 시 스토어가 업데이트된다", () => {

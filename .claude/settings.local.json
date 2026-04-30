@@ -38,7 +38,10 @@
       "PowerShell(ls \"C:\\\\Users\\\\daubs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python37-32\\\\Scripts\\\\\" | Select-Object Name | Where-Object {$_.Name -match \"pytest|uv|poetry\"})",
       "PowerShell(ls \"D:\\\\projects\\\\Dental Chatbot\\\\api\\\\.venv\\\\Scripts\" -ErrorAction SilentlyContinue | Where-Object {$_.Name -match \"pytest|python\"} | Select-Object Name)",
       "Bash(rm -rf \"D:/projects/Dental Chatbot/api/.git\")",
-      "Bash(rm -rf \"D:/projects/Dental Chatbot/web/.git\")"
+      "Bash(rm -rf \"D:/projects/Dental Chatbot/web/.git\")",
+      "WebFetch(domain:docs.tosspayments.com)",
+      "Bash(rm .git/index.lock)",
+      "Bash(git add *)"
     ]
   }
 }

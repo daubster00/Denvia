@@ -1,6 +1,6 @@
 # ONBOARDING — Denvia 관리자 첫 사용 가이드
 
-> **최종 수정일:** 2026-04-24
+> **최종 수정일:** 2026-04-28
 > **작성자:** Hyung woo
 > **승인자:** (인수자 검토 시 기입)
 > **버전:** v1.0
@@ -10,14 +10,14 @@
 
 > **목표 검증 흐름**: 본 4단계를 외부 조력 없이 순서대로 완료할 수 있어야 한다(Journey 4 검증 기준).
 
-> ⚠️ **현 시점 검증 가능 범위 안내 (2026-04-24 기준)**:
+> ⚠️ **현 시점 검증 가능 범위 안내 (2026-04-28 기준)**:
 > 본 4단계 흐름은 다음 스토리들이 모두 완료된 후 정식 검증된다:
-> - **Step 1 (관리자 로그인)**: Story 5.1 (관리자 셸 라우팅) 완료 후 `/admin/dashboard` 진입 가능. 현재는 단계별 dry-run만 가능.
+> - **Step 1 (관리자 로그인)**: Story 5.1 (관리자 셸 라우팅)은 `review` 상태이며 `/admin` 셸·권한 가드·placeholder 대시보드가 구현되어 있다. 단, 현재 라우트는 `/admin/dashboard`가 아니라 `/admin`이다.
 > - **Step 2 (TXT 업로드)**: Story 8.1 (TXT 업로드 + 포맷 검증) 완료 후.
 > - **Step 3 (재빌드)**: Story 8.3 (FAISS 스왑) 완료 후.
 > - **Step 4 (공지 발송)**: Story 7.1 (공지 RichTextEditor) + HOLD-MSG 해제 후.
 >
-> 위 스토리 완료 전에는 본 가이드를 **개념 학습 + 단계별 dry-run** 용도로만 사용하고, "10분 내 자치권" 목표 검증은 모든 의존 스토리 완료 후 인수 시점에 수행한다.
+> Step 1은 관리자 셸 진입까지 실검증 가능하다. Step 2~4 완료 전에는 전체 4단계 흐름을 **개념 학습 + 단계별 dry-run** 용도로 사용하고, "10분 내 자치권" 목표 검증은 모든 의존 스토리 완료 후 인수 시점에 수행한다.
 
 > **Story 원문 위치**: 본 문서가 인용하는 "Story X.Y" 파일은 `_bmad-output/implementation-artifacts/` 디렉터리에 있다 (예: `5-1-admin-shell-routing-...md`). 운영 인수 후에는 동일 위치에서 참조 가능.
 
@@ -87,7 +87,7 @@ docker compose -f infra/docker-compose.yml exec api \
 
 ### 1.2 첫 로그인
 
-> **(TBD — Story 1.4 완료 / 관리자 셸은 Story 5.1 backlog)**: 현 시점 일반 사용자 로그인은 가능하나 관리자 전용 라우팅(`/admin`)이 미구현이다. 본 단계는 Story 5.1 완료 후 정식 활용된다.
+> **현재 구현 상태**: 관리자 전용 로그인 화면은 별도로 두지 않고, 일반 로그인 화면에서 admin 계정으로 로그인한 뒤 `/admin`으로 진입한다. `web/src/app/admin/layout.tsx`가 세션의 `role='admin'`을 확인하며, 미인증 또는 일반 사용자는 토스트 없이 `/`로 리다이렉트한다.
 
 ```
 브라우저 접속: http://localhost:3000/login (또는 운영 도메인)
@@ -115,18 +115,29 @@ ASCII 도식:
 └──────────────────────────────────┘
                 ↓
 ┌──────────────────────────────────┐
-│  /admin/dashboard (Story 5.1)    │
-│  ⚠️ Story 5.1 미완료 시 라우트 X │
+│  /admin (Story 5.1 admin shell)  │
+│  대시보드 위젯은 Story 5.2부터   │
 └──────────────────────────────────┘
 ```
 
 > ⚠️ **위 도식은 정상 플로우 — 현 시점에는 §1.3 우회 SQL이 사전에 필요하다.**
 
+#### 관리자 전용 로그인 화면 검토 메모
+
+현재 구조에서는 별도 `/admin/login` 화면이 필수는 아니다. 로그인·세션·오류 처리 UX를 하나로 유지할 수 있고, 관리자 경로 존재 여부를 숨기는 Story 5.1 AC-3 원칙과도 잘 맞는다.
+
+다만 운영자 온보딩을 더 선명하게 하려면 후속 UX 스토리로 **얇은 관리자 진입 화면**을 고려할 수 있다:
+
+- `/admin/login`은 새 인증 로직을 만들지 않고 기존 이메일 로그인 컴포넌트를 재사용한다.
+- 성공 후 `next=/admin`으로 이동한다.
+- 소셜 로그인·회원가입·아이디 찾기 등 일반 사용자 CTA는 숨기거나 축소한다.
+- 실패 메시지는 일반 로그인과 동일하게 유지해 계정 존재 여부를 더 노출하지 않는다.
+
 ### 1.3 비밀번호 변경 강제 분기 — 현 구현 상태 안내
 
 > **⚠️ 코드 ↔ 스토리 명세 편차 (AC-10 표기)**:
 > - 현 `api/scripts/seed_admin.py:53` 구현은 신규 admin 계정 생성 시 `must_reset_password=false`로 INSERT한다.
-> - 본 ONBOARDING 명세는 `must_reset_password=true` 자동 강제 분기를 가정하고 있으나, 해당 분기 미들웨어는 **TBD — Story 5.1(관리자 셸 라우팅)** 또는 별도 후속 스토리에서 구현 예정.
+> - 본 ONBOARDING 명세는 `must_reset_password=true` 자동 강제 분기를 가정하고 있으나, 해당 분기 미들웨어는 **TBD — 별도 계정 보안 후속 스토리**에서 구현 예정이다.
 > - **임시 운영 권장 (초기 세팅 전용)**: seed_admin.py 직후 아래 단순 SQL 실행 → 다음 로그인 시 비밀번호 변경 강제됨. 단 `password_hash`는 보존되므로 초기 비밀번호로 1회 로그인 후 변경.
 >   ```sql
 >   -- 초기 세팅 직후 1회만 실행
@@ -337,6 +348,7 @@ docker compose -f infra/docker-compose.yml logs api | grep "messaging.stub.send_
 
 | 날짜 | 검증자 | 결과 | 조치 |
 |---|---|---|---|
+| 2026-04-28 | Codex | 문서 정합성 업데이트 — Story 5.1 admin shell 구현 상태를 반영해 `/admin/dashboard`·Story 5.1 backlog 표현을 `/admin` shell review 상태로 정정. 관리자 전용 로그인 화면은 필수 구현이 아니라 기존 로그인 재사용 + 후속 UX 스토리 후보로 기록. | Step 2~4 의존 스토리 완료 후 전체 온보딩 재검증 |
 | 2026-04-24 | Hyung woo | 부분 OK — Step 1 시드 스크립트 실재 확인(`api/scripts/seed_admin.py`). `must_reset_password=true` 자동 분기는 코드(`seed_admin.py:53` 기준 false)와 명세 간 편차 발견 → 본 문서에 ⚠️ 경고로 명시. Step 2~4는 해당 라우트(`/admin/rag/data`·`/admin/content`)·UI(Tiptap)·SSE 채널이 모두 미구현이므로 Story 8.1·8.3·7.1 완료 후 실 검증 필요. | 인수 시점에 Story 5.1·8.1·8.3·7.1 완료 후 본 문서 재검증 + 스크린샷 교체 |
 | 2026-04-24 | Hyung woo (Story 9.4 AC-7 시나리오 ① Dry-run) | 부분 OK — `seed_admin.py` AST(추상 구문 트리) 정적 파싱 OK. 호스트 Docker daemon 미기동(`Docker Desktop` 실행 필요)으로 실 컨테이너 기동·`alembic upgrade head`·`seed_admin.py` 런타임 실행은 본 검증에서 보류. `must_reset_password=true` 분기 미구현 편차는 본 문서 §1.3에 ⚠️ 경고로 영구 명시. Step 2(TXT 업로드)·Step 3(FAISS 재빌드)는 Story 8.1·8.3 backlog로 Dry-run 불가 → 문서상 절차만 검토 완료. | 인수 시점에 Docker 환경 기동 후 §1.1 명령 3종(`docker compose up` → `alembic upgrade head` → `seed_admin.py`)을 순차 실행하여 실 검증 수행 |
-| 2026-04-24 | claude-opus-4-7 (code-review 후속 10건 patch 적용) | OK — 상단 banner(Story 5.1 미완료 시 검증 보류 + Story 원문 위치 안내), §사전준비(DENVIA_ADMIN_PHONE 추가 절차 강화 — settings.py 필드 추가 명시), §1.1(alembic current 사전 확인 + 부분 실패 처리 4종), §1.2 도식(must_reset_password 편차 ⚠️ 도식 내 표기 + Story 5.1 미완료 시 라우트 X), §1.3(우회 SQL 도식화 + 분실 복구는 SECURITY §3.2.b로 분리), §4.1(즉시 발송 회수 불가 경고 + 2단계 확인 모달 명시), 마무리 체크리스트(/account/password Story 4.3 표기), `docs/screenshots/` 디렉터리 신설 + README.md(캡처 가이드) 적용 완료 | — |
+| 2026-04-24 | claude-opus-4-7 (code-review 후속 10건 patch 적용) | OK — 상단 banner(당시 Story 5.1 미완료 시 검증 보류 + Story 원문 위치 안내), §사전준비(DENVIA_ADMIN_PHONE 추가 절차 강화 — settings.py 필드 추가 명시), §1.1(alembic current 사전 확인 + 부분 실패 처리 4종), §1.2 도식(must_reset_password 편차 ⚠️ 도식 내 표기), §1.3(우회 SQL 도식화 + 분실 복구는 SECURITY §3.2.b로 분리), §4.1(즉시 발송 회수 불가 경고 + 2단계 확인 모달 명시), 마무리 체크리스트(/account/password Story 4.3 표기), `docs/screenshots/` 디렉터리 신설 + README.md(캡처 가이드) 적용 완료 | — |

@@ -180,3 +180,47 @@
   cursor: pointer;
   margin-top: 8px;
 }
+
+/* SignupForm — 약관/개인정보 동의 체크박스 */
+.consentBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f1;
+  border-radius: 8px;
+}
+
+.consentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.consentCheckbox {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: #7c3aed;
+  cursor: pointer;
+}
+
+.consentText {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.consentLink {
+  color: #7c3aed;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.consentLink:hover {
+  color: #6d28d9;
+}

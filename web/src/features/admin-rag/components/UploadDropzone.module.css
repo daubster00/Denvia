@@ -1,0 +1,111 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  border: 2px dashed #d1d5db;
+  border-radius: 0.75rem;
+  background-color: #fafafa;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+  outline: none;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible {
+  border-color: #7c3aed;
+  background-color: #f5f3ff;
+}
+
+.dropzone:focus-visible {
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.3);
+}
+
+.dragOver {
+  border-color: #7c3aed;
+  background-color: #f5f3ff;
+}
+
+.uploading {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.icon {
+  font-size: 2rem;
+}
+
+.hint {
+  font-size: 0.9rem;
+  color: #374151;
+  font-weight: 500;
+  margin: 0;
+}
+
+.subHint {
+  font-size: 0.8125rem;
+  color: #9ca3af;
+  margin: 0;
+}
+
+.progressWrapper {
+  width: 100%;
+  max-width: 320px;
+  position: relative;
+}
+
+.progressBar {
+  height: 6px;
+  background-color: #7c3aed;
+  border-radius: 3px;
+  transition: width 0.1s;
+}
+
+.progressText {
+  display: block;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-top: 0.375rem;
+}
+
+.errorMessage {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+.retryBtn {
+  margin-left: auto;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background-color: #fff;
+  border: 1px solid #fca5a5;
+  border-radius: 0.375rem;
+  color: #b91c1c;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.retryBtn:hover {
+  background-color: #fef2f2;
+}

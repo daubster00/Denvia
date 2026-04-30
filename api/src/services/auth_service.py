@@ -71,6 +71,13 @@ _LOGIN_LOCKOUT_TTL = 300   # 5분
 _LOGIN_FAIL_WINDOW = 300   # 카운터 TTL도 5분 (성공 시 초기화)
 _LOGIN_BRUTE_THRESHOLD = 3  # 3회 이상 실패 → anomaly + 4번째부터 lockout
 
+# OAuth provider → 한국어 라벨 매핑 (AC-1, AC-6)
+_PROVIDER_LABEL_KO: dict[str, str] = {
+    "kakao": "카카오",
+    "google": "구글",
+    "naver": "네이버",
+}
+
 
 def _otp_keys(purpose: str, phone: str) -> tuple[str, str, str]:
     return (
@@ -322,6 +329,74 @@ async def login_user(
     )
     user = result.scalar_one_or_none()
 
+    # AC-1: OAuth-only 사용자 분기
+    # AC-2 락아웃 우선은 위 락아웃 체크에서 이미 처리됨.
+    # AC-5 탈퇴 사용자는 위 withdrawn_at.is_(None) 필터로 자동 제외.
+    if user is not None and user.password_hash is None:
+        oi_rows = await db.execute(
+            select(OAuthIdentity.provider)
+            .where(OAuthIdentity.user_id == user.id)
+            .order_by(OAuthIdentity.linked_at.asc())
+        )
+        providers_raw = oi_rows.scalars().all()
+        seen: set[str] = set()
+        linked_providers: list[str] = []
+        for p in providers_raw:
+            if p in _PROVIDER_LABEL_KO and p not in seen:
+                linked_providers.append(p)
+                seen.add(p)
+
+        if linked_providers:
+            label_text = ", ".join(_PROVIDER_LABEL_KO[p] for p in linked_providers)
+            if len(linked_providers) == 1:
+                msg = f"이 계정은 {label_text}로 가입되어 있습니다. {label_text}로 로그인해 주세요."
+            else:
+                msg = f"이 계정은 {label_text}로 가입되어 있습니다. 가입한 채널로 로그인해 주세요."
+
+            # AC-7: 운영 관측 이벤트 (audit_logs INSERT 아님)
+            logger.info(
+                "auth.login.oauth_only_hint",
+                user_id=user.id,
+                email=mask_email(user.email),
+                providers=linked_providers,
+                ip=ip,
+            )
+
+            # AC-12: enumeration throttle — 기존 로그인 실패 카운터 재사용
+            async with _make_redis_rl(redis_url) as r:
+                count_raw = await r.get(fail_key)
+                count = int(count_raw) + 1 if count_raw else 1
+                await r.set(fail_key, str(count), ex=_LOGIN_FAIL_WINDOW)
+
+                if count >= _LOGIN_BRUTE_THRESHOLD:
+                    now = datetime.now(tz=timezone.utc)
+                    event = AnomalyEvent(
+                        type="login_brute_force",
+                        target_user_id=user.id,
+                        ip=ip,
+                        ua=ua,
+                        details={"attempt_count": count, "reason": "oauth_only_hint"},
+                        status="new",
+                        created_at=now,
+                    )
+                    db.add(event)
+                    try:
+                        await db.commit()
+                    except Exception:
+                        await db.rollback()
+
+                    await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
+
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "AUTH_ACCOUNT_OAUTH_ONLY",
+                    "message": msg,
+                    "linked_providers": linked_providers,
+                },
+            )
+        # password_hash IS NULL + oauth 0개 비정상 상태 → 기존 401 경로 fall-through
+
     # 비밀번호 검증 (미존재 시 dummy 검증으로 timing 균일화)
     password_correct = False
     if user is not None and user.password_hash is not None:
@@ -351,7 +426,7 @@ async def login_user(
                 )
                 db.add(event)
                 try:
-                    await db.flush()
+                    await db.commit()
                 except Exception:
                     await db.rollback()
 

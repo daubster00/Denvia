@@ -1,9 +1,74 @@
 /* 관리자 레이아웃 + 대시보드 */
 
 .adminShell {
+  --admin-color-text: #111827;
+  --admin-color-muted: #6b7280;
+  --admin-color-border: #e5e7eb;
+  --admin-color-surface: #ffffff;
+  --admin-color-surface-muted: #f9fafb;
+  --admin-radius-sm: 6px;
+  --admin-radius-md: 8px;
+  --admin-radius-lg: 12px;
+  --admin-space-page-x: 32px;
+  --admin-space-page-y: 28px;
+  --admin-text-xs: 12px;
+  --admin-text-sm: 14px;
+  --admin-text-md: 15px;
+  --admin-text-lg: 18px;
+  --admin-title: 24px;
+  --admin-control-height: 36px;
+
   display: flex;
   height: 100vh;
   overflow: hidden;
+  color: var(--admin-color-text);
+  font-size: var(--admin-text-sm);
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+.adminShell :global(*) {
+  letter-spacing: 0;
+}
+
+.adminShell :global(button),
+.adminShell :global(input),
+.adminShell :global(select),
+.adminShell :global(textarea) {
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.adminShell :global(button),
+.adminShell :global(input),
+.adminShell :global(select) {
+  min-height: var(--admin-control-height);
+}
+
+.adminShell :global(button) {
+  font-size: var(--admin-text-sm);
+}
+
+.adminShell :global(input),
+.adminShell :global(select),
+.adminShell :global(textarea) {
+  font-size: var(--admin-text-sm);
+}
+
+.adminShell :global(table) {
+  font-size: var(--admin-text-sm);
+  line-height: 1.5;
+}
+
+.adminShell :global(th),
+.adminShell :global(td) {
+  font-size: var(--admin-text-sm);
+  line-height: 1.5;
+}
+
+.adminShell :global(p),
+.adminShell :global(li) {
+  line-height: 1.55;
 }
 
 .adminBody {
@@ -21,7 +86,7 @@
 }
 
 .mobileWarning p {
-  font-size: 13px;
+  font-size: var(--admin-text-sm);
   color: #92400e;
   margin: 0;
 }
@@ -39,17 +104,17 @@
 
 /* 대시보드 페이지 */
 .dashboardPage {
-  padding: 32px;
+  padding: var(--admin-space-page-y) var(--admin-space-page-x);
 }
 
 .dashboardTitle {
-  font-size: 24px;
+  font-size: var(--admin-title);
   font-weight: 700;
   color: #111827;
   margin-bottom: 8px;
 }
 
 .dashboardCaption {
-  font-size: 14px;
+  font-size: var(--admin-text-sm);
   color: #6b7280;
 }

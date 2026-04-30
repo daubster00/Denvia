@@ -1,0 +1,124 @@
+/* PricingCard — UX-DR9. 2px brand-gradient border(Pro), 모던·심플 레이아웃 */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px 24px;
+  border-radius: 16px;
+  border: 2px solid #e5e7eb;
+  background: #ffffff;
+  flex: 1 1 280px;
+  max-width: 340px;
+  transition: box-shadow 0.2s ease;
+}
+
+/* Pro 카드: 2px brand-gradient border (UX-DR10) */
+.recommended {
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+.recommended::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%);
+  z-index: -1;
+}
+
+.currentPlan {
+  border-color: var(--semantic-primary-normal, #8B5CF6);
+}
+
+.recommended.currentPlan::before {
+  background: var(--semantic-primary-normal, #8B5CF6);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.planName {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.price {
+  font-size: 36px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.period {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.featureList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #374151;
+}
+
+.checkIcon {
+  color: #8B5CF6;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ctaButton {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.ctaButton:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ctaPro {
+  background: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%);
+  color: #ffffff;
+}
+
+.ctaPro:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.ctaFree {
+  background: #f3f4f6;
+  color: #6b7280;
+}

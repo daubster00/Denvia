@@ -1,10 +1,10 @@
-"""Admin SSE 채널 뼈대 — Story 5.1 (AC-10).
+"""Admin SSE 채널 — Story 5.1/8.3.
 
-publish는 이 스토리에서 구현하지 않음.
-실제 publish는 Story 5.2(예산 경고), 8.3(RAG rebuild), 9.2(Kill-switch)에서 추가.
+SSE `event:` 라인 삽입으로 EventSource.addEventListener("type", ...) 발화 보장.
 """
 
 import asyncio
+import json as _json
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -27,6 +27,7 @@ async def admin_sse_events(
     async def generator():
         pubsub = redis.pubsub()
         await pubsub.subscribe("admin:events")
+        last_heartbeat = asyncio.get_event_loop().time()
         try:
             while True:
                 msg = await pubsub.get_message(
@@ -36,10 +37,17 @@ async def admin_sse_events(
                     data = msg["data"]
                     if isinstance(data, bytes):
                         data = data.decode()
-                    yield f"data: {data}\n\n"
+                    try:
+                        _parsed = _json.loads(data)
+                        _etype = _parsed.get("type", "message")
+                        yield f"event: {_etype}\ndata: {data}\n\n"
+                    except Exception:
+                        yield f"data: {data}\n\n"
                 else:
-                    yield ": heartbeat\n\n"
-                    await asyncio.sleep(15)
+                    now = asyncio.get_event_loop().time()
+                    if now - last_heartbeat >= 15:
+                        yield ": heartbeat\n\n"
+                        last_heartbeat = now
         finally:
             await pubsub.unsubscribe("admin:events")
             await pubsub.aclose()

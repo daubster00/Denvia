@@ -1,0 +1,152 @@
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  min-height: 0;
+}
+
+.widgetComingSoon {
+  background: #f9fafb;
+  border-style: dashed;
+  border-color: #d1d5db;
+  box-shadow: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.titleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.caption {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.detailLink {
+  font-size: 14px;
+  color: #4b5563;
+  text-decoration: none;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.detailLink:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.detailLink:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+.detailLinkDisabled {
+  font-size: 14px;
+  color: #9ca3af;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: not-allowed;
+}
+
+.badgeReady {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #047857;
+  background: #ecfdf5;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.badgeComingSoon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.footnote {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.stateBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 12px 8px;
+  color: #6b7280;
+  font-size: 14px;
+  min-height: 60px;
+}
+
+.stateError {
+  color: #b91c1c;
+}
+
+.retryBtn {
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background-color: #f9fafb;
+}
+
+.retryBtn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}

@@ -37,10 +37,10 @@ ReframeOption = Annotated[str, Field(min_length=1, max_length=120)]
 
 
 class ReframePayload(BaseModel):
-    """역질문 응답 구조 — Story 2.6.
+    """정보부족 안내 구조 — Story 2.6.
 
-    follow_up_question: RAG 자유 텍스트 후속 질문을 한 문장으로 정규화 (개행→단일 공백).
-    options: 3~4개 짧은 한국어 후속 답변 후보 (각 1~120자, trim, 개행 금지).
+    follow_up_question: 독립된 새 질문으로 다시 작성하라는 안내를 한 문장으로 정규화.
+    options: 3~4개 짧은 한국어 새 질문 예시 또는 포함 문구 (각 1~120자, trim, 개행 금지).
     """
 
     follow_up_question: str = Field(min_length=1, max_length=500)

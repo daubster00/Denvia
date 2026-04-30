@@ -3,6 +3,7 @@
 from celery import Celery
 from celery.schedules import crontab
 
+import api.src.models  # noqa: F401 — 워커 시작 시 모든 ORM 모델을 메타데이터에 등록
 from api.src.settings import REDIS_DB_CELERY, settings
 
 # Redis DB 0: Celery broker/result
@@ -16,6 +17,9 @@ celery_app = Celery(
     include=[
         "api.src.workers.notification_tasks",  # Story 4.1: 알림 큐 태스크
         "api.src.workers.retention_tasks",     # Story 5.1: 감사 로그 retention
+        "api.src.workers.rag_tasks",           # Story 8.3: RAG 재빌드
+        "api.src.workers.budget_tasks",        # Story 5.2: 예산 임계 감시
+        "api.src.workers.billing_tasks",       # Story 3.3: 자동 갱신 배치
     ],
 )
 
@@ -45,6 +49,32 @@ celery_app.conf.update(
         "retention-audit-logs-daily": {
             "task": "retention_tasks.delete_old_audit_logs",
             "schedule": crontab(hour=3, minute=0),
+        },
+        # Story 8.3: 4h 이상 running 상태 재빌드 job 실패 처리 — 10분마다
+        "reap-stale-rebuilds-10min": {
+            "task": "rag.reap_stale_rebuilds",
+            "schedule": 600,
+        },
+        # Story 8.3: 소프트 삭제 파일 30일 후 FS 영구 삭제 — 매일 04:00 KST
+        "purge-deleted-knowledge-daily": {
+            "task": "rag.purge_deleted_knowledge_files",
+            "schedule": crontab(hour=4, minute=0),
+        },
+        # Story 5.2: 예산 임계 감시 + auto kill-switch — 매시 정각 KST
+        "budget-check-hourly": {
+            "task": "budget_tasks.check_thresholds",
+            "schedule": crontab(minute=0),
+        },
+        # Story 3.3: 월 자동 갱신 스캔 — 매일 04:00 KST
+        "auto-renew-scan-daily-0400": {
+            "task": "billing.auto_renew_scan",
+            "schedule": crontab(hour=4, minute=0),
+        },
+        # Story 3.5: 매시 15분 — cancel_pending && current_period_end<=now 일괄 종료
+        # (budget-check-hourly가 minute=0을 점유 중이므로 분 슬롯 분산)
+        "finalize-cancellations-hourly-15": {
+            "task": "billing.finalize_cancellations",
+            "schedule": crontab(minute=15),
         },
     },
 )

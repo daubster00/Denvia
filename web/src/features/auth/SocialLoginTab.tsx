@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import Link from "next/link";
 import styles from "./SocialLoginTab.module.css";
 
 /** 소셜 로그인 탭 — 3사 버튼 UI. (Story 1.6 구현) */
@@ -48,6 +49,20 @@ export function SocialLoginTab({ mode = "login" }: { mode?: "login" | "signup" }
         <GoogleColorIcon />
         구글로 계속하기
       </button>
+
+      {mode === "signup" && (
+        <p className={styles.consentNotice}>
+          가입 진행 시{" "}
+          <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className={styles.consentLink}>
+            이용약관
+          </Link>{" "}
+          및{" "}
+          <Link href="/legal/privacy" target="_blank" rel="noopener noreferrer" className={styles.consentLink}>
+            개인정보 처리방침
+          </Link>
+          에 동의한 것으로 간주됩니다.
+        </p>
+      )}
     </div>
   );
 }

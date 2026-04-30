@@ -3,6 +3,8 @@
 RAG 체인이 자유 텍스트 역질문만 출력하는 제약(NFR-M2)을 우회하기 위해
 웹 레이어에서 휴리스틱 사전 필터 + 별도 structuring LLM 호출로
 {follow_up_question, options[3~4]} 구조화 페이로드를 합성한다.
+대화 맥락을 이어받지 않는 QA 정책에 맞춰, 결과는 후속 답변 요구가 아닌
+"독립된 새 질문을 작성하는 안내"로 정규화한다.
 
 설계 근거: _bmad-output/implementation-artifacts/2-6-question-re-frame.md §5.0
 """
@@ -34,13 +36,25 @@ _CONFIRMATIVE_PHRASES = (
     "보세요\n",
     "입니다.\n",
 )
+_INFO_SHORTAGE_GUIDANCE_MARKERS = (
+    "새 질문",
+    "다시 질문",
+    "포함해서",
+    "정보가 부족",
+    "필요한 정보",
+)
 _STRUCTURING_TIMEOUT_SECONDS = 5
 
 _SYSTEM_PROMPT = (
-    "사용자의 원 질문과 어시스턴트의 자유 텍스트 후속 질문을 받아 구조화한다. "
-    "follow_up_question은 어시스턴트의 의도를 보존하되 한 문장으로 자연스럽게 요약한다. "
-    "options는 3~4개의 짧은 한국어 후속 답변 후보(각 1~120자)로, "
-    "사용자가 클릭 한 번으로 재질의할 수 있는 명확한 선택지여야 한다. "
+    "사용자의 원 질문과 어시스턴트의 자유 텍스트 정보부족 안내를 받아 구조화한다. "
+    "이 서비스는 이전 대화 맥락을 이어받지 않으므로, 사용자의 다음 답변을 기다리는 "
+    "후속 질문 형태로 만들면 안 된다. "
+    "follow_up_question은 부족한 정보 때문에 답변할 수 없다는 점과 독립된 새 질문으로 "
+    "다시 질문해야 한다는 점을 한 문장으로 안내한다. "
+    "반드시 '새 질문에 ... 포함해서 다시 질문해줘' 형식을 사용하고, "
+    "'알려줘?', '입력해줘?', '어느 치아인가요?'처럼 이어지는 답변을 유도하는 표현은 금지한다. "
+    "options는 3~4개의 짧은 한국어 새 질문 예시 또는 새 질문에 넣을 구체 문구(각 1~120자)로 만든다. "
+    "사용자가 클릭하면 입력창에 들어가 독립 질문으로 제출할 수 있어야 한다. "
     "options에는 의미가 명확히 구분되는 항목만 포함하고, 중복·모호한 표현은 피한다."
 )
 
@@ -63,18 +77,20 @@ def _passes_heuristic(full_text: str) -> bool:
     text = full_text.strip()
     if len(text) > _MAX_REFRAME_LEN:
         return False
-    if not (text.endswith("?") or text.endswith("？")):
-        return False
     head = text[:60]
     if any(p in head for p in _CONFIRMATIVE_PHRASES):
         return False
-    return True
+    if text.endswith("?") or text.endswith("？"):
+        return True
+    if any(marker in text for marker in _INFO_SHORTAGE_GUIDANCE_MARKERS):
+        return True
+    return False
 
 
 async def detect_and_extract(
     *, question_text: str, full_text: str
 ) -> ReframeExtractionResult | None:
-    """역질문 감지 + 구조화 추출.
+    """정보부족 안내 감지 + 구조화 추출.
 
     None 반환 시 일반 답변으로 폴백 (사용자 UX 무영향).
     예외 / timeout / Pydantic ValidationError는 모두 None으로 흡수한다.
@@ -87,7 +103,7 @@ async def detect_and_extract(
         HumanMessage(
             content=(
                 f"[원 질문]\n{question_text}\n\n"
-                f"[어시스턴트 자유 텍스트 후속 질문]\n{full_text}"
+                f"[어시스턴트 자유 텍스트 정보부족 안내]\n{full_text}"
             )
         ),
     ]

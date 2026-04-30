@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,12 +50,24 @@ export function SignupForm() {
     setValue,
     setError,
     clearErrors,
+    watch,
     formState: { errors },
   } = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
     mode: "onBlur",
-    defaultValues: { email: "", password: "", phone: "", phone_verification_token: "" },
+    defaultValues: {
+      email: "",
+      password: "",
+      phone: "",
+      phone_verification_token: "",
+      agreed_to_terms: false,
+      agreed_to_privacy: false,
+    },
   });
+
+  // 약관 동의 상태 — 가입 버튼 활성화 조건에 사용
+  const agreedToTerms = watch("agreed_to_terms");
+  const agreedToPrivacy = watch("agreed_to_privacy");
 
   // SMS 발송
   const requestSms = useCallback(async () => {
@@ -128,7 +141,8 @@ export function SignupForm() {
   const inputClass = (hasError: boolean) =>
     `${styles.input} ${hasError ? styles.inputError : ""}`;
 
-  const submitDisabled = submitting || !phoneVerificationToken;
+  const submitDisabled =
+    submitting || !phoneVerificationToken || !agreedToTerms || !agreedToPrivacy;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className={styles.formColumn}>
@@ -226,11 +240,52 @@ export function SignupForm() {
         <p role="alert" className={styles.inlineErrorText}>{smsError}</p>
       )}
 
+      {/* 약관 동의 — 회원가입 시 필수 */}
+      <div className={styles.consentBlock}>
+        <label className={styles.consentRow}>
+          <input
+            type="checkbox"
+            className={styles.consentCheckbox}
+            aria-invalid={!!errors.agreed_to_terms}
+            {...register("agreed_to_terms")}
+          />
+          <span className={styles.consentText}>
+            <Link href="/legal/terms" target="_blank" rel="noopener noreferrer" className={styles.consentLink}>
+              이용약관
+            </Link>
+            에 동의합니다
+            <span aria-label="필수" className={styles.required}> *</span>
+          </span>
+        </label>
+        {errors.agreed_to_terms && (
+          <p role="alert" className={styles.fieldError}>{errors.agreed_to_terms.message}</p>
+        )}
+
+        <label className={styles.consentRow}>
+          <input
+            type="checkbox"
+            className={styles.consentCheckbox}
+            aria-invalid={!!errors.agreed_to_privacy}
+            {...register("agreed_to_privacy")}
+          />
+          <span className={styles.consentText}>
+            <Link href="/legal/privacy" target="_blank" rel="noopener noreferrer" className={styles.consentLink}>
+              개인정보 처리방침
+            </Link>
+            에 동의합니다
+            <span aria-label="필수" className={styles.required}> *</span>
+          </span>
+        </label>
+        {errors.agreed_to_privacy && (
+          <p role="alert" className={styles.fieldError}>{errors.agreed_to_privacy.message}</p>
+        )}
+      </div>
+
       {/* 가입 완료 버튼 */}
       <button
         type="submit"
         disabled={submitDisabled}
-        className={`${styles.primaryBtn} ${!phoneVerificationToken ? styles.primaryBtnDisabled : ""}`}
+        className={`${styles.primaryBtn} ${submitDisabled ? styles.primaryBtnDisabled : ""}`}
       >
         {submitting ? "처리 중..." : "회원가입"}
       </button>

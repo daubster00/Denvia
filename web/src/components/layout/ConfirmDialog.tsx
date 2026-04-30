@@ -10,6 +10,8 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  isSubmitting?: boolean;
+  errorMessage?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -26,6 +28,8 @@ export function ConfirmDialog({
   confirmLabel = "확인",
   cancelLabel = "취소",
   danger = false,
+  isSubmitting = false,
+  errorMessage,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -75,6 +79,10 @@ export function ConfirmDialog({
           </p>
         )}
 
+        {errorMessage && (
+          <p className={styles.errorMsg}>{errorMessage}</p>
+        )}
+
         {/* 정방향(확인) 항상 오른쪽 — UX-DR27 */}
         <div className={styles.actions}>
           <button
@@ -88,13 +96,14 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
+            disabled={isSubmitting}
             className={
               danger
                 ? `${styles.confirmBtn} ${styles.confirmBtnDanger}`
                 : styles.confirmBtn
             }
           >
-            {confirmLabel}
+            {isSubmitting ? "처리 중…" : confirmLabel}
           </button>
         </div>
       </div>

@@ -1,0 +1,45 @@
+.oauthOnlyHint {
+  border: 1px solid #e9d5ff;
+  background: #f5f3ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.oauthOnlyMessage {
+  margin: 0;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.providerButtonRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.emphasized {
+  outline: none;
+  outline-offset: 0px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .emphasizedPulse {
+    animation: oauthOnlyPulse 1.5s ease-out 1;
+  }
+
+  @keyframes oauthOnlyPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+    }
+  }
+}

@@ -23,3 +23,9 @@ limit_sms_send_per_hour = limiter.limit("5/hour", key_func=_phone_key)
 
 # Story 1.3 회원가입
 limit_signup = limiter.limit("3/minute")
+
+# Story 3.2 결제 요청 레이트 리밋 (AR23)
+limit_billing = limiter.limit("10/minute")
+
+# Story 4.5 고객문의 제출 — 분당 3회. IP 기반 (slowapi 기본 key_func).
+limit_inquiry = limiter.limit("3/minute")

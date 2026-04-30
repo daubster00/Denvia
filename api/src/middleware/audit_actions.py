@@ -10,8 +10,10 @@ AUDIT_NOTICE_PUBLISH = "notice.publish"               # A-301
 AUDIT_POPUP_TOGGLE = "popup.toggle"                   # A-302
 AUDIT_RAG_UPLOAD = "rag.upload"                       # A-401
 AUDIT_RAG_KNOWLEDGE_EDIT = "rag.knowledge_edit"       # A-402
+AUDIT_RAG_KNOWLEDGE_DELETE = "rag.knowledge_delete"   # A-402 삭제
 AUDIT_RAG_REBUILD = "rag.rebuild"                     # A-403
 AUDIT_PROMPT_EDIT = "prompt.edit"                     # A-404
+AUDIT_MODEL_PARAMS_EDIT = "rag.model_params.update"   # A-404 모델 파라미터
 AUDIT_KILLSWITCH_TOGGLE = "killswitch.toggle"         # A-502
 
 

@@ -1,0 +1,84 @@
+/* SubscriptionStatusCard — Story 3.5 (active / cancel_pending 분기 박스) */
+
+.card {
+  width: 100%;
+  max-width: 720px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.cardCancelPending {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.headingPending {
+  color: #92400e;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.subtitlePending {
+  color: #92400e;
+}
+
+.dangerBtn {
+  padding: 10px 18px;
+  background: transparent;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dangerBtn:hover {
+  background: #fef2f2;
+}
+
+.secondaryBtn {
+  padding: 10px 18px;
+  background: #ffffff;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.secondaryBtn:hover {
+  background: #fef3c7;
+}
+
+.secondaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

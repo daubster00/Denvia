@@ -26,9 +26,27 @@ class TokenUsage:
     cost_usd: float
 
 
-def build_chat_llm(*, streaming: bool, callbacks: list | None = None) -> ChatOpenAI:
-    """ADR-0002 §결정 2: model_name="o4-mini" 기본값 유지 (변경 금지)."""
-    return ChatOpenAI(model_name="o4-mini", streaming=streaming, callbacks=callbacks or [])
+def build_chat_llm(
+    *,
+    streaming: bool,
+    callbacks: list | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+) -> ChatOpenAI:
+    """ADR-0002 §결정 2: model_name="o4-mini" 기본값 유지 (변경 금지).
+
+    temperature·max_tokens는 Story 8.4 런타임 구성 주입용.
+    model_name 파라미터 추가는 ADR-0003 Accepted 후 B-02 PR에서 진행.
+
+    o4-mini는 reasoning 모델로 temperature 파라미터를 지원하지 않음.
+    OpenAI API가 temperature != 1 시 400 오류 반환. 파라미터 전달 생략.
+    """
+    return ChatOpenAI(
+        model_name="o4-mini",
+        streaming=streaming,
+        callbacks=callbacks or [],
+        max_tokens=max_tokens,
+    )
 
 
 # Story 2.6: 역질문 응답 구조화 전용 모델 — RAG 본 체인의 o4-mini와 별도 운용.

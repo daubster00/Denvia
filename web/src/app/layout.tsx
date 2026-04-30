@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "../styles/globals.css";
 import { Providers } from "./providers";
 import { SkipLink } from "@/components/layout/SkipLink";
+import { SupportWidget } from "@/features/support/components/SupportWidget";
 
 export const metadata: Metadata = {
   title: "Denvia — 치과 임상 AI 어시스턴트",
@@ -46,6 +47,8 @@ export default function RootLayout({
           <main id="main" tabIndex={-1}>
             {children}
           </main>
+          {/* Story 4.5 — 우측 하단 고객 지원 위젯 (전 페이지, /admin/* 자동 가드) */}
+          <SupportWidget />
         </Providers>
       </body>
     </html>

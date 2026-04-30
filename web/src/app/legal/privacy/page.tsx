@@ -1,0 +1,279 @@
+import Link from "next/link";
+import type { Metadata } from "next";
+import styles from "@/styles/legal.module.css";
+
+export const metadata: Metadata = {
+  title: "개인정보 처리방침 | Denvia",
+  description: "Denvia 개인정보 처리방침",
+};
+
+/**
+ * 개인정보 처리방침 — 회원가입 동의 및 마이페이지에서 참조.
+ * 정식 시행 전 법무 검토 필요. 원본 마크다운: docs/legal/privacy.md
+ */
+export default function PrivacyPage() {
+  return (
+    <main className={styles.pageMain}>
+      <article className={styles.container}>
+        <Link href="/" className={styles.backLink}>← 홈으로</Link>
+
+        <h1 className={styles.title}>개인정보 처리방침</h1>
+        <p className={styles.meta}>시행일자: 2026-04-30 · 버전 0.1</p>
+
+        <p className={styles.draftBanner}>
+          본 처리방침은 서비스 정식 출시 전 심사용 초안입니다. 정식 시행 시 사전 공지 후 적용됩니다.
+        </p>
+
+        <p className={styles.paragraph}>
+          Denvia(이하 &ldquo;회사&rdquo;)는 「개인정보 보호법」 등 관계 법령에 따라 회원의 개인정보를 보호하고,
+          이와 관련한 고충을 신속하고 원활하게 처리할 수 있도록 다음과 같이 개인정보 처리방침을 수립·공개합니다.
+        </p>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>1. 수집하는 개인정보 항목</h2>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>구분</th>
+                  <th>항목</th>
+                  <th>수집 시점</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>필수</td>
+                  <td>이메일, 비밀번호(암호화), 휴대폰 번호</td>
+                  <td>이메일 회원가입 시</td>
+                </tr>
+                <tr>
+                  <td>필수</td>
+                  <td>소셜 계정 식별자(카카오/구글/네이버 sub), 이메일</td>
+                  <td>소셜 로그인 회원가입 시</td>
+                </tr>
+                <tr>
+                  <td>필수</td>
+                  <td>가입유형(치과의사/치과위생사/학생·기타), 연차</td>
+                  <td>회원가입 직후</td>
+                </tr>
+                <tr>
+                  <td>자동 수집</td>
+                  <td>접속 IP, 쿠키, 서비스 이용 기록(질의 내역, 응답 시각)</td>
+                  <td>서비스 이용 시</td>
+                </tr>
+                <tr>
+                  <td>결제 시</td>
+                  <td>결제수단 식별 토큰(카드번호 자체는 저장하지 않음)</td>
+                  <td>Pro 구독 결제 시</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className={styles.paragraph}>
+            회사는 회원의 사상·신념·정치적 견해·민감 의료정보 등 「개인정보 보호법」 제23조의 민감정보를 수집하지
+            않습니다.
+          </p>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>2. 개인정보의 수집 방법</h2>
+          <ul className={styles.list}>
+            <li>회원가입 양식 입력</li>
+            <li>소셜 로그인 제공자(Kakao/Google/Naver)로부터 OAuth 인증을 통한 전달</li>
+            <li>휴대폰 SMS 인증을 통한 본인 확인</li>
+            <li>서비스 이용 과정에서 자동 생성·수집</li>
+          </ul>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>3. 개인정보의 이용 목적</h2>
+          <p className={styles.paragraph}>회사는 수집한 개인정보를 다음 목적에 한하여 이용합니다.</p>
+          <ol className={styles.list}>
+            <li>회원 식별·인증 및 본인 확인</li>
+            <li>서비스 제공 및 개선</li>
+            <li>가입유형별 맞춤형 응답 품질 향상</li>
+            <li>Pro 구독 결제·정산·환불 처리</li>
+            <li>이용약관 위반 행위 방지·제재</li>
+            <li>알림톡·SMS를 통한 공지(결제·예산·서비스 변동 안내)</li>
+            <li>법령 준수 및 분쟁 대응</li>
+          </ol>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>4. 개인정보의 보유 및 이용 기간</h2>
+          <p className={styles.paragraph}>
+            회사는 원칙적으로 개인정보 수집·이용 목적이 달성된 후에는 해당 정보를 지체 없이 파기합니다. 단, 다음
+            정보는 명시한 기간 동안 보관합니다.
+          </p>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>항목</th>
+                  <th>보관 기간</th>
+                  <th>근거</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>회원 가입 정보</td>
+                  <td>회원 탈퇴 시까지</td>
+                  <td>서비스 제공</td>
+                </tr>
+                <tr>
+                  <td>결제·환불 기록</td>
+                  <td>5년</td>
+                  <td>「전자상거래법」</td>
+                </tr>
+                <tr>
+                  <td>서비스 이용 로그(질의 내역)</td>
+                  <td>1년</td>
+                  <td>분쟁·부정 이용 대응</td>
+                </tr>
+                <tr>
+                  <td>본인 확인 SMS 인증 기록</td>
+                  <td>6개월</td>
+                  <td>통신비밀보호법</td>
+                </tr>
+                <tr>
+                  <td>부정 이용 차단 기록</td>
+                  <td>1년</td>
+                  <td>재가입 방지</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>5. 개인정보의 제3자 제공</h2>
+          <p className={styles.paragraph}>
+            회사는 회원의 개인정보를 외부에 제공하지 않습니다. 단, 다음의 경우는 예외로 합니다.
+          </p>
+          <ul className={styles.list}>
+            <li>회원이 사전에 동의한 경우</li>
+            <li>법령에 의하여 제출 의무가 발생한 경우</li>
+            <li>수사기관의 적법한 절차에 따른 요청이 있는 경우</li>
+          </ul>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>6. 개인정보 처리의 위탁</h2>
+          <p className={styles.paragraph}>
+            회사는 서비스 제공을 위하여 다음의 업무를 외부 업체에 위탁하고 있습니다. 위탁 시 「개인정보 보호법」
+            제26조에 따라 안전한 처리를 위한 사항을 계약에 반영합니다.
+          </p>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>수탁자</th>
+                  <th>위탁 업무</th>
+                  <th>보유·이용 기간</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>㈜토스페이먼츠</td>
+                  <td>결제·정산·환불 처리</td>
+                  <td>위탁 종료 시 또는 관련 법령에 따른 보관 기간</td>
+                </tr>
+                <tr>
+                  <td>OpenAI, L.L.C.</td>
+                  <td>AI 응답 생성(질의 내용은 모델 학습에 사용되지 않음)</td>
+                  <td>처리 직후 파기</td>
+                </tr>
+                <tr>
+                  <td>알림톡 발송 대행사(서비스 정식 출시 시 명시)</td>
+                  <td>알림톡·SMS 발송</td>
+                  <td>발송 직후 파기</td>
+                </tr>
+                <tr>
+                  <td>Amazon Web Services Korea LLC</td>
+                  <td>서비스 인프라(서버) 운영</td>
+                  <td>서비스 제공 기간</td>
+                </tr>
+                <tr>
+                  <td>Functional Software, Inc. (Sentry)</td>
+                  <td>오류 모니터링</td>
+                  <td>30일</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>7. 정보주체의 권리·의무 및 행사 방법</h2>
+          <p className={styles.paragraph}>회원은 언제든지 다음의 권리를 행사할 수 있습니다.</p>
+          <ol className={styles.list}>
+            <li>개인정보 열람 요구</li>
+            <li>오류 정정 요구</li>
+            <li>삭제 요구</li>
+            <li>처리 정지 요구</li>
+          </ol>
+          <p className={styles.paragraph}>
+            권리 행사는 서비스 내 마이페이지 또는 아래 개인정보 보호책임자 연락처를 통해 신청할 수 있으며, 회사는
+            지체 없이 조치합니다. 회원이 직접 회원 탈퇴를 요청하는 경우, 4조에 따라 보관 의무가 있는 정보를
+            제외하고 즉시 파기합니다.
+          </p>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>8. 개인정보의 안전성 확보 조치</h2>
+          <ul className={styles.list}>
+            <li>비밀번호: 단방향 해시 함수(bcrypt)로 암호화 저장</li>
+            <li>결제 토큰: Fernet 대칭키 암호화로 저장(AES-128-CBC + HMAC-SHA256)</li>
+            <li>통신 구간: HTTPS(TLS 1.2 이상) 강제</li>
+            <li>접근 통제: 관리자 권한 분리, 감사 로그 기록</li>
+            <li>침입 차단: Rate Limiting, IP 기반 차단</li>
+          </ul>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>9. 개인정보 보호책임자</h2>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <tbody>
+                <tr>
+                  <th>책임자</th>
+                  <td>이규성</td>
+                </tr>
+                <tr>
+                  <th>이메일</th>
+                  <td>
+                    <a href="mailto:dlrbtjd357@naver.com">dlrbtjd357@naver.com</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className={styles.paragraph}>
+            회원은 개인정보 보호와 관련한 문의·불만·피해 구제 등에 관한 사항을 위 이메일로 문의하실 수 있습니다.
+          </p>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>10. 권익침해 구제 방법</h2>
+          <p className={styles.paragraph}>회원은 아래 기관에 개인정보 침해에 대한 신고·상담을 할 수 있습니다.</p>
+          <ul className={styles.list}>
+            <li>개인정보분쟁조정위원회: 1833-6972 / www.kopico.go.kr</li>
+            <li>개인정보침해신고센터(KISA): 118 / privacy.kisa.or.kr</li>
+            <li>대검찰청 사이버수사과: 1301 / www.spo.go.kr</li>
+            <li>경찰청 사이버수사국: 182 / cyberbureau.police.go.kr</li>
+          </ul>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>11. 본 방침의 변경</h2>
+          <p className={styles.paragraph}>
+            본 개인정보 처리방침은 시행일자에 적용되며, 법령·정책 또는 보안기술의 변경에 따라 내용을 수정할 수
+            있습니다. 변경 시 변경사유 및 적용일자를 명시하여 시행 7일 전부터 서비스 내 공지합니다.
+          </p>
+        </section>
+
+        <p className={styles.footer}>부칙 — 본 개인정보 처리방침은 2026-04-30 부터 시행합니다.</p>
+      </article>
+    </main>
+  );
+}

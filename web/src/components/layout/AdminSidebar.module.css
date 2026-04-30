@@ -1,10 +1,236 @@
-/* AdminSidebar — 태블릿 확장 오버레이 */
+/* AdminSidebar — 관리자 좌측 네비 (CSS Modules) */
 
-.tabletOverlay {
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
   width: 240px;
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 50;
+  height: 100%;
+  background-color: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 64px;
+  padding: 0 20px;
+  border-bottom: 1px solid #f1f2f4;
+  flex-shrink: 0;
+}
+
+.brandMark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--brand-gradient);
+  flex-shrink: 0;
+}
+
+.brandText {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toggleRow {
+  display: none;
+}
+
+.menu {
+  list-style: none;
+  margin: 0;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.menuItem:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.menuItem:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+.menuItemActive {
+  background-color: #f5f3ff;
+  color: #6d28d9;
+}
+
+.menuItemActive:hover {
+  background-color: #ede9fe;
+  color: #6d28d9;
+}
+
+.menuIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.menuLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footer {
+  padding: 14px 16px;
+  border-top: 1px solid #f1f2f4;
+  font-size: 13px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── 반응형 ─────────────────────────────── */
+
+/* 태블릿 (768~1279) — 기본은 접힌 상태(64px), 토글로 펼침 */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .sidebar {
+    width: 64px;
+  }
+
+  .brand {
+    padding: 0 18px;
+    justify-content: center;
+  }
+
+  .brandText,
+  .menuLabel,
+  .footer {
+    display: none;
+  }
+
+  .toggleRow {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 12px 0;
+  }
+
+  .toggleButton {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    color: #6b7280;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.2s ease;
+  }
+
+  .toggleButton:hover {
+    background-color: #f3f4f6;
+    color: #111827;
+  }
+
+  .toggleButton:focus-visible {
+    outline: 2px solid #7c3aed;
+    outline-offset: 2px;
+  }
+
+  .toggleIcon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+  }
+
+  .menu {
+    padding: 8px 8px;
+  }
+
+  .menuItem {
+    justify-content: center;
+    padding: 10px 0;
+  }
+
+  /* 태블릿에서 펼친 상태 — 오버레이 */
+  .sidebarExpanded {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    z-index: 50;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  }
+
+  .sidebarExpanded .brand {
+    justify-content: flex-start;
+    padding: 0 20px;
+  }
+
+  .sidebarExpanded .brandText,
+  .sidebarExpanded .menuLabel,
+  .sidebarExpanded .footer {
+    display: block;
+  }
+
+  .sidebarExpanded .menu {
+    padding: 12px 12px;
+  }
+
+  .sidebarExpanded .menuItem {
+    justify-content: flex-start;
+    padding: 10px 12px;
+  }
+
+  .toggleIconRotated {
+    transform: rotate(180deg);
+  }
+}
+
+/* 모바일 (<768) — 사이드바 숨김 (모바일 경고 배너로 대체) */
+@media (max-width: 767px) {
+  .sidebar {
+    display: none;
+  }
+}
+
+/* 태블릿 오버레이 백드롭 */
+.backdrop {
+  display: none;
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.35);
+    z-index: 40;
+  }
 }

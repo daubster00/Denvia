@@ -29,8 +29,9 @@
 
 ### 1.1 관리자 대시보드 KPI 확인
 
-- 접근: `/admin/dashboard` **(TBD — Story 5.1 backlog)**
-  - 현 시점 관리자 셸 라우팅이 미구현이므로 데이터베이스 직접 조회로 대체 가능:
+- 접근: `/admin`
+  - Story 5.1에서 관리자 셸·권한 가드·placeholder 대시보드가 구현되어 있다.
+  - KPI 위젯과 세부 분석 페이지는 Story 5.2~5.5 범위이므로, 해당 스토리 완료 전에는 데이터베이스 직접 조회로 대체한다:
     ```sql
     -- 어제 일자 질의 수·토큰·예산 % 조회 (admin 로그인 후 SQL 클라이언트 사용)
     SELECT
@@ -412,7 +413,8 @@
 
 | 날짜 | 검증자 | 결과 | 조치 |
 |---|---|---|---|
-| 2026-04-24 | Hyung woo | OK — 6개 섹션 모두 게재 확인. 인용 파일 경로(`api/src/integrations/messaging/{port,templates,adapters/stub,adapters/aligo,adapters/nhn_cloud}.py`·`infra/docker-compose.yml`·`.env.example`) 모두 실재 검증. 미존재 항목(`infra/scripts/backup-postgres.sh`·`/admin/dashboard`·`/admin/finance/budget`·`/admin/rag/data`·`/admin/finance/killswitch`·`/admin/settings`·`docs/legal/terms.md`·`qa_logs`·`subscriptions`·`killswitch_states` 테이블)은 모두 `(TBD — Story X.Y)` 표기로 명시. | — |
+| 2026-04-28 | Codex | 문서 정합성 업데이트 — Story 5.1 구현 상태를 반영해 `/admin/dashboard` backlog 표현을 `/admin` shell 구현 완료 + KPI 위젯 Story 5.2~5.5 대기 상태로 분리. | Story 5.2 완료 후 KPI 위젯 기반 절차로 §1.1 재검증 |
+| 2026-04-24 | Hyung woo | OK — 6개 섹션 모두 게재 확인. 인용 파일 경로(`api/src/integrations/messaging/{port,templates,adapters/stub,adapters/aligo,adapters/nhn_cloud}.py`·`infra/docker-compose.yml`·`.env.example`) 모두 실재 검증. 당시 미존재 항목(`infra/scripts/backup-postgres.sh`·`/admin/dashboard`·`/admin/finance/budget`·`/admin/rag/data`·`/admin/finance/killswitch`·`/admin/settings`·`docs/legal/terms.md`·`qa_logs`·`subscriptions`·`killswitch_states` 테이블)은 모두 `(TBD — Story X.Y)` 표기로 명시. | — |
 | 2026-04-24 | Hyung woo (Story 9.4 AC-7 시나리오 ② Dry-run) | 보류 (Story 9.2 backlog) — `manual_total` kill-switch 발동·해제 절차는 본 문서 §5.2·§5.3에 문서화 완료. 실 발동은 `killswitch_states` 테이블·`KillSwitchPanel` UI·`/admin/finance/killswitch` 라우트가 모두 Story 9.2 범위로 미구현 → 문서상 절차 검토만 수행. 본 SOP의 절차(2단계 확인·사유 필수 기재·해제 후 유료 구독자 기간 자동 연장)는 Story 9.2 ACs(L2587-2733 범위)와 일치 확인. | Story 9.2 완료 후 Staging 환경에서 실전 발동·해제 Dry-run 필수 |
 | 2026-04-24 | Hyung woo (Story 9.4 AC-7 시나리오 ③ Dry-run) | 보류 (인프라 환경 사유) — pg_dump·pg_restore 절차는 본 문서 §2.1 + RUNBOOK_INCIDENT 시나리오 ⑦에 문서화 완료. 호스트 Docker daemon 미기동(`Docker Desktop` 실행 필요)으로 실 컨테이너 기동·실 백업·복원 Dry-run 보류. 명령어 문법(`docker compose ... exec -T postgres pg_dump -U denvia ...`) 자체는 표준 PostgreSQL 16 문법과 일치 확인. | 인수 시점에 Docker 환경 기동 후 §2.1 명령으로 백업 1회 + 임시 DB에 복원 + `SELECT count(*) FROM users` 무결성 검증 수행 |
 | 2026-04-24 | claude-opus-4-7 (code-review 후속 9건 patch 적용) | OK — §1.1(±30% 변동률 SQL + §⑥ 매핑), §1.2.1(SMS 폴백 검증), §2.1(pg_dump --clean 위험 안내 + 별도 빈 DB 복원 무결성 검증), §2.3(USD 토큰 모델 명시), §5.1(평가 규칙 단순화 + admin bypass), §5.2(약관 가드 + 알림톡 미수신 fallback), §5.3(SQL 플레이스홀더 추출 + 카운트 검증), §6.2(graceful 순차 재시작) 적용 완료 | — |

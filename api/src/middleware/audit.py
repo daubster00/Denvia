@@ -7,7 +7,11 @@ from starlette.responses import Response
 
 from api.src.models.base import async_session_factory
 from api.src.models.audit_log import AuditLog
-from api.src.utils.jwt import JWTDecodeError, SessionExpired, decode_session_jwt
+from api.src.utils.jwt import (
+    JWTDecodeError,
+    SessionExpired,
+    decode_admin_session_jwt,
+)
 
 logger = structlog.get_logger()
 
@@ -22,6 +26,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         if (
             request.method in self.WRITE_METHODS
             and request.url.path.startswith(self.ADMIN_PREFIX)
+            and response.status_code < 400  # 4xx 응답은 INSERT 안 함 (Story 8.1 보강)
         ):
             await self._record(request)
 
@@ -29,11 +34,12 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def _record(self, request: Request) -> None:
         try:
-            cookie = request.cookies.get("denvia_session")
+            # /api/v1/admin/* 경로의 actor는 관리자 세션 쿠키에서 추출
+            cookie = request.cookies.get("denvia_admin_session")
             if not cookie:
                 return
             try:
-                payload = decode_session_jwt(cookie)
+                payload = decode_admin_session_jwt(cookie)
                 actor_user_id = int(payload["sub"])
             except (JWTDecodeError, SessionExpired, KeyError, ValueError):
                 return  # 인증 오류는 라우터에서 이미 처리됨
@@ -49,12 +55,19 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 else (request.client.host if request.client else None)
             )
             ua = request.headers.get("User-Agent")
+            # Story 8.1 보강: target_type / target_id / diff_json 읽기
+            target_type = getattr(request.state, "audit_target_type", None)
+            target_id = getattr(request.state, "audit_target_id", None)
+            diff_json = getattr(request.state, "audit_diff", None)
 
             async with async_session_factory() as db:
                 db.add(
                     AuditLog(
                         actor_user_id=actor_user_id,
                         action=action,
+                        target_type=target_type,
+                        target_id=target_id,
+                        diff_json=diff_json,
                         ip=client_ip,
                         ua=ua,
                         trace_id=trace_id,

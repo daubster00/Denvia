@@ -45,3 +45,20 @@
   font-size: 16px;
   font-family: sans-serif;
 }
+
+.consentNotice {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.consentLink {
+  color: #7c3aed;
+  text-decoration: underline;
+}
+
+.consentLink:hover {
+  color: #6d28d9;
+}

@@ -1,0 +1,103 @@
+/* InboxList — Story 4.5. */
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.state {
+  padding: 48px 16px;
+  text-align: center;
+  color: #5a5c63;
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.retryBtn {
+  padding: 8px 16px;
+  background: #fff;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background: #faf5ff;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.perPageLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5a5c63;
+}
+
+.perPageSelect {
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #e1e2e4;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+}
+
+.pagerControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagerBtn {
+  padding: 6px 14px;
+  background: #fff;
+  border: 1px solid #e1e2e4;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #5a5c63;
+  cursor: pointer;
+}
+
+.pagerBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagerBtn:not(:disabled):hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.pagerLabel {
+  font-size: 13px;
+  color: #5a5c63;
+  min-width: 60px;
+  text-align: center;
+}

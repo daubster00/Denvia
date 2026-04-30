@@ -1,4 +1,4 @@
-"""JWT 인코드/디코드 유틸리티 — denvia_session 쿠키 발급·소비용."""
+"""JWT 인코드/디코드 유틸리티 — denvia_session / denvia_admin_session 쿠키 발급·소비용."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +9,9 @@ from api.src.settings import settings
 
 _SESSION_TTL_SHORT = timedelta(hours=1)     # persist_session=False (브라우저 세션)
 _SESSION_TTL_LONG = timedelta(days=1)       # persist_session=True (Story 1.4)
+_ADMIN_SESSION_TTL = timedelta(hours=1)     # 관리자 세션은 persist 없음 — 1시간 고정
+
+_ADMIN_AUDIENCE = "denvia-admin"
 
 
 def encode_session_jwt(
@@ -51,6 +54,8 @@ def decode_session_jwt(token: str) -> dict:
 
     반환: {"sub": user_id, "role": ..., "sub_status": ..., "exp": ...}
     만료 시 SessionExpired, 서명·포맷 오류 시 JWTDecodeError.
+
+    aud 클레임이 있는 토큰(=admin 세션 토큰)은 거부한다 — 관리자 토큰을 일반 세션으로 재사용하는 것을 방지.
     """
     try:
         payload = pyjwt.decode(
@@ -64,6 +69,53 @@ def decode_session_jwt(token: str) -> dict:
     except pyjwt.PyJWTError as e:
         raise JWTDecodeError(f"JWT 디코드 실패: {e}") from e
 
+    # 관리자 토큰(aud=denvia-admin)은 일반 세션으로 사용 불가
+    if payload.get("aud") == _ADMIN_AUDIENCE:
+        raise JWTDecodeError("admin 토큰을 일반 세션으로 사용할 수 없습니다")
+
     # JWT 표준: sub는 문자열. user_id 사용 시 int로 변환
+    payload["sub"] = int(payload["sub"])
+    return payload
+
+
+def encode_admin_session_jwt(user_id: int) -> str:
+    """관리자 세션 쿠키(denvia_admin_session)용 JWT.
+
+    일반 세션 토큰과 aud 클레임("denvia-admin")으로 구분한다.
+    TTL 1시간 고정 (persist 옵션 없음).
+    """
+    now = datetime.now(tz=timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "aud": _ADMIN_AUDIENCE,
+        "iat": now,
+        "exp": now + _ADMIN_SESSION_TTL,
+    }
+    return pyjwt.encode(
+        payload,
+        settings.denvia_jwt_secret,
+        algorithm=settings.denvia_jwt_algorithm,
+    )
+
+
+def decode_admin_session_jwt(token: str) -> dict:
+    """denvia_admin_session 쿠키 JWT를 디코드한다.
+
+    반환: {"sub": user_id (int), "aud": "denvia-admin", "exp": ...}
+    aud 클레임이 일치하지 않으면 JWTDecodeError.
+    """
+    try:
+        payload = pyjwt.decode(
+            token,
+            settings.denvia_jwt_secret,
+            algorithms=[settings.denvia_jwt_algorithm],
+            audience=_ADMIN_AUDIENCE,
+            options={"require": ["sub", "aud", "exp"]},
+        )
+    except pyjwt.ExpiredSignatureError:
+        raise SessionExpired("admin JWT 만료")
+    except pyjwt.PyJWTError as e:
+        raise JWTDecodeError(f"admin JWT 디코드 실패: {e}") from e
+
     payload["sub"] = int(payload["sub"])
     return payload

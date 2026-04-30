@@ -32,6 +32,12 @@ def test_heuristic_rejects_no_question_mark():
     assert not _passes_heuristic(text)
 
 
+def test_heuristic_passes_stateless_guidance_without_question_mark():
+    """새 질문 안내문은 물음표 없이도 분기 A로 진입."""
+    text = "정보가 부족해요. 새 질문에 치식 번호와 처치를 포함해서 다시 질문해줘."
+    assert _passes_heuristic(text)
+
+
 def test_heuristic_rejects_confirmative_phrase():
     """확정형 어미 포함 텍스트 — 분기 B. 첫 60자 이내에 확정 어미."""
     text = "다음과 같습니다. 뭔가 더 알려드릴까요?"
@@ -64,8 +70,8 @@ def test_heuristic_rejects_confirmative_phrases():
 def test_reframe_payload_valid():
     """최소 3개 옵션 + 최대 4개 옵션 경계값 모두 통과."""
     p = ReframePayload(
-        follow_up_question="어느 치아인지 알려주세요?",
-        options=["상악 전치", "하악 구치", "어금니"],
+        follow_up_question="새 질문에 치식 번호와 처치를 포함해서 다시 질문해줘.",
+        options=["#36 침윤마취 청구 가능 횟수는?", "#46 전달마취 산정 기준은?", "#36, #46 동시 마취 청구는?"],
     )
     assert len(p.options) == 3
 
@@ -179,8 +185,8 @@ def test_reframe_payload_options_trimmed():
 async def test_detect_and_extract_success():
     """Mock LLM 성공 → ReframeExtractionResult(payload, usage) 반환."""
     mock_payload = ReframePayload(
-        follow_up_question="어느 치아인지 알려주세요?",
-        options=["상악 전치", "하악 구치", "어금니"],
+        follow_up_question="새 질문에 치식 번호와 처치를 포함해서 다시 질문해줘.",
+        options=["#36 침윤마취 청구 가능 횟수는?", "#46 전달마취 산정 기준은?", "#36, #46 동시 마취 청구는?"],
     )
     mock_usage = TokenUsage(input_tokens=10, output_tokens=20, total_tokens=30, cost_usd=0.001)
 
@@ -204,12 +210,12 @@ async def test_detect_and_extract_success():
 
         result = await qa_reframe_service.detect_and_extract(
             question_text="임플란트 치료 방법?",
-            full_text="어느 치아인지 알려주세요?",
+            full_text="정보가 부족해요. 새 질문에 치식 번호와 처치를 포함해서 다시 질문해줘.",
         )
 
     assert result is not None
     assert isinstance(result, ReframeExtractionResult)
-    assert result.payload.follow_up_question == "어느 치아인지 알려주세요?"
+    assert result.payload.follow_up_question == "새 질문에 치식 번호와 처치를 포함해서 다시 질문해줘."
     assert len(result.payload.options) == 3
 
 

@@ -3,6 +3,13 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.web
+      # NEXT_PUBLIC_* 는 빌드 시점에 번들에 박힘. .env.production 값이 여기로 흘러감.
+      # 배포 명령에 `--env-file ../.env.production` 플래그 필요.
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://denvia.ai.kr}
+        NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY}
+        NEXT_PUBLIC_KAKAO_CHANNEL_URL: ${NEXT_PUBLIC_KAKAO_CHANNEL_URL}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
     restart: unless-stopped
     environment:
       - NODE_ENV=production
@@ -16,7 +23,7 @@ services:
     restart: unless-stopped
     command: uv run uvicorn api.src.main:app --host 0.0.0.0 --port 8000
     env_file:
-      - ../.env
+      - ../.env.production
     environment:
       # vendor/rag(`from rag.run_qa import ...`) 임포트 안전망 — 이미지 빌드 시 ENV가 누락된 적 있음.
       - PYTHONPATH=/workspace/vendor
@@ -35,7 +42,7 @@ services:
     restart: unless-stopped
     command: uv run celery -A api.src.workers.celery_app worker --loglevel=info
     env_file:
-      - ../.env
+      - ../.env.production
     environment:
       - PYTHONPATH=/workspace/vendor
     depends_on:
@@ -49,7 +56,7 @@ services:
     restart: unless-stopped
     command: uv run celery -A api.src.workers.celery_app beat --loglevel=info
     env_file:
-      - ../.env
+      - ../.env.production
     environment:
       - PYTHONPATH=/workspace/vendor
     depends_on:
@@ -58,9 +65,11 @@ services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    env_file:
+      - ../.env.production
     environment:
+      # POSTGRES_PASSWORD 는 env_file 에서 주입됨.
       POSTGRES_USER: denvia
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: denvia
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -89,7 +98,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/denvia.conf:/etc/nginx/conf.d/denvia.conf:ro
+      - ./nginx/denvia.prod.conf:/etc/nginx/conf.d/denvia.conf:ro
       - ./nginx/snippets:/etc/nginx/snippets:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro

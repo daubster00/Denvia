@@ -41,7 +41,7 @@ describe("ChatMessage — reframe 통합 (Story 2.6)", () => {
     const onPickReframeOption = vi.fn();
     render(<ChatMessage message={msg} onPickReframeOption={onPickReframeOption} />);
     // QuestionReFrame의 헤드라인이 없어야 함
-    expect(screen.queryByText("정보가 조금 더 필요해요")).toBeNull();
+    expect(screen.queryByText("새 질문에 포함해보세요")).toBeNull();
   });
 
   it("message.reframe != null + onPickReframeOption 있으면 QuestionReFrame이 렌더된다", () => {
@@ -54,7 +54,7 @@ describe("ChatMessage — reframe 통합 (Story 2.6)", () => {
     });
     const onPickReframeOption = vi.fn();
     render(<ChatMessage message={msg} onPickReframeOption={onPickReframeOption} />);
-    expect(screen.getByText("정보가 조금 더 필요해요")).toBeDefined();
+    expect(screen.getByText("새 질문에 포함해보세요")).toBeDefined();
     expect(screen.getByRole("button", { name: /상악 전치/ })).toBeDefined();
   });
 
@@ -88,7 +88,7 @@ describe("ChatMessage — reframe 통합 (Story 2.6)", () => {
     });
     render(<ChatMessage message={msg} />);
     // onPickReframeOption prop 미전달 → QuestionReFrame 미렌더
-    expect(screen.queryByText("정보가 조금 더 필요해요")).toBeNull();
+    expect(screen.queryByText("새 질문에 포함해보세요")).toBeNull();
   });
 
   it("chip 클릭 시 onPickReframeOption이 option값으로 호출된다", () => {

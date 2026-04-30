@@ -34,6 +34,9 @@ services:
     working_dir: /workspace
     command: >
       sh -c "uv --project /workspace/api sync --frozen &&
+      uv --project /workspace/api run alembic -c /workspace/api/alembic.ini upgrade head &&
+      uv --project /workspace/api run python /workspace/api/scripts/seed_admin.py &&
+      uv --project /workspace/api run python /workspace/api/scripts/seed_runtime_config.py &&
       uv --project /workspace/api run uvicorn api.src.main:app
       --host 0.0.0.0 --port 8000 --reload"
     ports:
@@ -77,6 +80,9 @@ services:
       DATABASE_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
       DATABASE_SYNC_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
       PYTHONPATH: /workspace:/workspace/vendor
+      FAISS_CURRENT_PATH: /workspace/api/data/faiss/current
+      FAISS_INDEX_A_PATH: /workspace/api/data/faiss/index_a
+      FAISS_INDEX_B_PATH: /workspace/api/data/faiss/index_b
     depends_on:
       - redis
       - postgres
@@ -99,6 +105,9 @@ services:
       DATABASE_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
       DATABASE_SYNC_URL: postgresql+psycopg://denvia:password@postgres:5432/denvia
       PYTHONPATH: /workspace:/workspace/vendor
+      FAISS_CURRENT_PATH: /workspace/api/data/faiss/current
+      FAISS_INDEX_A_PATH: /workspace/api/data/faiss/index_a
+      FAISS_INDEX_B_PATH: /workspace/api/data/faiss/index_b
     depends_on:
       - redis
     volumes:

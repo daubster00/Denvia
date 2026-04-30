@@ -1,4 +1,4 @@
-"""관리자 초기 계정 삽입 스크립트 — 멱등 보장 (이미 존재하면 skip)."""
+﻿"""관리자 초기 계정 삽입 + Redis 런타임 초기값 시드 — 멱등 보장."""
 
 import asyncio
 import os
@@ -15,6 +15,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from api.src.settings import settings  # noqa: E402
 
 ph = PasswordHasher()
+
+
+async def _seed_redis_runtime() -> None:
+    """Redis DB 3 런타임 초기값을 시드한다 (멱등)."""
+    import redis.asyncio as aioredis
+    from api.src.settings import REDIS_DB_RUNTIME_CONFIG
+
+    redis_runtime = aioredis.from_url(
+        settings.redis_url, db=REDIS_DB_RUNTIME_CONFIG, decode_responses=True
+    )
+    try:
+        # A-303 구독 버튼 전역 토글 기본값 시드 (Story 3.1)
+        if not await redis_runtime.exists("runtime:show_subscribe_button"):
+            await redis_runtime.set("runtime:show_subscribe_button", "true")
+            print("[seed_admin] runtime:show_subscribe_button = true 시드 완료")
+    finally:
+        await redis_runtime.aclose()
 
 
 async def seed_admin() -> None:
@@ -37,29 +54,37 @@ async def seed_admin() -> None:
                 f"[seed_admin] admin 계정이 이미 존재합니다 (id={existing[0]}). skip."
             )
             await engine.dispose()
+            await _seed_redis_runtime()
             return
 
         # argon2id 해시 생성
         password_hash = ph.hash(admin_password)
         now = datetime.now(UTC)
+        admin_phone = os.environ.get("DENVIA_ADMIN_PHONE", settings.denvia_admin_phone)
 
         await session.execute(
             text(
                 """
                 INSERT INTO users
-                  (email, password_hash, role, subscription_status,
+                  (email, password_hash, phone, role, subscription_status,
                    phone_verified, must_reset_password, created_at, updated_at)
                 VALUES
-                  (:email, :password_hash, 'admin', 'free',
+                  (:email, :password_hash, :phone, 'admin', 'free',
                    false, false, :now, :now)
                 """
             ),
-            {"email": admin_email, "password_hash": password_hash, "now": now},
+            {
+                "email": admin_email,
+                "password_hash": password_hash,
+                "phone": admin_phone,
+                "now": now,
+            },
         )
         await session.commit()
         print(f"[seed_admin] admin 계정 생성 완료: {admin_email}")
 
     await engine.dispose()
+    await _seed_redis_runtime()
 
 
 if __name__ == "__main__":

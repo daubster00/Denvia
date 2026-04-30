@@ -16,6 +16,12 @@ export const signupSchema = z.object({
   password: z.string().min(8, "비밀번호는 8자 이상이어야 합니다."),
   phone: z.string().regex(phoneRegex, "올바른 휴대폰 번호를 입력하세요. (010-XXXX-XXXX)"),
   phone_verification_token: z.string().min(1, "SMS 인증이 필요합니다."),
+  agreed_to_terms: z.boolean().refine((v) => v === true, {
+    message: "이용약관에 동의해주세요.",
+  }),
+  agreed_to_privacy: z.boolean().refine((v) => v === true, {
+    message: "개인정보 처리방침에 동의해주세요.",
+  }),
 });
 
 export type SignupFormValues = z.infer<typeof signupSchema>;

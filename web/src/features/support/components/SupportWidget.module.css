@@ -1,0 +1,73 @@
+/* SupportWidget — Story 4.5 (F-504). 우측 하단 floating. */
+
+.widget {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60; /* AppToast(50) 위, Popup overlay(70) 아래 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.inquiryBtn {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.32);
+}
+
+.inquiryBtn:hover {
+  filter: brightness(1.05);
+}
+
+.kakaoBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fee500;
+  color: #3c1e1e;
+  border: none;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+.kakaoBtn:hover {
+  background: #ffd900;
+}
+
+.kakaoIcon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.kakaoLabel {
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .widget {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .inquiryBtn {
+    padding: 9px 14px;
+    font-size: 12px;
+  }
+
+  .kakaoBtn {
+    padding: 9px 12px;
+    font-size: 12px;
+  }
+}

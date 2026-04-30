@@ -6,5 +6,7 @@ declare namespace NodeJS {
     NEXT_PUBLIC_SENTRY_DSN?: string;
     /** Story 2.7 — 우측 하단 고객문의 FAB 클릭 시 새 탭으로 열리는 카카오톡 채널 URL. 미설정 시 위젯 비렌더. */
     NEXT_PUBLIC_KAKAO_CHANNEL_URL?: string;
+    /** Story 3.2 — 토스페이먼츠 클라이언트 키 (결제창 초기화). 빌드 시점 번들에 박힘. */
+    NEXT_PUBLIC_TOSS_CLIENT_KEY?: string;
   }
 }

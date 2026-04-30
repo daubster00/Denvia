@@ -1,0 +1,39 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.summary {
+  font-size: 14px;
+  color: #475569;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.storyRef {
+  font-size: 14px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f9fafb 0,
+    #f9fafb 8px,
+    #f3f4f6 8px,
+    #f3f4f6 16px
+  );
+  height: 80px;
+  font-size: 14px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 8px;
+}

@@ -1,0 +1,94 @@
+.banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #eff6ff;
+  border-bottom: 1px solid #3b82f6;
+  overflow: hidden;
+}
+
+.progressBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: var(--progress, 0%);
+  background: #3b82f6;
+  transition: width 0.4s ease;
+}
+
+.icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.msg {
+  flex: 1;
+  font-size: 14px;
+  color: #1e3a5f;
+}
+
+.cancelBtn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.cancelBtn:hover {
+  background: #fef2f2;
+}
+
+.hideBtn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #9ca3af;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.hideBtn:hover {
+  background: #f9fafb;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  background: #1e293b;
+  color: #fff;
+  border-radius: 6px;
+  z-index: 9999;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.restoreChip {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  padding: 8px 14px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9998;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.restoreChip:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+}

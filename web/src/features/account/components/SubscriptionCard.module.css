@@ -1,0 +1,45 @@
+.card {
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-muted, #6b7280);
+  margin: 0;
+}
+
+.value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+  margin: 0;
+}
+
+.placeholder {
+  font-size: 14px;
+  color: var(--color-text-muted, #6b7280);
+  margin: 0;
+}
+
+.manageBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text, #111827);
+  cursor: pointer;
+}
+
+.manageBtn:hover {
+  background: var(--color-surface-hover, #f3f4f6);
+}

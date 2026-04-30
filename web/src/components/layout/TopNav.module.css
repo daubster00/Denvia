@@ -39,20 +39,200 @@
   white-space: nowrap;
 }
 
-.logoutBtn {
-  padding: 8px 16px;
+.planBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.planBadgeFree {
+  background: #9ca3af;
+}
+
+.planBadgePro {
+  background: var(--color-primary, #7c3aed);
+}
+
+.iconBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   background: transparent;
-  color: #5a5c63;
   border: 1px solid #e1e2e4;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: 9999px;
+  color: #5a5c63;
   cursor: pointer;
+  text-decoration: none;
+}
+
+.iconBtn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.iconBtn[aria-current="page"] {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.unreadBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: #ef4444;
+  color: #fff;
+  border: 2px solid #fff;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.accountWrapper {
+  position: relative;
+}
+
+.accountBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  background: transparent;
+  border: 1px solid #e1e2e4;
+  border-radius: 9999px;
+  cursor: pointer;
+  color: #5a5c63;
+  font-size: 14px;
+}
+
+.accountBtn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.accountBtn[aria-expanded="true"] {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.menuPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 240px;
+  background: #fff;
+  border: 1px solid #e1e2e4;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.08);
+  padding: 8px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menuPlanGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  margin-bottom: 4px;
+  background: #f7f7f9;
+  border-radius: 8px;
+}
+
+.menuPlanLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a8d94;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.menuPlanRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menuPlanName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.menuAccount {
+  font-size: 13px;
+  color: #5a5c63;
+  word-break: break-all;
+}
+
+.menuItem {
+  display: block;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #111827;
+  text-decoration: none;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+}
+
+.menuItem:hover {
+  background: #f3f4f6;
+}
+
+.menuItem[aria-current="page"] {
+  background: #f3f4f6;
+  font-weight: 600;
 }
 
 @media (max-width: 767px) {
   .header {
     height: 56px;
     padding: 0 16px;
+  }
+
+  .userMenu {
+    gap: 8px;
+  }
+
+  .userEmail {
+    display: none;
+  }
+
+  .accountBtn {
+    padding: 4px;
   }
 }
