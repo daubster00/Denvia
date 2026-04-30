@@ -36,6 +36,7 @@ class SmsSendResponse(BaseModel):
     sent_at: str
     cooldown_seconds: int
     max_retries: int
+    debug_code: str | None = None
 
 
 class SmsVerifyRequest(BaseModel):

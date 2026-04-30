@@ -79,6 +79,7 @@ async def sms_send(body: SmsSendRequest) -> SmsSendResponse:
         purpose=body.purpose,
         redis_url=settings.redis_url,
         messaging=_get_messaging(),
+        expose_code=settings.messaging_provider == "stub",
     )
     return SmsSendResponse(**result)
 

@@ -50,6 +50,7 @@ export function PhoneVerifyClient() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [debugSmsCode, setDebugSmsCode] = useState<string | null>(null);
   const smsBoxRef = useRef<HTMLDivElement>(null);
 
   const isMountedRef = useRef(true);
@@ -101,8 +102,9 @@ export function PhoneVerifyClient() {
     }
     setSending(true);
     try {
-      await sendSmsOtp(normalizePhone(phone), "signup");
+      const res = await sendSmsOtp(normalizePhone(phone), "signup");
       if (!isMountedRef.current) return;
+      setDebugSmsCode(res.debug_code ?? null);
       setStep("sms");
     } catch (e) {
       if (!isMountedRef.current) return;
@@ -141,7 +143,10 @@ export function PhoneVerifyClient() {
   );
 
   const handleResendOtp = useCallback(async () => {
-    await sendSmsOtp(normalizePhone(phone), "signup");
+    const res = await sendSmsOtp(normalizePhone(phone), "signup");
+    if (isMountedRef.current) {
+      setDebugSmsCode(res.debug_code ?? null);
+    }
   }, [phone]);
 
   const handleComplete = useCallback(async () => {
@@ -237,6 +242,15 @@ export function PhoneVerifyClient() {
           </button>
         ) : (
           <div ref={smsBoxRef} className={styles.smsStack}>
+            {debugSmsCode && (
+              <Typography
+                as="p"
+                variant="body2-reading"
+                color="semantic.label.alternative"
+              >
+                인증번호: {debugSmsCode}
+              </Typography>
+            )}
             <SMSCodeInput onComplete={handleOtpComplete} onResend={handleResendOtp} />
             <button
               type="button"

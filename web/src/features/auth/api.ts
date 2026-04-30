@@ -10,8 +10,15 @@ export async function fetchMe(): Promise<SessionUser> {
 }
 
 /** SMS OTP 발송 */
+export interface SmsSendResult {
+  sent_at: string;
+  cooldown_seconds: number;
+  max_retries: number;
+  debug_code?: string | null;
+}
+
 export async function sendSmsOtp(phone: string, purpose: "signup" | "find_id" | "find_password") {
-  return apiFetch<{ sent_at: string; cooldown_seconds: number; max_retries: number }>(
+  return apiFetch<SmsSendResult>(
     "/api/v1/auth/sms/send",
     { method: "POST", body: JSON.stringify({ phone, purpose }) }
   );

@@ -33,6 +33,7 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
   const [otpError, setOtpError] = useState<string | undefined>();
   const [result, setResult] = useState<LookupResult | null>(null);
   const [sendingOtp, setSendingOtp] = useState(false);
+  const [debugSmsCode, setDebugSmsCode] = useState<string | null>(null);
 
   const normalizedPhone = phone.replace(/\D/g, "");
 
@@ -46,6 +47,7 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
     try {
       const res = await sendSmsOtp(normalizedPhone, "find_id");
       setCooldownSeconds(res.cooldown_seconds);
+      setDebugSmsCode(res.debug_code ?? null);
       setStep("otp");
     } catch {
       setPhoneError("인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요.");
@@ -55,7 +57,8 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
   };
 
   const handleResendOtp = useCallback(async () => {
-    await sendSmsOtp(normalizedPhone, "find_id");
+    const res = await sendSmsOtp(normalizedPhone, "find_id");
+    setDebugSmsCode(res.debug_code ?? null);
   }, [normalizedPhone]);
 
   const handleOtpComplete = async (code: string) => {
@@ -99,6 +102,9 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
         <p className={styles.otpHelper}>
           {phone}으로 인증번호를 전송했습니다.
         </p>
+        {debugSmsCode && (
+          <p className={styles.otpHelper}>인증번호: {debugSmsCode}</p>
+        )}
         <SMSCodeInput
           onComplete={handleOtpComplete}
           onResend={handleResendOtp}

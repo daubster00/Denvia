@@ -43,6 +43,7 @@ export function SignupForm() {
   const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [smsRequested, setSmsRequested] = useState(false);
+  const [debugSmsCode, setDebugSmsCode] = useState<string | null>(null);
 
   const {
     register,
@@ -77,7 +78,8 @@ export function SignupForm() {
       return;
     }
     try {
-      await sendSmsOtp(normalizePhone(raw), "signup");
+      const res = await sendSmsOtp(normalizePhone(raw), "signup");
+      setDebugSmsCode(res.debug_code ?? null);
       setSmsRequested(true);
       setStep("sms");
       setSmsError(undefined);
@@ -221,6 +223,9 @@ export function SignupForm() {
           <p className={styles.smsHelp}>
             휴대폰으로 전송된 6자리 인증번호를 입력하세요.
           </p>
+          {debugSmsCode && (
+            <p className={styles.smsHelp}>인증번호: {debugSmsCode}</p>
+          )}
           <SMSCodeInput
             onComplete={handleOtpComplete}
             onResend={requestSms}

@@ -92,6 +92,7 @@ async def send_sms_otp_flow(
     purpose: str,
     redis_url: str,
     messaging: MessagingProvider,
+    expose_code: bool = False,
 ) -> dict:
     """SMS OTP 발송 플로우.
 
@@ -140,7 +141,14 @@ async def send_sms_otp_flow(
 
     logger.info("auth.sms_otp.sent", phone=f"****{phone[-4:]}", purpose=purpose)
 
-    return {"sent_at": sent_at, "cooldown_seconds": _COOLDOWN_TTL, "max_retries": _MAX_RETRIES}
+    result = {
+        "sent_at": sent_at,
+        "cooldown_seconds": _COOLDOWN_TTL,
+        "max_retries": _MAX_RETRIES,
+    }
+    if expose_code:
+        result["debug_code"] = otp
+    return result
 
 
 async def verify_sms_otp_flow(
