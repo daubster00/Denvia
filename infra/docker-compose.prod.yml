@@ -21,7 +21,7 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     restart: unless-stopped
-    command: uv run uvicorn api.src.main:app --host 0.0.0.0 --port 8000
+    command: uv --project /workspace/api run uvicorn api.src.main:app --host 0.0.0.0 --port 8000
     env_file:
       - ../.env.production
     environment:
@@ -40,7 +40,7 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     restart: unless-stopped
-    command: uv run celery -A api.src.workers.celery_app worker --loglevel=info
+    command: uv --project /workspace/api run celery -A api.src.workers.celery_app worker --loglevel=info
     env_file:
       - ../.env.production
     environment:
@@ -54,7 +54,7 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     restart: unless-stopped
-    command: uv run celery -A api.src.workers.celery_app beat --loglevel=info
+    command: uv --project /workspace/api run celery -A api.src.workers.celery_app beat --loglevel=info
     env_file:
       - ../.env.production
     environment:
