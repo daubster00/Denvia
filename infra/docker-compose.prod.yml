@@ -26,7 +26,7 @@ services:
       - ../.env.production
     environment:
       # vendor/rag(`from rag.run_qa import ...`) 임포트 안전망 — 이미지 빌드 시 ENV가 누락된 적 있음.
-      - PYTHONPATH=/workspace/vendor
+      - PYTHONPATH=/workspace:/workspace/vendor
       # RAG 인덱스 절대 경로
       - FAISS_CURRENT_PATH=/workspace/api/data/faiss/current
     depends_on:
@@ -44,7 +44,7 @@ services:
     env_file:
       - ../.env.production
     environment:
-      - PYTHONPATH=/workspace/vendor
+      - PYTHONPATH=/workspace:/workspace/vendor
     depends_on:
       - redis
       - postgres
@@ -58,7 +58,7 @@ services:
     env_file:
       - ../.env.production
     environment:
-      - PYTHONPATH=/workspace/vendor
+      - PYTHONPATH=/workspace:/workspace/vendor
     depends_on:
       - redis
 
