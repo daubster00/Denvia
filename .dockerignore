@@ -8,9 +8,17 @@ api/.ruff_cache/
 *.pyc
 
 # Node
+**/node_modules/
 web/node_modules/
 web/.next/
 web/out/
+vendor/montage-web/.git/
+vendor/montage-web/.github/
+vendor/montage-web/docs/
+vendor/montage-web/tests/
+vendor/montage-web/scripts/
+vendor/montage-web/.claude-plugin/
+vendor/montage-web/figma/
 
 # Git / env / IDE
 .git/
