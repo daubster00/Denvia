@@ -13,7 +13,7 @@ class QuotaResponse(BaseModel):
     reset_at: str
     show_upgrade_prompt: bool
     show_subscribe_button: bool
-    delay_seconds: int
+    delay_seconds: float
 
 
 class UsageSummaryResponse(BaseModel):

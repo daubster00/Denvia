@@ -20,6 +20,7 @@ celery_app = Celery(
         "api.src.workers.rag_tasks",           # Story 8.3: RAG 재빌드
         "api.src.workers.budget_tasks",        # Story 5.2: 예산 임계 감시
         "api.src.workers.billing_tasks",       # Story 3.3: 자동 갱신 배치
+        "api.src.workers.anomaly_tasks",       # Story 6.2: 차단 자동 만료
     ],
 )
 
@@ -75,6 +76,12 @@ celery_app.conf.update(
         "finalize-cancellations-hourly-15": {
             "task": "billing.finalize_cancellations",
             "schedule": crontab(minute=15),
+        },
+        # Story 6.2: 매시 30분 — 만료된 수동 차단 자동 해제
+        # (분 슬롯 분산: 0=budget, 5=deferred, 15=finalize, 30=expire-blocks)
+        "expire-blocks-hourly-30": {
+            "task": "anomaly_tasks.expire_blocks",
+            "schedule": crontab(minute=30),
         },
     },
 )

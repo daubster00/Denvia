@@ -1,6 +1,6 @@
 """세션 JWT 디코드 Depends — 일반 세션과 관리자 세션 분리.
 
-일반 사이트:  denvia_session 쿠키 → get_current_user / get_current_user_optional
+일반 사이트:  denvia_session 쿠키 → get_current_user / get_current_user_allow_blocked / get_current_user_optional
 관리자 콘솔: denvia_admin_session 쿠키 → get_current_admin / require_admin
 
 두 쿠키는 path가 분리되어 있으며, JWT의 aud 클레임으로 토큰 자체도 구분된다.
@@ -21,30 +21,53 @@ from api.src.utils.jwt import (
 )
 
 
-async def get_current_user(
-    denvia_session: str | None = Cookie(default=None),
-    db: AsyncSession = Depends(get_session),
-) -> User:
-    """denvia_session 쿠키가 없거나 무효하면 401을 던진다."""
+def _decode_session_cookie(denvia_session: str | None) -> dict:
+    """JWT 디코딩 공통 로직 — 401 분기. 동기 함수."""
     if not denvia_session:
         raise HTTPException(
             status_code=401,
             detail={"code": "AUTH_NOT_AUTHENTICATED", "message": "로그인이 필요합니다."},
         )
     try:
-        payload = decode_session_jwt(denvia_session)
+        return decode_session_jwt(denvia_session)
     except SessionExpired:
         raise HTTPException(
             status_code=401,
             detail={"code": "AUTH_SESSION_EXPIRED", "message": "세션이 만료되었습니다. 다시 로그인해주세요."},
         )
     except JWTDecodeError:
-        # 서명·포맷 오류는 상세 미공개 (보안)
         raise HTTPException(
             status_code=401,
             detail={"code": "AUTH_INVALID_TOKEN", "message": "로그인이 필요합니다."},
         )
 
+
+async def get_current_user(
+    denvia_session: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """denvia_session 쿠키가 없거나 무효하면 401, blocked 계정이면 403."""
+    payload = _decode_session_cookie(denvia_session)
+    user = await get_user_by_id(db, payload["sub"])
+    if user is None or user.withdrawn_at is not None:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "AUTH_NOT_AUTHENTICATED", "message": "로그인이 필요합니다."},
+        )
+    if user.subscription_status == "blocked":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ACCOUNT_BLOCKED", "message": "차단된 계정입니다. 관리자에게 문의하세요."},
+        )
+    return user
+
+
+async def get_current_user_allow_blocked(
+    denvia_session: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """/api/v1/me 전용 — blocked 사용자도 통과시켜 프론트가 차단 상태를 감지하고 /blocked로 이동할 수 있게 한다."""
+    payload = _decode_session_cookie(denvia_session)
     user = await get_user_by_id(db, payload["sub"])
     if user is None or user.withdrawn_at is not None:
         raise HTTPException(

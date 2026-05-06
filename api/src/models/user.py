@@ -1,8 +1,9 @@
 """User SQLAlchemy ORM 모델."""
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Integer, SmallInteger, String, Text
+from sqlalchemy import BigInteger, Boolean, Integer, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -26,7 +27,18 @@ class User(Base):
         Boolean, nullable=False, default=False
     )
     daily_quota_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    free_delay_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    free_delay_override: Mapped[Decimal | None] = mapped_column(
+        Numeric(4, 1), nullable=True
+    )
+    # Story 6.2 — 권한·차단 컬럼
+    blocked_until: Mapped[datetime | None] = mapped_column(nullable=True)
+    block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 차단 전 subscription_status 보존 — 만료/해제 시 복원에 사용 (Story 6.2 fix)
+    pre_block_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    pro_granted_by_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(nullable=True)
     withdrawn_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     updated_at: Mapped[datetime] = mapped_column(nullable=False)

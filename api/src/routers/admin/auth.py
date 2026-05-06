@@ -36,6 +36,9 @@ router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 ADMIN_COOKIE_NAME = "denvia_admin_session"
 ADMIN_CSRF_COOKIE_NAME = "denvia_admin_csrf"
 ADMIN_COOKIE_PATH = "/api/v1/admin"
+# CSRF 쿠키는 프론트 어드민 페이지(/admin/*)에서 document.cookie로 읽어야 하므로 path="/"
+# 세션 쿠키는 API 경로에만 전송되도록 path="/api/v1/admin" 유지
+ADMIN_CSRF_COOKIE_PATH = "/"
 ADMIN_COOKIE_MAX_AGE = 3600  # 1시간
 
 
@@ -61,7 +64,7 @@ def _set_admin_cookies(response: Response, token: str) -> None:
         httponly=False,
         secure=secure,
         samesite="lax",
-        path=ADMIN_COOKIE_PATH,
+        path=ADMIN_CSRF_COOKIE_PATH,
         max_age=ADMIN_COOKIE_MAX_AGE,
     )
 
@@ -83,7 +86,7 @@ def _clear_admin_cookies(response: Response) -> None:
         httponly=False,
         secure=secure,
         samesite="lax",
-        path=ADMIN_COOKIE_PATH,
+        path=ADMIN_CSRF_COOKIE_PATH,
         max_age=0,
     )
 

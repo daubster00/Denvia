@@ -446,6 +446,10 @@ async def oauth_callback_endpoint(
         from sqlalchemy import select
         u_row = await db.execute(select(User).where(User.id == user_id))
         user = u_row.scalar_one_or_none()
+        # Story 6.2 (편차 2): OAuth 로그인 성공 시 last_login_at 업데이트
+        if user is not None and action == "login_completed":
+            from datetime import datetime as _dt, timezone as _tz
+            user.last_login_at = _dt.now(tz=_tz.utc)
         await db.commit()
 
         if user is None:

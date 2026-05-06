@@ -27,7 +27,7 @@ logger = structlog.get_logger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 
 DEFAULT_FREE_DAILY_QUOTA = 10
-DEFAULT_FREE_DELAY_SECONDS = 0
+DEFAULT_FREE_DELAY_SECONDS: Decimal = Decimal("0")
 DEFAULT_PRO_INTERNAL_CAP = 500
 # admin은 preflight에서 quota/delay 모두 우회한다(qa_service.preflight 참고).
 # /me/quota 응답에서도 일반 limit 계산을 타지 않도록 충분히 큰 sentinel을 사용해
@@ -81,18 +81,22 @@ async def _resolve_daily_limit(user: User, redis_runtime: Redis) -> tuple[int, s
     return (DEFAULT_FREE_DAILY_QUOTA, "default")
 
 
-async def _resolve_delay(user: User, redis_runtime: Redis) -> tuple[int, str]:
-    """무료 지연 결정. pro/admin은 0초 강제. 개별 override > 전역 enabled > runtime delay > default."""
+async def _resolve_delay(user: User, redis_runtime: Redis) -> tuple[Decimal, str]:
+    """무료 지연 결정. pro/admin은 0초 강제. 개별 override > 전역 enabled > runtime delay > default.
+
+    Story 6.3 — 반환 타입을 ``tuple[Decimal, str]``로 확장 (0.1초 정밀도).
+    개별 override는 ORM에서 ``Decimal`` 값으로 들어오고, runtime/default는 ``Decimal`` 승격.
+    """
     if user.subscription_status in ("pro", "admin"):
-        return (0, "paid_skip")
+        return (Decimal("0"), "paid_skip")
     if user.free_delay_override is not None:
         return (user.free_delay_override, "user_override")
     enabled = await _resolve_bool(redis_runtime, "runtime:free_delay_enabled", default=True)
     if not enabled:
-        return (0, "runtime_disabled")
+        return (Decimal("0"), "runtime_disabled")
     runtime_val = await _resolve_int_or_none(redis_runtime, "runtime:free_delay")
     if runtime_val is not None:
-        return (runtime_val, "runtime")
+        return (Decimal(runtime_val), "runtime")
     return (DEFAULT_FREE_DELAY_SECONDS, "default")
 
 _ECHO_ANSWER = "[placeholder] 스트리밍은 Story 2.2에서 구현됩니다"
@@ -186,8 +190,9 @@ class QAService:
 
         delay, _dsrc = await _resolve_delay(user, redis_runtime)
         if delay > 0:
-            logger.info("qa.free_delay.applied", user_id=user.id, delay_seconds=delay)
-            await asyncio.sleep(delay)
+            delay_float = float(delay)
+            logger.info("qa.free_delay.applied", user_id=user.id, delay_seconds=delay_float)
+            await asyncio.sleep(delay_float)
 
     async def echo(
         self,

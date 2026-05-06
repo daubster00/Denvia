@@ -2,6 +2,7 @@
 
 import pytest
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
@@ -19,7 +20,7 @@ from api.src.services.qa_service import (
 def _make_user(
     subscription_status: str = "free",
     daily_quota_override: int | None = None,
-    free_delay_override: int | None = None,
+    free_delay_override: Decimal | int | None = None,
 ) -> MagicMock:
     u = MagicMock()
     u.id = 42
@@ -167,3 +168,29 @@ class TestResolveDelay:
         delay, src = await _resolve_delay(user, rt)
         assert delay == DEFAULT_FREE_DELAY_SECONDS
         assert src == "default"
+
+    # Story 6.3 — Decimal 호환 확장 회귀
+    @pytest.mark.asyncio
+    async def test_user_override_decimal_preserved(self):
+        """ORM에서 Decimal로 들어오는 free_delay_override가 그대로 반환된다."""
+        user = _make_user("free", free_delay_override=Decimal("1.5"))
+        rt = _make_runtime({"runtime:free_delay": "3"})
+        delay, src = await _resolve_delay(user, rt)
+        assert delay == Decimal("1.5")
+        assert isinstance(delay, Decimal)
+        assert src == "user_override"
+
+    @pytest.mark.asyncio
+    async def test_default_returns_decimal_zero(self):
+        user = _make_user("free", free_delay_override=None)
+        rt = _make_runtime({})
+        delay, _src = await _resolve_delay(user, rt)
+        assert isinstance(delay, Decimal)
+
+    @pytest.mark.asyncio
+    async def test_runtime_value_promoted_to_decimal(self):
+        user = _make_user("free", free_delay_override=None)
+        rt = _make_runtime({"runtime:free_delay_enabled": "true", "runtime:free_delay": "5"})
+        delay, _src = await _resolve_delay(user, rt)
+        assert isinstance(delay, Decimal)
+        assert delay == Decimal("5")

@@ -133,3 +133,79 @@ class TestRequireAdmin:
             )
         assert res.status_code == 401
         assert res.json()["code"] == "ADMIN_AUTH_REQUIRED"
+
+
+class TestGetCurrentUserBlocked:
+    """get_current_user — blocked 계정 403 체크 (Issue 1 fix)."""
+
+    async def test_blocked_user_gets_403_on_protected_endpoint(self):
+        """subscription_status='blocked' 사용자가 일반 API(qa/stream이 아닌 간단한 엔드포인트) 접근 시 403."""
+        token = _make_user_jwt(user_id=1)
+
+        blocked_user = _make_user(role="user")
+        blocked_user.subscription_status = "blocked"
+        blocked_user.withdrawn_at = None
+
+        app.dependency_overrides[get_session] = _mock_empty_db
+        from unittest.mock import patch
+        try:
+            with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=blocked_user)):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.get(
+                        "/api/v1/me/quota",
+                        cookies={"denvia_session": token},
+                    )
+        finally:
+            app.dependency_overrides.pop(get_session, None)
+
+        assert res.status_code == 403
+        assert res.json()["code"] == "ACCOUNT_BLOCKED"
+
+    async def test_blocked_user_can_access_me_endpoint(self):
+        """GET /api/v1/me는 blocked 사용자도 통과 — 프론트가 상태를 감지해 /blocked로 redirect."""
+        token = _make_user_jwt(user_id=1)
+
+        blocked_user = _make_user(role="user")
+        blocked_user.subscription_status = "blocked"
+        blocked_user.withdrawn_at = None
+
+        app.dependency_overrides[get_session] = _mock_empty_db
+        from unittest.mock import patch
+        try:
+            with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=blocked_user)):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.get(
+                        "/api/v1/me",
+                        cookies={"denvia_session": token},
+                    )
+        finally:
+            app.dependency_overrides.pop(get_session, None)
+
+        assert res.status_code == 200
+        assert res.json()["subscription_status"] == "blocked"
+
+    async def test_non_blocked_user_passes_normally(self):
+        """subscription_status='free' 사용자는 정상 통과."""
+        token = _make_user_jwt(user_id=1)
+
+        free_user = _make_user(role="user")
+        free_user.subscription_status = "free"
+        free_user.withdrawn_at = None
+        # me 엔드포인트 필요 필드
+        free_user.segment = None
+        free_user.years_of_experience = None
+        free_user.must_reset_password = False
+
+        app.dependency_overrides[get_session] = _mock_empty_db
+        from unittest.mock import patch
+        try:
+            with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=free_user)):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.get(
+                        "/api/v1/me",
+                        cookies={"denvia_session": token},
+                    )
+        finally:
+            app.dependency_overrides.pop(get_session, None)
+
+        assert res.status_code == 200

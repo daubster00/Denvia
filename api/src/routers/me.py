@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import desc, func, select
 
-from api.src.deps.auth import get_current_user
+from api.src.deps.auth import get_current_user, get_current_user_allow_blocked
 from api.src.deps.redis import get_redis_quota, get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.billing_key import BillingKey
@@ -68,7 +68,7 @@ async def get_my_quota(
             reset_at=_next_kst_midnight_iso(),
             show_upgrade_prompt=False,
             show_subscribe_button=False,
-            delay_seconds=0,
+            delay_seconds=0.0,
         )
 
     raw = await redis_quota.get(_today_key_kst(current_user.id))
@@ -94,7 +94,7 @@ async def get_my_quota(
         reset_at=_next_kst_midnight_iso(),
         show_upgrade_prompt=show_upgrade,
         show_subscribe_button=show_subscribe,
-        delay_seconds=delay,
+        delay_seconds=float(delay),
     )
 
 
@@ -405,7 +405,7 @@ async def mark_popup_seen(
 
 
 @router.get("/me", response_model=SessionUserResponse)
-async def get_me(current_user: User = Depends(get_current_user)) -> SessionUserResponse:
+async def get_me(current_user: User = Depends(get_current_user_allow_blocked)) -> SessionUserResponse:
     """세션 쿠키에서 user_id를 꺼내 현재 사용자 정보를 snake_case로 반환한다."""
     return SessionUserResponse(
         user_id=current_user.id,

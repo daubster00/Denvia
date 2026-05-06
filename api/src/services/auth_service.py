@@ -460,6 +460,13 @@ async def login_user(
     async with _make_redis_rl(redis_url) as r:
         await r.delete(fail_key)
 
+    # Story 6.2: 로그인 성공 시 last_login_at 업데이트 (편차 2)
+    user.last_login_at = datetime.now(tz=timezone.utc)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
     logger.info(
         "auth.login.success",
         user_id=user.id,
