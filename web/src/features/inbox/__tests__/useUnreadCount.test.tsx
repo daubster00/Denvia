@@ -51,6 +51,7 @@ describe("useUnreadCount — enabled 가드", () => {
         segment: null,
         years_of_experience: null,
         must_reset_password: false,
+        is_social: false,
       },
     });
     vi.mocked(fetchUnreadCount).mockResolvedValue({ unread_count: 3 });

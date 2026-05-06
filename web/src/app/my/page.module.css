@@ -36,6 +36,26 @@
   margin: 0;
 }
 
+.withdrawSection {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.withdrawLink {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #6b7280);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.withdrawLink:hover {
+  color: #ef4444;
+}
+
 @media (max-width: 767px) {
   .container {
     padding: 24px 16px 64px;

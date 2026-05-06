@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 import sentry_sdk
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,8 @@ from sqlalchemy import desc, func, select
 
 from api.src.deps.auth import get_current_user, get_current_user_allow_blocked
 from api.src.deps.redis import get_redis_quota, get_redis_runtime
+from api.src.integrations.messaging.adapters.stub import StubMessagingAdapter
+from api.src.integrations.messaging.port import MessagingProvider
 from api.src.models.base import get_session
 from api.src.models.billing_key import BillingKey
 from api.src.models.payment import Payment
@@ -30,8 +32,17 @@ from api.src.schemas.me import (
     PaymentHistoryResponse,
     QuotaResponse,
     UsageSummaryResponse,
+    WithdrawOtpSendResponse,
+    WithdrawOtpVerifyRequest,
+    WithdrawOtpVerifyResponse,
+    WithdrawRequest,
 )
-from api.src.services import inbox_service
+from api.src.services import auth_service, inbox_service
+from api.src.services.auth_service import (
+    send_sms_otp_flow,
+    verify_sms_otp_flow,
+    verify_withdraw_token,
+)
 from api.src.services.qa_service import (
     ADMIN_UNLIMITED_LIMIT,
     _next_kst_midnight_iso,
@@ -40,7 +51,8 @@ from api.src.services.qa_service import (
     _resolve_delay,
     _today_key_kst,
 )
-from api.src.utils.argon2 import hash_password
+from api.src.settings import settings
+from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_session_jwt
 
 logger = structlog.get_logger(__name__)
@@ -400,6 +412,198 @@ async def mark_popup_seen(
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Story 1.7 — 회원 탈퇴 (F-108)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _get_messaging() -> MessagingProvider:
+    """탈퇴 SMS OTP용 메시징 어댑터 — auth 라우터와 동일 분기."""
+    if settings.messaging_provider == "stub":
+        return StubMessagingAdapter()
+    # HOLD-MSG: 실 어댑터는 벤더 결정 후 구현 (auth.py:_get_messaging와 동기화 필수)
+    return StubMessagingAdapter()
+
+
+def _is_secure_env() -> bool:
+    return settings.environment.lower() in {"production", "staging"}
+
+
+def _mask_phone(phone: str) -> str:
+    """`010-12345678` 또는 `01012345678` 형식 모두 `010-****-5678` 마스킹."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if len(digits) < 7:
+        return "***-****-****"
+    return f"{digits[:3]}-****-{digits[-4:]}"
+
+
+@router.post("/me/withdraw/send-otp", response_model=WithdrawOtpSendResponse)
+async def withdraw_send_otp(
+    current_user: User = Depends(get_current_user),
+) -> WithdrawOtpSendResponse:
+    """소셜 가입자 본인 인증용 OTP 발송 (Story 1.7 / AC-9).
+
+    - 자체 가입자(password_hash 존재)는 비밀번호 경로를 사용하므로 403.
+    - phone이 NULL인 소셜 사용자(Story 1.6 보충 전 계정 등)는 422.
+    """
+    if current_user.password_hash is not None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "NOT_SOCIAL_ACCOUNT",
+                "message": "자체 가입 계정은 비밀번호로 본인 인증해주세요.",
+            },
+        )
+    if current_user.phone is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "PHONE_NOT_REGISTERED",
+                "message": "등록된 휴대폰이 없습니다.",
+            },
+        )
+    await send_sms_otp_flow(
+        phone=current_user.phone,
+        purpose="withdraw",
+        redis_url=settings.redis_url,
+        messaging=_get_messaging(),
+        expose_code=settings.messaging_provider == "stub",
+    )
+    return WithdrawOtpSendResponse(masked_phone=_mask_phone(current_user.phone))
+
+
+@router.post("/me/withdraw/verify-otp", response_model=WithdrawOtpVerifyResponse)
+async def withdraw_verify_otp(
+    body: WithdrawOtpVerifyRequest,
+    current_user: User = Depends(get_current_user),
+) -> WithdrawOtpVerifyResponse:
+    """소셜 가입자 OTP 검증 — phone_verification_token 발급 (Story 1.7 / AC-9)."""
+    if current_user.password_hash is not None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "NOT_SOCIAL_ACCOUNT",
+                "message": "자체 가입 계정은 비밀번호로 본인 인증해주세요.",
+            },
+        )
+    if current_user.phone is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "PHONE_NOT_REGISTERED",
+                "message": "등록된 휴대폰이 없습니다.",
+            },
+        )
+    token = await verify_sms_otp_flow(
+        phone=current_user.phone,
+        code=body.code,
+        purpose="withdraw",
+        redis_url=settings.redis_url,
+    )
+    return WithdrawOtpVerifyResponse(phone_verification_token=token)
+
+
+@router.delete("/me", status_code=204)
+async def withdraw_me(
+    body: WithdrawRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """본인 계정 탈퇴 (Story 1.7).
+
+    - 자체 가입자: `password` 필수 → argon2 검증
+    - 소셜 가입자: `phone_verification_token` 필수 → Redis 1회용 소진
+    - 활성 Pro 구독자는 409로 차단(서비스 레이어에서)
+    - 성공 시 PII 즉시 파기 + 쿠키 소거 + 204
+    """
+    is_social = current_user.password_hash is None
+
+    if is_social:
+        if not body.phone_verification_token:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "SMS_TOKEN_INVALID",
+                    "message": "휴대폰 인증이 필요합니다.",
+                },
+            )
+        if current_user.phone is None:
+            # 토큰만으로는 phone 매칭 불가 — 방어적 422
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "PHONE_NOT_REGISTERED",
+                    "message": "등록된 휴대폰이 없습니다.",
+                },
+            )
+        await verify_withdraw_token(
+            phone_verification_token=body.phone_verification_token,
+            expected_phone=current_user.phone,
+            redis_url=settings.redis_url,
+        )
+    else:
+        if not body.password:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "AUTH_INVALID_CREDENTIALS",
+                    "message": "비밀번호가 일치하지 않습니다.",
+                },
+            )
+        if not verify_password(body.password, current_user.password_hash):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "AUTH_INVALID_CREDENTIALS",
+                    "message": "비밀번호가 일치하지 않습니다.",
+                },
+            )
+
+    # request 메타데이터 추출
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    ip = (
+        forwarded_for.split(",")[0].strip()
+        if forwarded_for
+        else (request.client.host if request.client else None)
+    )
+    ua = request.headers.get("User-Agent")
+    trace_id = getattr(request.state, "trace_id", None)
+
+    await auth_service.withdraw(
+        user=current_user,
+        ip=ip,
+        ua=ua,
+        db=db,
+        trace_id=trace_id,
+    )
+
+    # 쿠키 소거 (denvia_session + denvia_csrf, Max-Age=0).
+    # Response 인스턴스를 직접 만들어 두 Set-Cookie 헤더를 모두 보존한다
+    # (dict(response.headers)는 동일 키를 합쳐 두 번째 쿠키가 손실됨).
+    secure = _is_secure_env()
+    out = Response(status_code=204)
+    out.set_cookie(
+        key="denvia_session",
+        value="",
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+        max_age=0,
+    )
+    out.set_cookie(
+        key="denvia_csrf",
+        value="",
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        path="/",
+        max_age=0,
+    )
+    return out
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # (Existing) GET /me — 세션 유저 정보
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -415,6 +619,7 @@ async def get_me(current_user: User = Depends(get_current_user_allow_blocked)) -
         segment=current_user.segment,
         years_of_experience=current_user.years_of_experience,
         must_reset_password=current_user.must_reset_password,
+        is_social=current_user.password_hash is None,
     )
 
 

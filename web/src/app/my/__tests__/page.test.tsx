@@ -80,6 +80,7 @@ describe("MyPage — 인증 가드", () => {
       segment: null,
       years_of_experience: null,
       must_reset_password: false,
+      is_social: false,
     } as never);
     const openPopup = vi.fn();
     useSessionStore.setState({ openPopup });
@@ -116,6 +117,7 @@ describe("MyPage — 인증 가드", () => {
         segment: null,
         years_of_experience: null,
         must_reset_password: false,
+        is_social: false,
       },
     });
     vi.mocked(fetchMe).mockResolvedValue({
@@ -126,6 +128,7 @@ describe("MyPage — 인증 가드", () => {
       segment: null,
       years_of_experience: null,
       must_reset_password: false,
+      is_social: false,
     } as never);
 
     const { findByTestId } = render(<MyPage />, { wrapper: makeWrapper() });

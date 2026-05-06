@@ -57,3 +57,27 @@ class PaymentHistoryResponse(BaseModel):
     page: int
     per_page: int
     total: int
+
+
+# ── Story 1.7: 회원 탈퇴 ─────────────────────────────────────────────────────
+
+
+class WithdrawOtpSendResponse(BaseModel):
+    """POST /api/v1/me/withdraw/send-otp 응답 — 마스킹된 휴대폰만 노출."""
+
+    masked_phone: str
+
+
+class WithdrawOtpVerifyRequest(BaseModel):
+    code: str
+
+
+class WithdrawOtpVerifyResponse(BaseModel):
+    phone_verification_token: str
+
+
+class WithdrawRequest(BaseModel):
+    """DELETE /api/v1/me 요청 — 자체 가입자는 password, 소셜 가입자는 token."""
+
+    password: str | None = None
+    phone_verification_token: str | None = None

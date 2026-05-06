@@ -10,7 +10,7 @@
  * 직접 구독해서 pending 동안에는 null 렌더링, isError가 확정된 시점에만 팝업/리다이렉트.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
@@ -18,6 +18,7 @@ import { TopNav } from "@/components/layout/TopNav";
 import { AccountSummary } from "@/features/account/components/AccountSummary";
 import { PaymentHistoryTable } from "@/features/billing/components/PaymentHistoryTable";
 import { fetchMe } from "@/features/auth/api";
+import { ConfirmWithdrawPopup } from "@/features/auth/ConfirmWithdrawPopup";
 import { useSessionStore } from "@/stores/session-store";
 
 import styles from "./page.module.css";
@@ -26,6 +27,8 @@ export default function MyPage() {
   const router = useRouter();
   const user = useSessionStore((s) => s.user);
   const openPopup = useSessionStore((s) => s.openPopup);
+  // TODO(Story 1.7 → Epic 4): 마이페이지 정식 메뉴에 "계정 탈퇴" 항목이 추가되면 이 임시 진입점 제거.
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   const { isLoading, data, isError } = useQuery({
     queryKey: ["session"],
@@ -60,7 +63,21 @@ export default function MyPage() {
           <h2 className={styles.sectionHeading}>결제 내역</h2>
           <PaymentHistoryTable />
         </section>
+        {/* TODO(Story 1.7 → Epic 4 My Page): 정식 메뉴에 통합 후 본 임시 진입점 제거. */}
+        <section className={styles.withdrawSection} aria-label="계정 탈퇴">
+          <button
+            type="button"
+            className={styles.withdrawLink}
+            onClick={() => setWithdrawOpen(true)}
+          >
+            계정 탈퇴
+          </button>
+        </section>
       </main>
+      <ConfirmWithdrawPopup
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+      />
     </>
   );
 }

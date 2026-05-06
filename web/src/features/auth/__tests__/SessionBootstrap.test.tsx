@@ -35,6 +35,7 @@ const mockUser = {
   segment: "doctor" as const,
   years_of_experience: 10,
   must_reset_password: false,
+  is_social: false,
 };
 
 const blockedUser = {
@@ -47,6 +48,7 @@ const mustResetUser = {
   ...mockUser,
   user_id: 77,
   must_reset_password: true,
+  is_social: false,
 };
 
 function createClient() {

@@ -5,6 +5,7 @@ import json
 import random
 import secrets
 import string
+import uuid
 from datetime import datetime, timezone
 from typing import Literal, TypedDict
 
@@ -13,7 +14,7 @@ import structlog
 from fastapi import HTTPException
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,8 +24,11 @@ from api.src.integrations.auth_providers.base import (
     ProviderName,
 )
 from api.src.integrations.messaging.port import MessagingProvider
+from api.src.middleware.audit_actions import AUDIT_USER_WITHDRAW
 from api.src.models.anomaly_event import AnomalyEvent
+from api.src.models.audit_log import AuditLog
 from api.src.models.oauth_identity import OAuthIdentity
+from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.settings import REDIS_DB_OTP, REDIS_DB_RATE_LIMIT
 from api.src.utils.argon2 import hash_password, verify_password
@@ -937,6 +941,119 @@ async def oauth_callback(
         "signup_pending_token": pending_token,
         "provider": provider_name,
     }
+
+
+# ── Story 1.7: 회원 탈퇴 ─────────────────────────────────────────────────────
+
+
+async def verify_withdraw_token(
+    phone_verification_token: str,
+    expected_phone: str,
+    redis_url: str,
+) -> None:
+    """소셜 가입자 탈퇴용 phone_verification_token 검증 + 1회용 소진.
+
+    `signup_user`/`oauth_complete_phone_supplement`와 동일한 phone_token 키 패턴을 재사용.
+
+    Raises:
+        400 SMS_TOKEN_INVALID — 토큰이 없거나 휴대폰이 일치하지 않음
+    """
+    token_key = _TOKEN_KEY.format(token=phone_verification_token)
+    async with _make_redis(redis_url) as r:
+        stored_phone = await r.get(token_key)
+        if stored_phone is None or stored_phone != expected_phone:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "SMS_TOKEN_INVALID", "message": "휴대폰 인증이 필요합니다."},
+            )
+        await r.delete(token_key)
+
+
+async def withdraw(
+    user: User,
+    ip: str | None,
+    ua: str | None,
+    db: AsyncSession,
+    trace_id: str | uuid.UUID | None = None,
+) -> None:
+    """본인 계정 탈퇴 — PII 즉시 파기 + oauth_identity 삭제 + qa_logs 익명화 + audit log INSERT.
+
+    단일 트랜잭션 내에서 처리한다. `subscription_status == "pro"`이면 409로 차단한다.
+
+    AuditMiddleware는 `/api/v1/admin/*` 경로만 감사하므로 여기서 inline INSERT한다.
+    `audit_logs.actor_user_id`는 ON DELETE RESTRICT지만 본 스토리는 소프트 삭제이므로
+    `user.id`를 그대로 보존해도 FK 제약을 위반하지 않는다.
+
+    Raises:
+        409 SUBSCRIPTION_ACTIVE_MUST_CANCEL_FIRST — 활성 Pro 구독자
+    """
+    if user.subscription_status == "pro":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "SUBSCRIPTION_ACTIVE_MUST_CANCEL_FIRST",
+                "message": "구독을 먼저 해지해주세요. 다음 결제일 이후 탈퇴가 가능합니다",
+            },
+        )
+
+    # TraceMiddleware는 X-Trace-Id 헤더 값을 그대로 str로 보존하므로 비-UUID 입력이
+    # audit_logs.trace_id(UUID 컬럼) INSERT 시 DataError를 일으켜 탈퇴 트랜잭션 전체를
+    # 롤백시킬 수 있다. 안전 파싱 후 실패 시 None 처리.
+    if isinstance(trace_id, uuid.UUID):
+        trace_uuid: uuid.UUID | None = trace_id
+    elif isinstance(trace_id, str):
+        try:
+            trace_uuid = uuid.UUID(trace_id)
+        except ValueError:
+            trace_uuid = None
+    else:
+        trace_uuid = None
+
+    now = datetime.now(tz=timezone.utc)
+    sub_before = user.subscription_status
+    user_id = user.id
+
+    # 1) PII 필드 덮어쓰기 — partial UNIQUE index(WHERE withdrawn_at IS NULL)에서 자동 해제됨
+    user.email = f"withdrawn_{user_id}_{secrets.token_hex(8)}"
+    user.phone = None
+    user.phone_verified = False
+    user.password_hash = None
+    user.withdrawn_at = now
+    user.updated_at = now
+
+    # 2) oauth_identity 명시적 삭제 — 소프트 삭제이므로 FK CASCADE는 자동 트리거되지 않음
+    await db.execute(delete(OAuthIdentity).where(OAuthIdentity.user_id == user_id))
+
+    # 3) qa_logs 명시적 익명화 — 동일 사유로 FK SET NULL도 수동 처리 필요
+    await db.execute(
+        update(QALog).where(QALog.user_id == user_id).values(user_id=None)
+    )
+
+    # 4) audit_logs INSERT (NFR-S7) — payments 테이블은 변경하지 않음(NFR-C3, 5년 보관)
+    db.add(
+        AuditLog(
+            actor_user_id=user_id,
+            action=AUDIT_USER_WITHDRAW,
+            target_type="user",
+            target_id=user_id,
+            diff_json={
+                "subscription_status_before": sub_before,
+                "withdrawn_at": now.isoformat(),
+            },
+            ip=ip,
+            ua=ua,
+            trace_id=trace_uuid,
+        )
+    )
+
+    await db.commit()
+
+    logger.info(
+        "user.withdraw.completed",
+        user_id=user_id,
+        subscription_status_before=sub_before,
+        trace_id=str(trace_uuid) if trace_uuid else None,
+    )
 
 
 async def oauth_complete_phone_supplement(

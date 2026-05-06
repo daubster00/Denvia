@@ -34,6 +34,7 @@ const _LOGGED_IN_USER = {
   segment: "doctor" as const,
   years_of_experience: 5,
   must_reset_password: false,
+  is_social: false,
 };
 
 function openAccountMenu() {

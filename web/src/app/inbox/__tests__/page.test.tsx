@@ -89,6 +89,7 @@ describe("InboxPage — 인증 가드", () => {
       segment: null,
       years_of_experience: null,
       must_reset_password: false,
+      is_social: false,
     } as never);
     const openPopup = vi.fn();
     useSessionStore.setState({ openPopup });
@@ -128,6 +129,7 @@ describe("InboxPage — 인증 가드", () => {
         segment: null,
         years_of_experience: null,
         must_reset_password: false,
+        is_social: false,
       },
     });
     render(<InboxPage />, { wrapper: makeWrapper() });
@@ -148,6 +150,7 @@ describe("InboxPage — 인증 가드", () => {
         segment: null,
         years_of_experience: null,
         must_reset_password: false,
+        is_social: false,
       },
     });
     render(<InboxPage />, { wrapper: makeWrapper() });
@@ -166,6 +169,7 @@ describe("InboxPage — 인증 가드", () => {
         segment: null,
         years_of_experience: null,
         must_reset_password: false,
+        is_social: false,
       },
     });
     render(<InboxPage />, { wrapper: makeWrapper() });

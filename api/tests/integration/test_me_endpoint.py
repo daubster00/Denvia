@@ -38,6 +38,24 @@ def mock_user():
     user.years_of_experience = None
     user.withdrawn_at = None
     user.must_reset_password = False
+    # Story 1.7: is_social 분기용. 자체 가입자(이메일 비밀번호) 기본.
+    user.password_hash = "$argon2id$dummy"
+    return user
+
+
+@pytest.fixture
+def mock_social_user():
+    """소셜 전용 사용자 — password_hash IS NULL."""
+    user = MagicMock()
+    user.id = 2
+    user.email = "social@denvia.com"
+    user.role = "user"
+    user.subscription_status = "free"
+    user.segment = None
+    user.years_of_experience = None
+    user.withdrawn_at = None
+    user.must_reset_password = False
+    user.password_hash = None
     return user
 
 
@@ -51,8 +69,8 @@ class TestMeEndpoint:
         assert body["code"] == "AUTH_NOT_AUTHENTICATED"
         assert "trace_id" in body
 
-    async def test_유효_JWT_200_snake_case_6필드(self, mock_user):
-        """유효한 JWT 쿠키 → 200 + snake_case 6필드 반환."""
+    async def test_유효_JWT_200_snake_case_8필드(self, mock_user):
+        """유효한 JWT 쿠키 → 200 + snake_case 8필드(Story 1.7 is_social 추가) 반환."""
         token = _make_jwt(user_id=1)
 
         with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=mock_user)):
@@ -61,9 +79,25 @@ class TestMeEndpoint:
 
         assert res.status_code == 200
         body = res.json()
-        assert set(body.keys()) == {"user_id", "email", "role", "subscription_status", "segment", "years_of_experience", "must_reset_password"}
+        assert set(body.keys()) == {
+            "user_id", "email", "role", "subscription_status",
+            "segment", "years_of_experience", "must_reset_password", "is_social",
+        }
         assert body["user_id"] == 1
         assert body["email"] == "doc@denvia.com"
+        # 자체 가입자: password_hash 존재 → is_social = False
+        assert body["is_social"] is False
+
+    async def test_유효_JWT_200_소셜_사용자_is_social_True(self, mock_social_user):
+        """소셜 전용 사용자(password_hash IS NULL)는 is_social=True (Story 1.7 AC-11)."""
+        token = _make_jwt(user_id=2)
+
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=mock_social_user)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.get("/api/v1/me", cookies={"denvia_session": token})
+
+        assert res.status_code == 200
+        assert res.json()["is_social"] is True
 
     async def test_만료_JWT_401_AUTH_SESSION_EXPIRED(self):
         """만료된 JWT → 401 + code: AUTH_SESSION_EXPIRED."""

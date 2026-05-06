@@ -74,6 +74,7 @@ beforeEach(() => {
       segment: null,
       years_of_experience: null,
       must_reset_password: false,
+      is_social: false,
     },
   });
 });

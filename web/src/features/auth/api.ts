@@ -116,3 +116,31 @@ export async function changePassword(payload: { new_password: string }) {
     body: JSON.stringify(payload),
   });
 }
+
+// ── Story 1.7: 회원 탈퇴 ─────────────────────────────────────────────────────
+
+/** 소셜 가입자 탈퇴용 SMS OTP 발송 — 마스킹된 휴대폰을 응답에 포함. */
+export async function sendWithdrawOtp(): Promise<{ masked_phone: string }> {
+  return apiFetch<{ masked_phone: string }>("/api/v1/me/withdraw/send-otp", {
+    method: "POST",
+  });
+}
+
+/** 소셜 가입자 탈퇴용 SMS OTP 검증 — phone_verification_token 발급. */
+export async function verifyWithdrawOtp(code: string) {
+  return apiFetch<{ phone_verification_token: string }>(
+    "/api/v1/me/withdraw/verify-otp",
+    { method: "POST", body: JSON.stringify({ code }) }
+  );
+}
+
+/** 본인 계정 탈퇴 — 자체 가입자는 password, 소셜 가입자는 phone_verification_token. */
+export async function withdraw(payload: {
+  password?: string;
+  phone_verification_token?: string;
+}): Promise<void> {
+  await apiFetch<void>("/api/v1/me", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}

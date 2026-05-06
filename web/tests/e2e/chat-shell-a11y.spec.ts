@@ -13,6 +13,7 @@ const MOCK_USER = {
   segment: "doctor",
   years_of_experience: 10,
   must_reset_password: false,
+  is_social: false,
 };
 
 test.describe("Story 2.7 — 접근성 (axe)", () => {

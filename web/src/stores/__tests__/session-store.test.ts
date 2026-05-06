@@ -53,6 +53,7 @@ describe("useSessionStore — clearSession", () => {
       segment: null,
       years_of_experience: null,
       must_reset_password: false,
+      is_social: false,
     });
     expect(useSessionStore.getState().user).not.toBeNull();
     useSessionStore.getState().clearSession();

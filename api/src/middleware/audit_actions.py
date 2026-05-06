@@ -8,6 +8,7 @@ from fastapi import Request
 AUDIT_USER_PERMISSION_EDIT = "user.permission_edit"     # A-202 (Story 5.1/6.2)
 AUDIT_USER_BLOCK_AUTO_EXPIRED = "user.block_auto_expired"  # A-202 자동 만료 (Story 6.2)
 AUDIT_USER_SPEED_OVERRIDE = "user.speed_override"       # A-203 (Story 6.3) — 응답 속도 단독 변경
+AUDIT_USER_WITHDRAW = "user.withdraw"                   # Story 1.7 — 본인 계정 탈퇴
 AUDIT_NOTICE_PUBLISH = "notice.publish"                 # A-301
 AUDIT_POPUP_CREATE = "popup.create"                     # A-302
 AUDIT_POPUP_UPDATE = "popup.update"                     # A-302

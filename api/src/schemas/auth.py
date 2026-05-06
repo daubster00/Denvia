@@ -6,7 +6,7 @@ import re
 
 
 class SessionUserResponse(BaseModel):
-    """GET /api/v1/me 응답 스키마 — 7 필드 flat 구조."""
+    """GET /api/v1/me 응답 스키마 — 8 필드 flat 구조 (Story 1.7 is_social 추가)."""
 
     user_id: int
     email: str
@@ -15,6 +15,9 @@ class SessionUserResponse(BaseModel):
     segment: str | None
     years_of_experience: int | None
     must_reset_password: bool
+    # Story 1.7 — 소셜 전용 가입 여부(password_hash IS NULL).
+    # ConfirmWithdrawPopup이 비밀번호 입력 vs SMS OTP 분기를 위해 사용한다.
+    is_social: bool
 
 
 # ── SMS ──────────────────────────────────────────────────────────────────────

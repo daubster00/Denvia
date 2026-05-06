@@ -31,6 +31,8 @@ export interface SessionUser {
   segment: "doctor" | "hygienist" | "student_other" | null;
   years_of_experience: number | null;
   must_reset_password: boolean;
+  /** Story 1.7: 소셜 전용 가입 여부(서버의 password_hash IS NULL). */
+  is_social: boolean;
 }
 
 export class ApiError extends Error {
