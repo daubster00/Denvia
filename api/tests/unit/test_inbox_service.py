@@ -179,3 +179,39 @@ async def test_get_active_popup_passes_https_link_url() -> None:
     out = await inbox_service.get_active_popup(db, user)
     assert out is not None
     assert out.link_url == "https://denvia.kr/announce"
+
+
+@pytest.mark.asyncio
+async def test_get_active_popup_query_includes_deleted_at_is_null_filter() -> None:
+    """Story 7.2: SELECT WHERE 절에 popups.deleted_at IS NULL 필터가 반드시 포함된다."""
+    user = MagicMock()
+    user.id = 1
+    user.segment = None
+
+    captured: list = []
+
+    async def _capture(stmt):
+        captured.append(stmt)
+        result = MagicMock()
+        result.scalar_one_or_none = MagicMock(return_value=None)
+        return result
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=_capture)
+
+    await inbox_service.get_active_popup(db, user)
+    assert len(captured) == 1
+    sql = str(captured[0].compile(compile_kwargs={"literal_binds": False}))
+    assert "deleted_at IS NULL" in sql, sql
+
+
+@pytest.mark.asyncio
+async def test_mark_popup_seen_excludes_soft_deleted() -> None:
+    """Story 7.2: soft delete된 팝업은 mark_popup_seen에서 not_found 분기."""
+    db = AsyncMock()
+    select_result = MagicMock()
+    select_result.scalar_one_or_none = MagicMock(return_value=None)
+    db.execute = AsyncMock(return_value=select_result)
+
+    out = await inbox_service.mark_popup_seen(db, user_id=1, popup_id=999)
+    assert out == "not_found"

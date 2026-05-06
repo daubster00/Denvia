@@ -24,6 +24,8 @@ from api.src.routers.admin import prompts as admin_prompts
 from api.src.routers.admin import rag as admin_rag
 from api.src.routers.admin import budget as admin_budget
 from api.src.routers.admin import analytics as admin_analytics
+from api.src.routers.admin import users as admin_users
+from api.src.routers.admin import content as admin_content
 from api.src.routers import billing as billing_router
 from api.src.routers import support as support_router
 from api.src.settings import settings
@@ -137,5 +139,7 @@ app.include_router(admin_rag.router, prefix="/api/v1")
 app.include_router(admin_prompts.router, prefix="/api/v1")
 app.include_router(admin_budget.router, prefix="/api/v1")
 app.include_router(admin_analytics.router, prefix="/api/v1")
+app.include_router(admin_users.router, prefix="/api/v1")
+app.include_router(admin_content.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")
 app.include_router(support_router.router)

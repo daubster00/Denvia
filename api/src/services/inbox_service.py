@@ -159,6 +159,7 @@ async def get_active_popup(
         select(Popup)
         .where(
             Popup.is_active.is_(True),
+            Popup.deleted_at.is_(None),
             Popup.display_start <= func.now(),
             Popup.display_end >= func.now(),
             or_(*segment_match),
@@ -195,7 +196,11 @@ async def mark_popup_seen(
     """
     popup = (
         await db.execute(
-            select(Popup).where(Popup.id == popup_id, Popup.is_active.is_(True))
+            select(Popup).where(
+                Popup.id == popup_id,
+                Popup.is_active.is_(True),
+                Popup.deleted_at.is_(None),
+            )
         )
     ).scalar_one_or_none()
     if popup is None:
