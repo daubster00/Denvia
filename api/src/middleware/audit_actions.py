@@ -14,6 +14,7 @@ AUDIT_POPUP_CREATE = "popup.create"                     # A-302
 AUDIT_POPUP_UPDATE = "popup.update"                     # A-302
 AUDIT_POPUP_TOGGLE = "popup.toggle"                     # A-302
 AUDIT_POPUP_DELETE = "popup.delete"                     # A-302
+AUDIT_SUPPORT_REPLY = "support.reply"                   # Story 9.3 — 관리자 문의 답변/상태 변경
 AUDIT_RAG_UPLOAD = "rag.upload"                         # A-401
 AUDIT_RAG_KNOWLEDGE_EDIT = "rag.knowledge_edit"         # A-402
 AUDIT_RAG_KNOWLEDGE_DELETE = "rag.knowledge_delete"     # A-402 삭제

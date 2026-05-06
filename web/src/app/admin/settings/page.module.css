@@ -25,28 +25,47 @@
   margin: 0;
 }
 
-.placeholder {
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 1rem;
+}
+
+.card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: 0.5rem;
-  padding: 4rem 2rem;
+  padding: 1.25rem 1.5rem;
   background: #ffffff;
-  border: 1px dashed #d1d5db;
+  border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
-  text-align: center;
+  text-decoration: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.placeholderText {
+.card:hover {
+  border-color: #7c3aed;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.08);
+}
+
+.cardTitle {
   font-size: 1rem;
   font-weight: 600;
-  color: #374151;
+  color: #111827;
   margin: 0;
 }
 
-.placeholderSub {
+.cardDesc {
   font-size: 0.875rem;
-  color: #9ca3af;
+  color: #6b7280;
   margin: 0;
+  line-height: 1.5;
+}
+
+.cardArrow {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  font-size: 0.875rem;
+  color: #7c3aed;
+  font-weight: 600;
 }

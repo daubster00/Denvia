@@ -1,52 +1,34 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 1.5rem;
-  max-width: 56rem;
+  gap: 16px;
+  padding: 24px 28px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .header {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.titleGroup {
+  display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 4px;
 }
 
 .title {
-  font-size: 1.25rem;
+  font-size: 24px;
   font-weight: 700;
-  color: #111827;
+  color: #0f172a;
   margin: 0;
 }
 
 .caption {
-  font-size: 0.875rem;
-  color: #6b7280;
   margin: 0;
-}
-
-.placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 4rem 2rem;
-  background: #ffffff;
-  border: 1px dashed #d1d5db;
-  border-radius: 0.75rem;
-  text-align: center;
-}
-
-.placeholderText {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #374151;
-  margin: 0;
-}
-
-.placeholderSub {
-  font-size: 0.875rem;
-  color: #9ca3af;
-  margin: 0;
+  font-size: 14px;
+  color: #64748b;
 }
