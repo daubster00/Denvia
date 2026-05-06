@@ -18,7 +18,7 @@ from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.rag_integration import query_runner
 from api.src.schemas.qa import QAEchoResponse, ReframePayload  # noqa: F401
-from api.src.services import qa_reframe_service
+from api.src.services import anomaly_service, qa_reframe_service
 from api.src.services.qa_reframe_service import ReframeExtractionResult  # noqa: F401
 
 logger = structlog.get_logger(__name__)
@@ -109,15 +109,30 @@ class QAService:
         user: User,
         redis_quota: Redis,
         redis_runtime: Redis,
+        db: AsyncSession,
     ) -> None:
         """Quota INCR + 의도적 지연. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
 
         admin 사용자: quota·delay 모두 우회 (개발/지원 트래픽).
         pro 사용자: delay 미적용, 내부 안전 상한(pro_internal_cap)만 검증.
         free 사용자: quota INCR → 한도 검증 → sleep.
+
+        Story 6.5: rapid_questions 자동 탐지 hook (편차 4) — admin은 hook도 skip.
         """
         if user.subscription_status == "admin":
             return
+
+        # Story 6.5 — rapid_questions 자동 탐지 hook (편차 4)
+        await anomaly_service.check_rapid_questions(
+            user_id=user.id,
+            subscription_status=user.subscription_status,
+            redis_quota=redis_quota,
+            db=db,
+        )
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
 
         key = _today_key_kst(user.id)
         used = await redis_quota.incr(key)

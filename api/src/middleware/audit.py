@@ -34,6 +34,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def _record(self, request: Request) -> None:
         try:
+            # 멱등 PATCH 등으로 라우터가 명시적으로 audit 기록을 건너뛰도록 표식한 경우 skip.
+            if getattr(request.state, "audit_skip", False):
+                return
             # /api/v1/admin/* 경로의 actor는 관리자 세션 쿠키에서 추출
             cookie = request.cookies.get("denvia_admin_session")
             if not cookie:

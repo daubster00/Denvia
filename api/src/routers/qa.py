@@ -72,6 +72,7 @@ async def qa_stream(
         user=user,
         redis_quota=redis_quota,
         redis_runtime=redis_runtime,
+        db=db,
     )
     return EventSourceResponse(
         _qa_service.stream(db=db, user=user, question_text=body.question_text),

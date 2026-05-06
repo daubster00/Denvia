@@ -378,6 +378,7 @@ async def oauth_authorize(
 @router.get("/oauth/{provider}/callback")
 async def oauth_callback_endpoint(
     provider: str,
+    request: Request,
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
@@ -451,6 +452,26 @@ async def oauth_callback_endpoint(
             from datetime import datetime as _dt, timezone as _tz
             user.last_login_at = _dt.now(tz=_tz.utc)
         await db.commit()
+
+        # Story 6.5 — concurrent_ip_login 자동 탐지 hook (편차 3, OAuth 진입점)
+        if user is not None and action == "login_completed":
+            from api.src.services import anomaly_service as _anomaly_service
+            from api.src.services.auth_service import _make_redis_rl as _make_rl
+            ip = request.client.host if request.client else None
+            ua = request.headers.get("user-agent")
+            async with _make_rl(settings.redis_url) as r:
+                await _anomaly_service.check_concurrent_ip_login(
+                    ip=ip,
+                    user_id=user.id,
+                    ua=ua,
+                    redis_rl=r,
+                    db=db,
+                    redis_pubsub=r,
+                )
+            try:
+                await db.commit()
+            except Exception:
+                await db.rollback()
 
         if user is None:
             return _oauth_error_redirect("OAUTH_STATE_INVALID")

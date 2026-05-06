@@ -210,3 +210,77 @@ export function buildFeedbackExportUrl(
   const qs = query.toString();
   return `${API_BASE}/api/v1/admin/analytics/feedback/export${qs ? `?${qs}` : ""}`;
 }
+
+// ---------------------------------------------------------------------------
+// Story 6.4 — 가입유형 통계
+// ---------------------------------------------------------------------------
+
+export type SegmentKey = "doctor" | "hygienist" | "student_other";
+export type YearsBucket = "0-2" | "3-5" | "6-10" | "11-20" | "20+";
+
+export interface SegmentRow {
+  segment: SegmentKey;
+  count: number;
+  active_count: number;
+  pro_count: number;
+}
+
+export interface ExperienceRow {
+  segment: "doctor" | "hygienist";
+  years_bucket: YearsBucket;
+  count: number;
+}
+
+export interface SegmentsResponse {
+  as_of: string;
+  applied_filters: { include_withdrawn: boolean; include_blocked: boolean };
+  total: number;
+  by_segment: SegmentRow[];
+  by_experience: ExperienceRow[];
+}
+
+export interface FetchSegmentsParams {
+  include_withdrawn?: boolean;
+  include_blocked?: boolean;
+}
+
+export async function fetchSegments(
+  params: FetchSegmentsParams = {},
+): Promise<SegmentsResponse> {
+  const query = new URLSearchParams();
+  if (params.include_withdrawn) query.set("include_withdrawn", "true");
+  if (params.include_blocked) query.set("include_blocked", "true");
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/segments${qs ? `?${qs}` : ""}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`segments fetch failed: ${res.status}`);
+  return res.json() as Promise<SegmentsResponse>;
+}
+
+export function buildSegmentsExportUrl(
+  params: FetchSegmentsParams = {},
+): string {
+  const query = new URLSearchParams();
+  if (params.include_withdrawn) query.set("include_withdrawn", "true");
+  if (params.include_blocked) query.set("include_blocked", "true");
+  const qs = query.toString();
+  return `${API_BASE}/api/v1/admin/analytics/segments/export${qs ? `?${qs}` : ""}`;
+}
+
+export async function fetchSegmentsExport(
+  params: FetchSegmentsParams = {},
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(buildSegmentsExportUrl(params), {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`segments export failed: ${res.status}`);
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return {
+    blob: await res.blob(),
+    filename:
+      match?.[1] ?? `segments_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  };
+}

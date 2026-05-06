@@ -30,6 +30,7 @@ from api.src.models.audit_log import AuditLog
 from api.src.models.oauth_identity import OAuthIdentity
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
+from api.src.services import anomaly_service
 from api.src.settings import REDIS_DB_OTP, REDIS_DB_RATE_LIMIT
 from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_session_jwt

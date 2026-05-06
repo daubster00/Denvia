@@ -17,6 +17,8 @@ from api.src.models.base import get_session
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.services.analytics_service import (
+    EXPORT_DETAIL_LIMIT,
+    SEGMENT_LABELS_KR,
     Unit,
     _feedback_default_window,
     _kst_datetime,
@@ -25,6 +27,8 @@ from api.src.services.analytics_service import (
     get_feedback_items_total,
     get_feedback_series,
     get_feedback_summary,
+    get_segment_export_rows,
+    get_segment_stats,
     get_signups_buckets,
     get_subscriber_counts,
 )
@@ -453,3 +457,165 @@ def _resolve_window(
         datetime(now.year + 1, 1, 1, tzinfo=KST),
         None,
     )
+
+
+# =============================================================================
+# Story 6.4 — 가입유형 통계 + 연차 히스토그램 + 엑셀 export
+# =============================================================================
+
+
+class SegmentRowResponse(BaseModel):
+    segment: Literal["doctor", "hygienist", "student_other"]
+    count: int
+    active_count: int
+    pro_count: int
+
+
+class ExperienceRowResponse(BaseModel):
+    segment: Literal["doctor", "hygienist"]
+    years_bucket: Literal["0-2", "3-5", "6-10", "11-20", "20+"]
+    count: int
+
+
+class SegmentsAppliedFilters(BaseModel):
+    include_withdrawn: bool
+    include_blocked: bool
+
+
+class SegmentsResponse(BaseModel):
+    as_of: str
+    applied_filters: SegmentsAppliedFilters
+    total: int
+    by_segment: list[SegmentRowResponse]
+    by_experience: list[ExperienceRowResponse]
+
+
+@router.get("/segments", response_model=SegmentsResponse)
+async def segments(
+    response: Response,
+    as_of: Literal["now"] = Query("now"),
+    include_withdrawn: bool = Query(False),
+    include_blocked: bool = Query(False),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> SegmentsResponse:
+    stats = await get_segment_stats(
+        db,
+        include_withdrawn=include_withdrawn,
+        include_blocked=include_blocked,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.analytics.segments.viewed",
+        actor_user_id=actor.id,
+        total=stats["total"],
+        include_withdrawn=include_withdrawn,
+        include_blocked=include_blocked,
+    )
+    return SegmentsResponse(
+        as_of=datetime.now(KST).isoformat(),
+        applied_filters=SegmentsAppliedFilters(**stats["applied_filters"]),
+        total=stats["total"],
+        by_segment=[SegmentRowResponse(**r.__dict__) for r in stats["by_segment"]],
+        by_experience=[
+            ExperienceRowResponse(**r.__dict__) for r in stats["by_experience"]
+        ],
+    )
+
+
+@router.get("/segments/export")
+async def segments_export(
+    include_withdrawn: bool = Query(False),
+    include_blocked: bool = Query(False),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    import openpyxl
+
+    stats = await get_segment_stats(
+        db,
+        include_withdrawn=include_withdrawn,
+        include_blocked=include_blocked,
+    )
+    rows, truncated = await get_segment_export_rows(
+        db,
+        include_withdrawn=include_withdrawn,
+        include_blocked=include_blocked,
+    )
+
+    wb = openpyxl.Workbook()
+    ws_sum = wb.active
+    ws_sum.title = "Summary"
+    ws_sum.append(["가입유형 통계 — 기준", datetime.now(KST).isoformat()])
+    ws_sum.append([])
+    ws_sum.append(["segment", "segment_label", "count", "active_count", "pro_count"])
+    for r in stats["by_segment"]:
+        ws_sum.append(
+            [
+                r.segment,
+                SEGMENT_LABELS_KR.get(r.segment, ""),
+                r.count,
+                r.active_count,
+                r.pro_count,
+            ]
+        )
+    ws_sum.append([])
+    ws_sum.append(["segment", "segment_label", "years_bucket", "count"])
+    for r in stats["by_experience"]:
+        ws_sum.append(
+            [
+                r.segment,
+                SEGMENT_LABELS_KR.get(r.segment, ""),
+                r.years_bucket,
+                r.count,
+            ]
+        )
+
+    ws_det = wb.create_sheet("Detail")
+    if truncated:
+        ws_det.append([f"※ {EXPORT_DETAIL_LIMIT}행으로 제한됨"])
+    ws_det.append(
+        [
+            "user_id",
+            "email_masked",
+            "segment",
+            "segment_label",
+            "years_of_experience",
+            "subscription_status",
+            "created_at_kst",
+        ]
+    )
+    for row in rows:
+        ws_det.append(
+            [
+                row["user_id"],
+                row["email_masked"],
+                row["segment"],
+                row["segment_label"],
+                row["years_of_experience"],
+                row["subscription_status"],
+                row["created_at_kst"],
+            ]
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    today = datetime.now(KST).date().isoformat()
+    filename = f"segments_{today}.xlsx"
+    content_type = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    logger.info(
+        "admin.analytics.segments.exported",
+        actor_user_id=actor.id,
+        row_count=len(rows),
+        truncated=truncated,
+    )
+
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if truncated:
+        headers["X-Truncated"] = "true"
+    return StreamingResponse(buf, media_type=content_type, headers=headers)

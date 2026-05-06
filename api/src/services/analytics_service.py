@@ -19,7 +19,9 @@ from dataclasses import dataclass
 from datetime import datetime, date, timedelta
 from typing import Literal
 
-from sqlalchemy import select, func, or_
+from typing import Any
+
+from sqlalchemy import and_, select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.qa_feedback import QAFeedback
@@ -457,3 +459,186 @@ async def get_feedback_export_rows(
             "created_at_kst": kst_dt.strftime("%Y-%m-%d %H:%M:%S"),
         })
     return result, truncated
+
+
+# =============================================================================
+# Story 6.4 — 가입유형별 통계 + 연차 히스토그램
+# =============================================================================
+
+VALID_SEGMENTS_CANONICAL = ("doctor", "hygienist", "student_other")
+SEGMENT_LABELS_KR = {
+    "doctor": "치과의사",
+    "hygienist": "치과위생사",
+    "student_other": "학생/기타",
+}
+EXPERIENCE_BUCKET_ORDER = ("0-2", "3-5", "6-10", "11-20", "20+")
+EXPORT_DETAIL_LIMIT = 5_000
+
+
+def _bucket_years(years: int) -> str:
+    if years <= 2:
+        return "0-2"
+    if years <= 5:
+        return "3-5"
+    if years <= 10:
+        return "6-10"
+    if years <= 20:
+        return "11-20"
+    return "20+"
+
+
+def _mask_email(email: str) -> str:
+    if "@" not in email:
+        return email
+    local, _, domain = email.partition("@")
+    if len(local) <= 1:
+        return email
+    return f"{local[0]}**@{domain}"
+
+
+@dataclass(frozen=True)
+class SegmentRow:
+    segment: str
+    count: int
+    active_count: int
+    pro_count: int
+
+
+@dataclass(frozen=True)
+class ExperienceRow:
+    segment: str
+    years_bucket: str
+    count: int
+
+
+async def get_segment_stats(
+    session: AsyncSession,
+    *,
+    include_withdrawn: bool = False,
+    include_blocked: bool = False,
+) -> dict[str, Any]:
+    """가입유형별 카운트 + 연차 5버킷 히스토그램.
+
+    by_segment: 3 segment 고정 순서 (NULL은 응답에서 제외, total에는 포함).
+    by_experience: doctor/hygienist만, years 5 버킷.
+    total: 필터 적용 후 모든 사용자(NULL segment 포함).
+    """
+    base_conds = []
+    if not include_withdrawn:
+        base_conds.append(User.withdrawn_at.is_(None))
+    if not include_blocked:
+        base_conds.append(User.subscription_status != "blocked")
+
+    stmt = select(
+        User.segment,
+        func.count().label("cnt"),
+        func.count()
+        .filter(
+            and_(User.withdrawn_at.is_(None), User.subscription_status != "blocked")
+        )
+        .label("active_cnt"),
+        func.count()
+        .filter(
+            and_(User.withdrawn_at.is_(None), User.subscription_status == "pro")
+        )
+        .label("pro_cnt"),
+    ).group_by(User.segment)
+    if base_conds:
+        stmt = stmt.where(*base_conds)
+    rows = (await session.execute(stmt)).all()
+
+    by_seg_map: dict[str, SegmentRow] = {}
+    total = 0
+    for seg, cnt, active_cnt, pro_cnt in rows:
+        total += int(cnt)
+        if seg in VALID_SEGMENTS_CANONICAL:
+            by_seg_map[seg] = SegmentRow(
+                segment=seg,
+                count=int(cnt),
+                active_count=int(active_cnt),
+                pro_count=int(pro_cnt),
+            )
+
+    by_segment = [
+        by_seg_map.get(s, SegmentRow(segment=s, count=0, active_count=0, pro_count=0))
+        for s in VALID_SEGMENTS_CANONICAL
+    ]
+
+    exp_conds = list(base_conds)
+    exp_conds.append(User.segment.in_(("doctor", "hygienist")))
+    exp_conds.append(User.years_of_experience.is_not(None))
+
+    exp_stmt = (
+        select(User.segment, User.years_of_experience, func.count())
+        .where(*exp_conds)
+        .group_by(User.segment, User.years_of_experience)
+    )
+    exp_rows = (await session.execute(exp_stmt)).all()
+
+    bucket_map: dict[tuple[str, str], int] = {}
+    for seg, years, cnt in exp_rows:
+        bucket = _bucket_years(int(years))
+        bucket_map[(seg, bucket)] = bucket_map.get((seg, bucket), 0) + int(cnt)
+
+    by_experience = [
+        ExperienceRow(segment=seg, years_bucket=b, count=bucket_map.get((seg, b), 0))
+        for seg in ("doctor", "hygienist")
+        for b in EXPERIENCE_BUCKET_ORDER
+    ]
+
+    return {
+        "applied_filters": {
+            "include_withdrawn": include_withdrawn,
+            "include_blocked": include_blocked,
+        },
+        "total": total,
+        "by_segment": by_segment,
+        "by_experience": by_experience,
+    }
+
+
+async def get_segment_export_rows(
+    session: AsyncSession,
+    *,
+    include_withdrawn: bool = False,
+    include_blocked: bool = False,
+    limit: int = EXPORT_DETAIL_LIMIT,
+) -> tuple[list[dict], bool]:
+    """Detail 시트용 user-row 직렬화 + truncated 플래그 (limit+1 fetch)."""
+    conds = []
+    if not include_withdrawn:
+        conds.append(User.withdrawn_at.is_(None))
+    if not include_blocked:
+        conds.append(User.subscription_status != "blocked")
+
+    stmt = (
+        select(User)
+        .where(*conds)
+        .order_by(
+            User.segment.asc().nullslast(),
+            User.years_of_experience.asc().nullslast(),
+            User.created_at.desc(),
+        )
+        .limit(limit + 1)
+    )
+    users = (await session.execute(stmt)).scalars().all()
+    truncated = len(users) > limit
+    users = users[:limit]
+
+    rows = [
+        {
+            "user_id": u.id,
+            "email_masked": _mask_email(u.email),
+            "segment": u.segment or "",
+            "segment_label": SEGMENT_LABELS_KR.get(u.segment or "", ""),
+            "years_of_experience": u.years_of_experience or "",
+            "subscription_status": u.subscription_status,
+            "created_at_kst": (
+                u.created_at.astimezone(KST).isoformat(timespec="minutes")
+                if u.created_at.tzinfo is not None
+                else u.created_at.replace(tzinfo=KST).isoformat(timespec="minutes")
+            ),
+        }
+        for u in users
+    ]
+    return rows, truncated

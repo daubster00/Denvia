@@ -12,6 +12,7 @@ vi.mock("@/features/admin-dashboard/api/analytics", () => ({
   fetchSignups: vi.fn(),
   fetchSubscribers: vi.fn(),
   fetchFeedback: vi.fn(),
+  fetchSegments: vi.fn(),
 }));
 
 vi.mock("@/features/admin-rag/api/knowledge", () => ({
@@ -40,9 +41,13 @@ describe("AdminDashboardPage", () => {
     const { fetchBudgetCurrentMonth } = await import(
       "@/features/admin-dashboard/api/budget"
     );
-    const { fetchUserTokens, fetchSignups, fetchSubscribers, fetchFeedback } = await import(
-      "@/features/admin-dashboard/api/analytics"
-    );
+    const {
+      fetchUserTokens,
+      fetchSignups,
+      fetchSubscribers,
+      fetchFeedback,
+      fetchSegments,
+    } = await import("@/features/admin-dashboard/api/analytics");
     const { fetchRagStatus } = await import(
       "@/features/admin-rag/api/knowledge"
     );
@@ -77,6 +82,18 @@ describe("AdminDashboardPage", () => {
       per_page: 1,
       total: 154,
     });
+    // Story 6.4: 가입유형 위젯 stub
+    (fetchSegments as ReturnType<typeof vi.fn>).mockResolvedValue({
+      as_of: "2026-05-01T15:30:00+09:00",
+      applied_filters: { include_withdrawn: false, include_blocked: false },
+      total: 5,
+      by_segment: [
+        { segment: "doctor", count: 3, active_count: 3, pro_count: 1 },
+        { segment: "hygienist", count: 1, active_count: 1, pro_count: 0 },
+        { segment: "student_other", count: 1, active_count: 1, pro_count: 0 },
+      ],
+      by_experience: [],
+    });
     return {
       fetchBudgetCurrentMonth,
       fetchUserTokens,
@@ -84,6 +101,7 @@ describe("AdminDashboardPage", () => {
       fetchSignups,
       fetchSubscribers,
       fetchFeedback,
+      fetchSegments,
     };
   }
 
@@ -234,6 +252,14 @@ describe("AdminDashboardPage", () => {
     });
     expect(feedbackLink.getAttribute("href")).toBe(
       "/admin/dashboard/analytics/feedback",
+    );
+
+    // Story 6.4: 가입유형 분포 위젯 상세 링크 활성화
+    const segmentsLink = screen.getByRole("link", {
+      name: /가입유형 분포 상세 페이지로 이동/,
+    });
+    expect(segmentsLink.getAttribute("href")).toBe(
+      "/admin/dashboard/analytics/segments",
     );
   });
 

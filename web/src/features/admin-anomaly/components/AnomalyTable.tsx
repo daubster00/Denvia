@@ -1,0 +1,215 @@
+"use client";
+
+import { useMemo } from "react";
+import type {
+  AnomalyEventItem,
+  AnomalyListResponse,
+} from "@/features/admin-anomaly/api/anomaly";
+import { formatAnomalyType } from "@/features/admin-users/labels";
+import { AnomalyStatusBadge } from "./AnomalyStatusBadge";
+import styles from "./AnomalyTable.module.css";
+
+interface Props {
+  data: AnomalyListResponse | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  page: number;
+  perPage: number;
+  onPageChange: (next: number) => void;
+  onApplyBlock: (
+    anomaly: AnomalyEventItem,
+    durationHours: number | null,
+  ) => void;
+  onMarkReviewed: (anomaly: AnomalyEventItem) => void;
+  onRetry: () => void;
+}
+
+const KST_FORMAT = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatDateTime(value: string | null): string {
+  if (!value) return "—";
+  try {
+    return KST_FORMAT.format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+export function AnomalyTable({
+  data,
+  isLoading,
+  isError,
+  page,
+  perPage,
+  onPageChange,
+  onApplyBlock,
+  onMarkReviewed,
+  onRetry,
+}: Props) {
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = useMemo(
+    () => (total === 0 ? 1 : Math.ceil(total / perPage)),
+    [total, perPage],
+  );
+
+  if (isError) {
+    return (
+      <div className={styles.errorBox} role="alert">
+        <p className={styles.errorText}>
+          이상 이벤트 데이터를 불러오는 중 문제가 발생했습니다.
+        </p>
+        <button type="button" className={styles.retryButton} onClick={onRetry}>
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+
+  if (!isLoading && items.length === 0) {
+    return (
+      <div className={styles.emptyBox} role="status">
+        <p className={styles.emptyTitle}>이상 이벤트가 없습니다.</p>
+        <p className={styles.emptyHint}>
+          분류 탭이나 상태 필터를 변경해보세요.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.wrapper}>
+      <table
+        className={styles.table}
+        role="table"
+        aria-rowcount={total}
+        aria-busy={isLoading}
+      >
+        <thead className={styles.thead}>
+          <tr>
+            <th scope="col">발생일시</th>
+            <th scope="col">분류</th>
+            <th scope="col">대상 사용자</th>
+            <th scope="col">IP</th>
+            <th scope="col">상태</th>
+            <th scope="col">액션</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const userCell = item.target_user_id ? (
+              <a
+                href={`/admin/users?user_id=${item.target_user_id}`}
+                className={styles.userLink}
+              >
+                {item.target_user_email_masked ?? `#${item.target_user_id}`}
+              </a>
+            ) : (
+              "—"
+            );
+
+            return (
+              <tr
+                key={item.id}
+                className={styles.row}
+                data-testid={`anomaly-row-${item.id}`}
+              >
+                <td>{formatDateTime(item.created_at)}</td>
+                <td>{formatAnomalyType(item.type)}</td>
+                <td>{userCell}</td>
+                <td>{item.ip ?? "—"}</td>
+                <td>
+                  <AnomalyStatusBadge status={item.status} />
+                </td>
+                <td>
+                  <div className={styles.actions}>
+                    {item.status === "actioned" ? (
+                      item.target_user_id ? (
+                        <a
+                          href={`/admin/users?user_id=${item.target_user_id}`}
+                          className={styles.linkButton}
+                        >
+                          차단 사용자 보기
+                        </a>
+                      ) : (
+                        <span className={styles.muted}>—</span>
+                      )
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.actionButton}
+                          onClick={() => onApplyBlock(item, 24)}
+                          data-testid={`anomaly-block-24h-${item.id}`}
+                        >
+                          24h 차단
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.actionButton}
+                          onClick={() => onApplyBlock(item, 24 * 7)}
+                          data-testid={`anomaly-block-7d-${item.id}`}
+                        >
+                          7d 차단
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.actionButton}
+                          onClick={() => onApplyBlock(item, null)}
+                          data-testid={`anomaly-block-perm-${item.id}`}
+                        >
+                          영구 차단
+                        </button>
+                        {item.status === "new" ? (
+                          <button
+                            type="button"
+                            className={styles.reviewButton}
+                            onClick={() => onMarkReviewed(item)}
+                            data-testid={`anomaly-review-${item.id}`}
+                          >
+                            검토 완료
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <nav className={styles.pagination} aria-label="페이지 네비게이션">
+        <button
+          type="button"
+          className={styles.pageButton}
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1 || isLoading}
+          aria-label="이전 페이지"
+        >
+          이전
+        </button>
+        <span className={styles.pageLabel} aria-live="polite">
+          {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          className={styles.pageButton}
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages || isLoading}
+          aria-label="다음 페이지"
+        >
+          다음
+        </button>
+      </nav>
+    </div>
+  );
+}

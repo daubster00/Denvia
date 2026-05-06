@@ -21,6 +21,10 @@ import {
   FeedbackSummaryWidget,
   FEEDBACK_SUMMARY_KEY,
 } from "@/features/admin-dashboard/components/FeedbackSummaryWidget";
+import {
+  SegmentsSummaryWidget,
+  SEGMENTS_SUMMARY_KEY,
+} from "@/features/admin-dashboard/components/SegmentsSummaryWidget";
 import styles from "./dashboardHome.module.css";
 
 const BUDGET_KEY = ["admin", "dashboard", "budget-current"] as const;
@@ -61,6 +65,7 @@ export default function AdminDashboardPage() {
     qc.invalidateQueries({ queryKey: SIGNUPS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: SUBSCRIBERS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: FEEDBACK_SUMMARY_KEY });
+    qc.invalidateQueries({ queryKey: SEGMENTS_SUMMARY_KEY });
   }
 
   const budget = budgetQuery.data;
@@ -150,6 +155,7 @@ export default function AdminDashboardPage() {
         <SignupsSummaryWidget />
         <SubscribersSummaryWidget />
         <FeedbackSummaryWidget />
+        <SegmentsSummaryWidget />
         <ComingSoonWidget
           title="재무 요약"
           description="매출과 토큰 비용 차액을 비교합니다."
