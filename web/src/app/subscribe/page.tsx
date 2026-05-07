@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { TopNav } from "@/components/layout/TopNav";
+import { Footer } from "@/components/layout/Footer";
 import { fetchMe } from "@/features/auth/api";
 import { BillingKeyForm } from "@/features/billing/components/BillingKeyForm";
 import { CancelSubscriptionFlow } from "@/features/billing/components/CancelSubscriptionFlow";
@@ -180,6 +181,8 @@ function SubscribeContent() {
           </div>
         )}
       </main>
+
+      <Footer />
 
       <BillingKeyForm
         isOpen={isBillingFormOpen}

@@ -34,3 +34,16 @@ export interface ActivePopup {
   link_url: string | null;
   display_end: string;
 }
+
+export interface InboxPreviewItem {
+  message_id: number;
+  type: InboxMessageType;
+  title: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface InboxPreviewResponse {
+  items: InboxPreviewItem[];
+  max_count: number;
+}

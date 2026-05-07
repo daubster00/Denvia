@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { TopNav } from "@/components/layout/TopNav";
+import { Footer } from "@/components/layout/Footer";
 import { InboxList } from "@/features/inbox/components/InboxList";
 import { useUnreadCount } from "@/features/inbox/hooks/useUnreadCount";
 import type { InboxFilter } from "@/features/inbox/types";
@@ -82,6 +83,7 @@ export default function InboxPage() {
         </header>
         <InboxList filter={filter} />
       </main>
+      <Footer />
     </>
   );
 }

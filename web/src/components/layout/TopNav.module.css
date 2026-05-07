@@ -61,6 +61,11 @@
   background: var(--color-primary, #7c3aed);
 }
 
+.inboxIconWrap {
+  position: relative;
+  display: inline-flex;
+}
+
 .iconBtn {
   position: relative;
   display: inline-flex;

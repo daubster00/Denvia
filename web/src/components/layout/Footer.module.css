@@ -1,0 +1,96 @@
+.footer {
+  width: 100%;
+  border-top: 1px solid #e5e7eb;
+  background: #fafafa;
+  color: #4b5563;
+  padding: 32px 24px 28px;
+  margin-top: auto;
+}
+
+.inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  height: 28px;
+  width: auto;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, max-content)
+    minmax(140px, max-content)
+    minmax(210px, max-content)
+    minmax(300px, 1fr)
+    minmax(160px, max-content)
+    minmax(190px, max-content);
+  gap: 8px 24px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #6b7280;
+}
+
+.infoItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  margin: 0;
+  color: #9ca3af;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.value {
+  margin: 0;
+  color: #4b5563;
+  min-width: 0;
+}
+
+.value a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.value a:hover {
+  color: #171719;
+  text-decoration: underline;
+}
+
+.copyright {
+  border-top: 1px solid #ececef;
+  padding-top: 16px;
+  font-size: 12px;
+  color: #9ca3af;
+  letter-spacing: 0.1px;
+}
+
+@media (max-width: 640px) {
+  .footer {
+    padding: 24px 16px 24px;
+  }
+
+  .infoGrid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .infoItem {
+    flex-wrap: wrap;
+  }
+}

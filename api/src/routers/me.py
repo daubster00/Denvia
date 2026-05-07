@@ -25,6 +25,7 @@ from api.src.schemas.auth import PasswordChangeRequest, SegmentRequest, SessionU
 from api.src.schemas.inbox import (
     ActivePopupResponse,
     InboxListResponse,
+    InboxPreviewResponse,
     UnreadCountResponse,
 )
 from api.src.schemas.me import (
@@ -37,7 +38,7 @@ from api.src.schemas.me import (
     WithdrawOtpVerifyResponse,
     WithdrawRequest,
 )
-from api.src.services import auth_service, inbox_service
+from api.src.services import auth_service, inbox_service, runtime_config_service
 from api.src.services.auth_service import (
     send_sms_otp_flow,
     verify_sms_otp_flow,
@@ -372,6 +373,22 @@ async def get_my_inbox_unread_count(
     """TopNav 미읽음 뱃지용 카운트."""
     count = await inbox_service.get_unread_count(db, current_user.id)
     return UnreadCountResponse(unread_count=count)
+
+
+@router.get("/me/inbox/preview", response_model=InboxPreviewResponse)
+async def get_my_inbox_preview(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> InboxPreviewResponse:
+    """쪽지함 아이콘 밑 미리보기 드롭다운 — Story 7.1.
+
+    동시 노출 개수는 관리자 설정(Redis)에서 강제 — client limit 쿼리는 받지 않는다.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    max_count = await runtime_config_service.get_inbox_preview_max_count(redis_runtime)
+    return await inbox_service.get_preview_messages(db, current_user.id, max_count)
 
 
 @router.get("/me/popups/active", response_model=ActivePopupResponse | None)

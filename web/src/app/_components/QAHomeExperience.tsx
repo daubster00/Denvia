@@ -3,11 +3,10 @@
 import { useState, useRef, useCallback, type RefObject } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
+import { Footer } from "@/components/layout/Footer";
 import { AdvisoryChip } from "@/components/brand/AdvisoryChip";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatShell } from "@/features/qa/components/ChatShell";
-import { useActivePopup } from "@/features/inbox/hooks/useActivePopup";
-import { PopupModal } from "@/features/inbox/components/PopupModal";
 import { useQAStore } from "@/stores/qa-store";
 import { useQAStream } from "@/features/qa/hooks/useQAStream";
 import { useQuota } from "@/features/qa/hooks/useQuota";
@@ -25,9 +24,6 @@ export function AuthenticatedQAExperience() {
   const lastUserTextRef = useRef<string>("");
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const { data: quotaData } = useQuota();
-  // Story 4.5 — 메인 페이지 진입 시 자동 노출 팝업 (FR31 / F-503).
-  // /(메인) 진입에만 마운트(/chat 등 다른 라우트에서는 미적용).
-  const { data: activePopup } = useActivePopup();
 
   const handleReset = useCallback(() => {
     stream.abort();
@@ -68,18 +64,21 @@ export function AuthenticatedQAExperience() {
     <>
       <TopNav onResetChat={handleReset} />
       {isHero ? (
-        <HeroSection>
-          <HeroCopy />
-          <ChatInput
-            variant="hero"
-            interactive
-            value={inputValue}
-            onChange={setInputValue}
-            onSubmit={handleSubmit}
-            loading={isStreaming}
-          />
-          <AdvisoryChip />
-        </HeroSection>
+        <>
+          <HeroSection>
+            <HeroCopy />
+            <ChatInput
+              variant="hero"
+              interactive
+              value={inputValue}
+              onChange={setInputValue}
+              onSubmit={handleSubmit}
+              loading={isStreaming}
+            />
+            <AdvisoryChip />
+          </HeroSection>
+          <Footer />
+        </>
       ) : (
         <ChatShell
           inputValue={inputValue}
@@ -93,8 +92,6 @@ export function AuthenticatedQAExperience() {
           showDelayBanner={showDelayBanner}
         />
       )}
-      {/* Story 4.5 — 메인(/)에서만 자동 팝업 노출 */}
-      {isHero && activePopup ? <PopupModal popup={activePopup} /> : null}
     </>
   );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { Footer } from "@/components/layout/Footer";
 import styles from "@/styles/legal.module.css";
 
 export const metadata: Metadata = {
@@ -274,6 +275,7 @@ export default function PrivacyPage() {
 
         <p className={styles.footer}>부칙 — 본 개인정보 처리방침은 2026-04-30 부터 시행합니다.</p>
       </article>
+      <Footer />
     </main>
   );
 }

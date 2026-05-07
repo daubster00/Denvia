@@ -8,6 +8,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { LogoLink } from "@/components/brand/LogoLink";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { useUnreadCount } from "@/features/inbox/hooks/useUnreadCount";
+import { InboxPreviewDropdown } from "@/features/inbox/components/InboxPreviewDropdown";
 import { MessageIcon } from "./icons/MessageIcon";
 import styles from "./TopNav.module.css";
 
@@ -71,24 +72,27 @@ export function TopNav({ onResetChat }: TopNavProps) {
           </button>
         ) : (
           <div className={styles.userMenu}>
-            <Link
-              href="/inbox"
-              aria-label="쪽지함"
-              className={styles.iconBtn}
-              aria-current={pathname === "/inbox" ? "page" : undefined}
-            >
-              <MessageIcon aria-hidden="true" />
-              {unreadCount > 0 && (
-                <span
-                  className={styles.unreadBadge}
-                  role="status"
-                  aria-live="polite"
-                  aria-label={`안 읽은 쪽지 ${unreadCount}개`}
-                >
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </Link>
+            <div className={styles.inboxIconWrap}>
+              <Link
+                href="/inbox"
+                aria-label="쪽지함"
+                className={styles.iconBtn}
+                aria-current={pathname === "/inbox" ? "page" : undefined}
+              >
+                <MessageIcon aria-hidden="true" />
+                {unreadCount > 0 && (
+                  <span
+                    className={styles.unreadBadge}
+                    role="status"
+                    aria-live="polite"
+                    aria-label={`안 읽은 쪽지 ${unreadCount}개`}
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+              <InboxPreviewDropdown />
+            </div>
 
             <div ref={menuRef} className={styles.accountWrapper}>
               <button

@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { TopNav } from "@/components/layout/TopNav";
+import { Footer } from "@/components/layout/Footer";
 import { AccountSummary } from "@/features/account/components/AccountSummary";
 import { PaymentHistoryTable } from "@/features/billing/components/PaymentHistoryTable";
 import { fetchMe } from "@/features/auth/api";
@@ -74,6 +75,7 @@ export default function MyPage() {
           </button>
         </section>
       </main>
+      <Footer />
       <ConfirmWithdrawPopup
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}

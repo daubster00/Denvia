@@ -26,6 +26,8 @@ from api.src.schemas.inbox import (
     ActivePopupResponse,
     InboxItem,
     InboxListResponse,
+    InboxPreviewItem,
+    InboxPreviewResponse,
 )
 from api.src.utils.html_sanitize import safe_external_url, sanitize_body_html
 
@@ -182,6 +184,40 @@ async def get_active_popup(
     )
 
 
+async def get_preview_messages(
+    db: AsyncSession, user_id: int, max_count: int
+) -> InboxPreviewResponse:
+    """쪽지함 미리보기 — 미읽음 우선·최신순 N건.
+
+    드롭다운용 경량 페이로드 (body_html 제외). 미읽음이 부족하면 읽은 쪽지로 채운다
+    (운영 초기에 보낸 쪽지가 있어도 신규 사용자가 빈 미리보기를 보지 않게).
+    """
+    rows = (
+        await db.execute(
+            select(InboxMessage)
+            .where(InboxMessage.user_id == user_id)
+            .order_by(
+                InboxMessage.is_read.asc(),  # FALSE(0)가 먼저 → 미읽음 우선
+                InboxMessage.created_at.desc(),
+                InboxMessage.id.desc(),
+            )
+            .limit(max_count)
+        )
+    ).scalars().all()
+
+    items = [
+        InboxPreviewItem(
+            message_id=r.id,
+            type=r.type,
+            title=r.title,
+            is_read=r.is_read,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in rows
+    ]
+    return InboxPreviewResponse(items=items, max_count=max_count)
+
+
 async def mark_popup_seen(
     db: AsyncSession, user_id: int, popup_id: int
 ) -> Literal["inserted", "updated", "not_found"]:
@@ -247,5 +283,6 @@ __all__ = [
     "mark_read",
     "get_unread_count",
     "get_active_popup",
+    "get_preview_messages",
     "mark_popup_seen",
 ]

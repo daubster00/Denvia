@@ -42,3 +42,26 @@ class ActivePopupResponse(BaseModel):
     body_html_safe: str
     link_url: str | None
     display_end: str  # ISO 8601
+
+
+class InboxPreviewItem(BaseModel):
+    """쪽지함 미리보기 카드 1건 — Story 7.1.
+
+    body_html은 의도적으로 제외 (드롭다운은 제목만 노출, 본문은 /inbox 상세에서).
+    """
+
+    message_id: int
+    type: Literal["notice", "system", "billing"]
+    title: str
+    is_read: bool
+    created_at: str  # ISO 8601
+
+
+class InboxPreviewResponse(BaseModel):
+    """GET /api/v1/me/inbox/preview 응답.
+
+    `max_count`는 관리자가 설정한 동시 노출 최대 개수(items.length <= max_count).
+    """
+
+    items: list[InboxPreviewItem]
+    max_count: int

@@ -1,4 +1,5 @@
 import { TopNav } from "@/components/layout/TopNav";
+import { Footer } from "@/components/layout/Footer";
 import styles from "./blocked.module.css";
 
 /**
@@ -20,6 +21,7 @@ export default function BlockedPage() {
           </p>
         </div>
       </main>
+      <Footer />
     </>
   );
 }

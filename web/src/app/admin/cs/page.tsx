@@ -7,6 +7,7 @@ import { InquiryListTable } from "@/features/admin-support/components/InquiryLis
 import { StatusFilterBar } from "@/features/admin-support/components/StatusFilterBar";
 import { useInquiriesSearch } from "@/features/admin-support/hooks/useInquiriesSearch";
 import { useInquiryDetail } from "@/features/admin-support/hooks/useInquiryDetail";
+import { CsTabsNav } from "@/features/admin-cs-notices/components/CsTabsNav";
 import styles from "./page.module.css";
 
 const PER_PAGE = 20;
@@ -30,6 +31,7 @@ export default function CsPage() {
 
   return (
     <section className={styles.page} aria-labelledby="admin-cs-title">
+      <CsTabsNav />
       <header className={styles.header}>
         <div className={styles.titleGroup}>
           <h1 id="admin-cs-title" className={styles.title}>

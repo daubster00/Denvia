@@ -5,6 +5,7 @@ import type {
   ActivePopup,
   InboxFilter,
   InboxListResponse,
+  InboxPreviewResponse,
   UnreadCountResponse,
 } from "./types";
 
@@ -32,6 +33,11 @@ export async function markInboxRead(messageId: number): Promise<void> {
 /** GET /api/v1/me/inbox/unread-count */
 export async function fetchUnreadCount(): Promise<UnreadCountResponse> {
   return apiFetch<UnreadCountResponse>("/api/v1/me/inbox/unread-count");
+}
+
+/** GET /api/v1/me/inbox/preview — 쪽지함 미리보기 드롭다운(서버가 max_count 강제). */
+export async function fetchInboxPreview(): Promise<InboxPreviewResponse> {
+  return apiFetch<InboxPreviewResponse>("/api/v1/me/inbox/preview");
 }
 
 /** GET /api/v1/me/popups/active — 매칭 0건이면 null(204). */

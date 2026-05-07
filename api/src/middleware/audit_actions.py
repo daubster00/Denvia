@@ -10,6 +10,9 @@ AUDIT_USER_BLOCK_AUTO_EXPIRED = "user.block_auto_expired"  # A-202 자동 만료
 AUDIT_USER_SPEED_OVERRIDE = "user.speed_override"       # A-203 (Story 6.3) — 응답 속도 단독 변경
 AUDIT_USER_WITHDRAW = "user.withdraw"                   # Story 1.7 — 본인 계정 탈퇴
 AUDIT_NOTICE_PUBLISH = "notice.publish"                 # A-301
+AUDIT_NOTICE_CREATE = "notice.create"                   # Story 7.1 — 작성+즉시발행
+AUDIT_NOTICE_DELETE = "notice.delete"                   # Story 7.1 — 발행 회수(CASCADE)
+AUDIT_INBOX_PREVIEW_CONFIG_UPDATE = "inbox_preview_config.update"  # 노출 개수 전역 설정
 AUDIT_POPUP_CREATE = "popup.create"                     # A-302
 AUDIT_POPUP_UPDATE = "popup.update"                     # A-302
 AUDIT_POPUP_TOGGLE = "popup.toggle"                     # A-302
@@ -22,6 +25,8 @@ AUDIT_RAG_REBUILD = "rag.rebuild"                       # A-403
 AUDIT_PROMPT_EDIT = "prompt.edit"                       # A-404
 AUDIT_MODEL_PARAMS_EDIT = "rag.model_params.update"     # A-404 모델 파라미터
 AUDIT_KILLSWITCH_TOGGLE = "killswitch.toggle"           # A-502
+AUDIT_ANOMALY_REVIEW = "anomaly.review"                 # Story 6.5 — 이상 이벤트 검토 처리
+AUDIT_RUNTIME_CONFIG_UPDATE = "runtime_config.update"   # A-303/A-305 (Story 7.3/7.4 부분) — 서비스 전체 토글 편집
 
 
 def audit_action(action: str):
