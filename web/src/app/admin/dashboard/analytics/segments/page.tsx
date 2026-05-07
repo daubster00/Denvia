@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { IconDownload } from "@wanteddev/wds-icon";
 import {
   buildSegmentsExportUrl,
   fetchSegments,
@@ -110,7 +111,8 @@ export default function SegmentsAnalyticsPage() {
               include_blocked: includeBlocked,
             })}
           >
-            📥 엑셀 다운로드
+            <IconDownload aria-hidden="true" />
+            <span>엑셀 다운로드</span>
           </button>
         </div>
       </header>

@@ -17,6 +17,9 @@
 }
 
 .exportBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 14px;
   font-size: 14px;
   border: 1px solid #d1d5db;

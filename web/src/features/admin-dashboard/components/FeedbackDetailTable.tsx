@@ -1,5 +1,6 @@
 "use client";
 
+import { IconDownload } from "@wanteddev/wds-icon";
 import type { FeedbackItem } from "../api/analytics";
 import styles from "./FeedbackDetailTable.module.css";
 
@@ -39,7 +40,8 @@ export function FeedbackDetailTable({
           aria-label="현재 필터 기준으로 엑셀 내보내기"
           disabled={isExporting}
         >
-          📥 {isExporting ? "내보내는 중" : "엑셀 내보내기"}
+          <IconDownload aria-hidden="true" />
+          <span>{isExporting ? "내보내는 중" : "엑셀 내보내기"}</span>
         </button>
       </div>
       {exportError && (
