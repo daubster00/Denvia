@@ -27,10 +27,15 @@ export interface UnreadCountResponse {
   unread_count: number;
 }
 
+export type PopupTargetDevice = "pc" | "mobile" | "both";
+export type PopupType = "image" | "editor";
+
 export interface ActivePopup {
   popup_id: number;
   title: string;
-  body_html_safe: string;
+  popup_type: PopupType;
+  image_url: string | null;
+  body_html_safe: string | null;
   link_url: string | null;
   display_end: string;
 }

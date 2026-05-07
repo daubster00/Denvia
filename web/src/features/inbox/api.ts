@@ -40,18 +40,15 @@ export async function fetchInboxPreview(): Promise<InboxPreviewResponse> {
   return apiFetch<InboxPreviewResponse>("/api/v1/me/inbox/preview");
 }
 
-/** GET /api/v1/me/popups/active — 매칭 0건이면 null(204). */
-export async function fetchActivePopup(): Promise<ActivePopup | null> {
-  const result = await apiFetch<ActivePopup | undefined>(
-    "/api/v1/me/popups/active",
+/** GET /api/v1/me/popups/active?device={pc|mobile} — Story 7.2 v2.
+ *
+ * 캐러셀 노출 후보 배열. 매칭 0건은 빈 배열. 디바이스 필터 필수.
+ */
+export async function fetchActivePopups(
+  device: "pc" | "mobile",
+): Promise<ActivePopup[]> {
+  const result = await apiFetch<ActivePopup[] | undefined>(
+    `/api/v1/me/popups/active?device=${device}`,
   );
-  // apiFetch는 204를 undefined로 반환 → TanStack Query는 undefined 반환을 막으므로 null 정규화
-  return result ?? null;
-}
-
-/** POST /api/v1/me/popups/{id}/seen — 204 응답. */
-export async function markPopupSeen(popupId: number): Promise<void> {
-  await apiFetch<void>(`/api/v1/me/popups/${popupId}/seen`, {
-    method: "POST",
-  });
+  return result ?? [];
 }

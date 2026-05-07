@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   ApiError,
@@ -10,11 +10,11 @@ import {
   fetchPopupDetail,
   popupFormSchema,
   updatePopup,
+  uploadPopupImage,
 } from "@/features/admin-content/api/popup";
 import { PopupPreviewCard } from "./PopupPreviewCard";
 import styles from "./PopupEditDialog.module.css";
 
-// Tiptap 에디터는 lazy load — 다이얼로그 오픈 시점에만 import (NFR-P5).
 const RichTextEditor = dynamic(
   () =>
     import("@/components/editor/RichTextEditor").then((m) => m.RichTextEditor),
@@ -39,16 +39,19 @@ type FieldErrors = Partial<Record<keyof PopupFormInput, string>>;
 
 const EMPTY_FORM: PopupFormInput = {
   title: "",
+  popup_type: "editor",
+  target_device: "both",
   body_html: "",
+  image_url: "",
   link_url: "",
   display_start: "",
   display_end: "",
   target_segment: "all",
+  sort_order: 0,
   is_active: true,
 };
 
 function toLocalInput(iso: string): string {
-  // "2026-05-01T00:00:00+00:00" → "2026-05-01T00:00" (datetime-local 형식, KST 표시)
   if (!iso) return "";
   const d = new Date(iso);
   const yyyy = d.getFullYear();
@@ -63,10 +66,11 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
   const [form, setForm] = useState<PopupFormInput>(EMPTY_FORM);
   const [loading, setLoading] = useState(mode === "edit");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ESC 닫기
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !submitting) onClose();
@@ -75,7 +79,6 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
     return () => document.removeEventListener("keydown", handler);
   }, [onClose, submitting]);
 
-  // 편집 모드 — 단건 fetch
   useEffect(() => {
     if (mode !== "edit" || !popupId) return;
     let cancelled = false;
@@ -84,11 +87,15 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
         if (cancelled) return;
         setForm({
           title: detail.title,
-          body_html: detail.body_html,
+          popup_type: detail.popup_type,
+          target_device: detail.target_device,
+          body_html: detail.body_html ?? "",
+          image_url: detail.image_url ?? "",
           link_url: detail.link_url ?? "",
           display_start: toLocalInput(detail.display_start),
           display_end: toLocalInput(detail.display_end),
           target_segment: detail.target_segment,
+          sort_order: detail.sort_order,
           is_active: detail.is_active,
         });
       })
@@ -109,11 +116,30 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
 
+  async function handleImageFile(file: File) {
+    setUploadingImage(true);
+    setErrors((prev) => ({ ...prev, image_url: undefined }));
+    try {
+      const res = await uploadPopupImage(file);
+      update("image_url", res.image_url);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrors((prev) => ({ ...prev, image_url: err.message }));
+      } else {
+        setErrors((prev) => ({
+          ...prev,
+          image_url: "이미지 업로드에 실패했습니다.",
+        }));
+      }
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setGlobalError(null);
 
-    // zod 검증
     const parsed = popupFormSchema.safeParse(form);
     if (!parsed.success) {
       const fieldErrors: FieldErrors = {};
@@ -140,6 +166,13 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
           setErrors({ display_end: err.message });
         } else if (err.code === "POPUP_LINK_URL_INVALID") {
           setErrors({ link_url: err.message });
+        } else if (
+          err.code === "POPUP_IMAGE_REQUIRED" ||
+          err.code === "POPUP_IMAGE_URL_INVALID"
+        ) {
+          setErrors({ image_url: err.message });
+        } else if (err.code === "POPUP_BODY_REQUIRED") {
+          setErrors({ body_html: err.message });
         } else {
           setGlobalError(err.message);
         }
@@ -196,33 +229,118 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
                     maxLength={200}
                     onChange={(e) => update("title", e.target.value)}
                     aria-invalid={Boolean(errors.title)}
-                    aria-describedby={errors.title ? "popup-title-error" : undefined}
                   />
                   <span className={styles.helper}>최대 200자</span>
                   {errors.title ? (
-                    <p
-                      id="popup-title-error"
-                      role="alert"
-                      className={styles.error}
-                    >
+                    <p role="alert" className={styles.error}>
                       {errors.title}
                     </p>
                   ) : null}
                 </label>
 
-                <div className={styles.field}>
-                  <span className={styles.label}>본문</span>
-                  <RichTextEditor
-                    value={form.body_html}
-                    onChange={(html) => update("body_html", html)}
-                    ariaLabel="팝업 본문"
-                  />
-                  {errors.body_html ? (
-                    <p role="alert" className={styles.error}>
-                      {errors.body_html}
-                    </p>
-                  ) : null}
-                </div>
+                <fieldset className={styles.field}>
+                  <legend className={styles.label}>노출 디바이스</legend>
+                  {(
+                    [
+                      ["both", "PC + 모바일"],
+                      ["pc", "PC만"],
+                      ["mobile", "모바일만"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <label key={value} className={styles.radioLabel}>
+                      <input
+                        type="radio"
+                        name="target_device"
+                        value={value}
+                        checked={form.target_device === value}
+                        onChange={() => update("target_device", value)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+
+                <fieldset className={styles.field}>
+                  <legend className={styles.label}>팝업 타입</legend>
+                  {(
+                    [
+                      ["editor", "에디터(텍스트+이미지)"],
+                      ["image", "이미지만"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <label key={value} className={styles.radioLabel}>
+                      <input
+                        type="radio"
+                        name="popup_type"
+                        value={value}
+                        checked={form.popup_type === value}
+                        onChange={() => update("popup_type", value)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+
+                {form.popup_type === "image" ? (
+                  <div className={styles.field}>
+                    <span className={styles.label}>이미지</span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleImageFile(file);
+                      }}
+                      disabled={uploadingImage || submitting}
+                    />
+                    {uploadingImage ? (
+                      <p role="status" className={styles.helper}>
+                        업로드 중…
+                      </p>
+                    ) : null}
+                    {form.image_url ? (
+                      <div className={styles.imagePreview}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={form.image_url} alt="업로드 이미지 미리보기" />
+                        <button
+                          type="button"
+                          className={styles.imageRemoveBtn}
+                          onClick={() => {
+                            update("image_url", "");
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = "";
+                            }
+                          }}
+                        >
+                          이미지 제거
+                        </button>
+                      </div>
+                    ) : null}
+                    <span className={styles.helper}>
+                      PNG·JPG·WEBP, 5MB 이하
+                    </span>
+                    {errors.image_url ? (
+                      <p role="alert" className={styles.error}>
+                        {errors.image_url}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className={styles.field}>
+                    <span className={styles.label}>본문</span>
+                    <RichTextEditor
+                      value={form.body_html ?? ""}
+                      onChange={(html) => update("body_html", html)}
+                      ariaLabel="팝업 본문"
+                    />
+                    {errors.body_html ? (
+                      <p role="alert" className={styles.error}>
+                        {errors.body_html}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
 
                 <label className={styles.field}>
                   <span className={styles.label}>노출 시작</span>
@@ -254,7 +372,7 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
                 </label>
 
                 <fieldset className={styles.field}>
-                  <legend className={styles.label}>타겟</legend>
+                  <legend className={styles.label}>타겟 가입유형</legend>
                   {(
                     [
                       ["all", "전체"],
@@ -277,6 +395,27 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
                 </fieldset>
 
                 <label className={styles.field}>
+                  <span className={styles.label}>노출 순서</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={999}
+                    value={form.sort_order}
+                    onChange={(e) =>
+                      update("sort_order", Number(e.target.value) || 0)
+                    }
+                  />
+                  <span className={styles.helper}>
+                    작은 값이 먼저 노출됩니다 (0~999)
+                  </span>
+                  {errors.sort_order ? (
+                    <p role="alert" className={styles.error}>
+                      {errors.sort_order}
+                    </p>
+                  ) : null}
+                </label>
+
+                <label className={styles.field}>
                   <span className={styles.label}>링크 URL (선택)</span>
                   <input
                     type="url"
@@ -287,7 +426,7 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
                     aria-invalid={Boolean(errors.link_url)}
                   />
                   <span className={styles.helper}>
-                    외부 링크는 새 탭으로 열리며 https://만 허용됩니다.
+                    외부 링크는 새 탭으로 열리며 http(s)://만 허용됩니다.
                   </span>
                   {errors.link_url ? (
                     <p role="alert" className={styles.error}>
@@ -312,7 +451,11 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
                 <h3 className={styles.previewHeading}>미리보기</h3>
                 <PopupPreviewCard
                   title={form.title}
-                  bodyHtml={form.body_html}
+                  bodyHtml={
+                    form.popup_type === "image" && form.image_url
+                      ? `<img src="${form.image_url}" alt="${form.title}" />`
+                      : form.body_html ?? ""
+                  }
                   linkUrl={form.link_url || null}
                 />
               </aside>
@@ -336,7 +479,7 @@ export function PopupEditDialog({ mode, popupId, onClose, onSaved }: Props) {
               <button
                 type="submit"
                 className={styles.submitBtn}
-                disabled={submitting}
+                disabled={submitting || uploadingImage}
               >
                 {submitting ? "저장 중…" : "저장"}
               </button>

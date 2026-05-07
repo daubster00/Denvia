@@ -1,4 +1,4 @@
-"""콘텐츠 관리 라우터 — Story 7.1 공지(쪽지) + 7.2 팝업 admin CRUD + 7.3/7.4 토글.
+"""콘텐츠 관리 라우터 — Story 7.1 공지(쪽지) + 7.2 v2 팝업 admin CRUD + 7.3/7.4 토글.
 
 엔드포인트:
 - GET    /admin/popups                   목록 페이지네이션
@@ -7,6 +7,7 @@
 - PUT    /admin/popups/{popup_id}        전체 필드 교체 (편집 모달 저장)
 - PATCH  /admin/popups/{popup_id}        is_active 즉시 토글 (목록 행)
 - DELETE /admin/popups/{popup_id}        soft delete
+- POST   /admin/popups/image-upload      이미지 업로드 (Story 7.2 v2)
 - GET    /admin/notices                  공지(쪽지) 목록
 - GET    /admin/notices/{notice_id}      공지 단건 조회
 - POST   /admin/notices                  공지 작성+즉시 발행 (target_segment fan-out)
@@ -17,7 +18,7 @@
 - PUT    /admin/runtime-config           서비스 전체 토글 4종 일괄 저장
 """
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +30,7 @@ from api.src.middleware.audit_actions import (
     AUDIT_NOTICE_DELETE,
     AUDIT_POPUP_CREATE,
     AUDIT_POPUP_DELETE,
+    AUDIT_POPUP_IMAGE_UPLOAD,
     AUDIT_POPUP_TOGGLE,
     AUDIT_POPUP_UPDATE,
     AUDIT_RUNTIME_CONFIG_UPDATE,
@@ -46,6 +48,7 @@ from api.src.schemas.admin.notice import (
 from api.src.schemas.admin.popup import (
     PopupCreateRequest,
     PopupDetailResponse,
+    PopupImageUploadResponse,
     PopupListResponse,
     PopupTogglePatchRequest,
     PopupToggleResponse,
@@ -135,6 +138,24 @@ async def delete_popup(
 ) -> None:
     """팝업 soft delete (deleted_at = NOW())."""
     await popup_service.delete_popup(request, popup_id, admin, db)
+
+
+@router.post(
+    "/popups/image-upload",
+    response_model=PopupImageUploadResponse,
+    status_code=201,
+)
+@audit_action(AUDIT_POPUP_IMAGE_UPLOAD)
+async def upload_popup_image(
+    request: Request,
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+) -> PopupImageUploadResponse:
+    """팝업 이미지 업로드 — Story 7.2 v2.
+
+    PNG/JPG/WEBP, 5MB 이하. 응답의 image_url을 /admin/popups POST/PUT body.image_url에 사용.
+    """
+    return await popup_service.upload_popup_image(request, file, admin)
 
 
 # ── 서비스 전체 토글 (Story 7.3/7.4 부분) ──────────────────────────────────────

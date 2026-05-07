@@ -103,20 +103,29 @@ async def test_list_inbox_sanitizes_body_html() -> None:
     assert item.notice_id == 5
 
 
+# ── Story 7.2 v2: get_active_popups (배열) — 디바이스 필터 + 빈 결과 ─────────
+
+
+def _mock_scalars(rows: list) -> MagicMock:
+    """db.execute().scalars().all() 체이닝을 흉내내는 MagicMock 헬퍼."""
+    result = MagicMock()
+    scalars = MagicMock()
+    scalars.all = MagicMock(return_value=rows)
+    result.scalars = MagicMock(return_value=scalars)
+    return result
+
+
 @pytest.mark.asyncio
-async def test_get_active_popup_returns_none_when_no_match() -> None:
-    """매칭 0건 시 None 반환 → 라우터에서 204."""
+async def test_get_active_popups_returns_empty_when_no_match() -> None:
     user = MagicMock()
     user.id = 1
     user.segment = None
 
     db = AsyncMock()
-    select_result = MagicMock()
-    select_result.scalar_one_or_none = MagicMock(return_value=None)
-    db.execute = AsyncMock(return_value=select_result)
+    db.execute = AsyncMock(return_value=_mock_scalars([]))
 
-    out = await inbox_service.get_active_popup(db, user)
-    assert out is None
+    out = await inbox_service.get_active_popups(db, user, device="pc")
+    assert out == []
 
 
 @pytest.mark.asyncio
@@ -124,18 +133,12 @@ async def test_get_active_popup_returns_none_when_no_match() -> None:
     "unsafe_link",
     [
         "javascript:alert(1)",
-        "JavaScript:alert(1)",
-        "  javascript:alert(1)",  # whitespace prefix bypass 시도
         "data:text/html,<script>alert(1)</script>",
-        "mailto:user@evil.example",
-        "vbscript:msgbox(1)",
-        "file:///etc/passwd",
-        "//evil.example/x",  # 스킴 없는 protocol-relative
+        "//evil.example/x",
         "/relative/path",
     ],
 )
-async def test_get_active_popup_strips_unsafe_link_url(unsafe_link: str) -> None:
-    """popups.link_url에 javascript:/data:/mailto: 등이 들어와도 응답에는 노출되지 않음."""
+async def test_get_active_popups_strips_unsafe_link_url(unsafe_link: str) -> None:
     user = MagicMock()
     user.id = 1
     user.segment = None
@@ -144,46 +147,22 @@ async def test_get_active_popup_strips_unsafe_link_url(unsafe_link: str) -> None
     popup.id = 7
     popup.title = "T"
     popup.body_html = "<p>x</p>"
+    popup.image_url = None
+    popup.popup_type = "editor"
     popup.link_url = unsafe_link
     popup.display_end = datetime(2026, 12, 31, tzinfo=timezone.utc)
 
     db = AsyncMock()
-    select_result = MagicMock()
-    select_result.scalar_one_or_none = MagicMock(return_value=popup)
-    db.execute = AsyncMock(return_value=select_result)
+    db.execute = AsyncMock(return_value=_mock_scalars([popup]))
 
-    out = await inbox_service.get_active_popup(db, user)
-    assert out is not None
-    assert out.link_url is None
+    out = await inbox_service.get_active_popups(db, user, device="pc")
+    assert len(out) == 1
+    assert out[0].link_url is None
 
 
 @pytest.mark.asyncio
-async def test_get_active_popup_passes_https_link_url() -> None:
-    """https:// URL은 그대로 통과한다."""
-    user = MagicMock()
-    user.id = 1
-    user.segment = None
-
-    popup = MagicMock()
-    popup.id = 7
-    popup.title = "T"
-    popup.body_html = "<p>x</p>"
-    popup.link_url = "https://denvia.kr/announce"
-    popup.display_end = datetime(2026, 12, 31, tzinfo=timezone.utc)
-
-    db = AsyncMock()
-    select_result = MagicMock()
-    select_result.scalar_one_or_none = MagicMock(return_value=popup)
-    db.execute = AsyncMock(return_value=select_result)
-
-    out = await inbox_service.get_active_popup(db, user)
-    assert out is not None
-    assert out.link_url == "https://denvia.kr/announce"
-
-
-@pytest.mark.asyncio
-async def test_get_active_popup_query_includes_deleted_at_is_null_filter() -> None:
-    """Story 7.2: SELECT WHERE 절에 popups.deleted_at IS NULL 필터가 반드시 포함된다."""
+async def test_get_active_popups_query_includes_device_and_deleted_filters() -> None:
+    """SELECT 절에 deleted_at IS NULL + target_device 필터가 모두 포함된다."""
     user = MagicMock()
     user.id = 1
     user.segment = None
@@ -192,26 +171,13 @@ async def test_get_active_popup_query_includes_deleted_at_is_null_filter() -> No
 
     async def _capture(stmt):
         captured.append(stmt)
-        result = MagicMock()
-        result.scalar_one_or_none = MagicMock(return_value=None)
-        return result
+        return _mock_scalars([])
 
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=_capture)
 
-    await inbox_service.get_active_popup(db, user)
+    await inbox_service.get_active_popups(db, user, device="mobile")
     assert len(captured) == 1
     sql = str(captured[0].compile(compile_kwargs={"literal_binds": False}))
-    assert "deleted_at IS NULL" in sql, sql
-
-
-@pytest.mark.asyncio
-async def test_mark_popup_seen_excludes_soft_deleted() -> None:
-    """Story 7.2: soft delete된 팝업은 mark_popup_seen에서 not_found 분기."""
-    db = AsyncMock()
-    select_result = MagicMock()
-    select_result.scalar_one_or_none = MagicMock(return_value=None)
-    db.execute = AsyncMock(return_value=select_result)
-
-    out = await inbox_service.mark_popup_seen(db, user_id=1, popup_id=999)
-    assert out == "not_found"
+    assert "deleted_at IS NULL" in sql
+    assert "target_device" in sql

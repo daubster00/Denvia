@@ -391,41 +391,20 @@ async def get_my_inbox_preview(
     return await inbox_service.get_preview_messages(db, current_user.id, max_count)
 
 
-@router.get("/me/popups/active", response_model=ActivePopupResponse | None)
-async def get_active_popup(
+@router.get("/me/popups/active", response_model=list[ActivePopupResponse])
+async def get_active_popups(
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
-) -> Response | ActivePopupResponse:
-    """메인 진입 시 자동 노출 후보 1건. 매칭 0건은 204."""
-    popup = await inbox_service.get_active_popup(db, current_user)
-    if popup is None:
-        return Response(status_code=204)
-    return popup
+    device: Annotated[Literal["pc", "mobile"], Query()] = "pc",
+) -> list[ActivePopupResponse]:
+    """메인 진입 시 노출 후보 배열 — Story 7.2 v2.
 
-
-@router.post("/me/popups/{popup_id}/seen", status_code=204)
-async def mark_popup_seen(
-    popup_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_session),
-) -> Response:
-    """팝업 X/ESC 클릭 시 inbox UPSERT — 동일 팝업 재노출 방지."""
-    result = await inbox_service.mark_popup_seen(db, current_user.id, popup_id)
-    if result == "not_found":
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "code": "POPUP_NOT_FOUND",
-                "message": "팝업을 찾을 수 없습니다.",
-            },
-        )
-    logger.info(
-        "popup.seen",
-        user_id=current_user.id,
-        popup_id=popup_id,
-        was_first_view=(result == "inserted"),
-    )
-    return Response(status_code=204)
+    캐러셀 형태로 노출. 디바이스 필터: target_device IN ('both', :device).
+    노출 1회/세션 + '오늘 안보기' 필터는 클라이언트 sessionStorage/localStorage에서 처리.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    return await inbox_service.get_active_popups(db, current_user, device)
 
 
 # ────────────────────────────────────────────────────────────────────────────

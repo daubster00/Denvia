@@ -1,6 +1,11 @@
 "use client";
 
-import type { PopupListItem, TargetSegment } from "@/features/admin-content/api/popup";
+import type {
+  PopupListItem,
+  PopupType,
+  TargetDevice,
+  TargetSegment,
+} from "@/features/admin-content/api/popup";
 import styles from "./PopupListTable.module.css";
 
 interface Props {
@@ -23,6 +28,17 @@ const SEGMENT_CLASS: Record<TargetSegment, string> = {
   doctor: styles.segmentDoctor,
   hygienist: styles.segmentHygienist,
   student_other: styles.segmentStudentOther,
+};
+
+const DEVICE_LABEL: Record<TargetDevice, string> = {
+  pc: "PC",
+  mobile: "모바일",
+  both: "PC+모바일",
+};
+
+const TYPE_LABEL: Record<PopupType, string> = {
+  image: "이미지",
+  editor: "에디터",
 };
 
 // 서비스가 단일 리전(KST) 운영이라 노출 시간은 항상 KST로 표기.
@@ -71,6 +87,9 @@ export function PopupListTable({
           <th scope="col">제목</th>
           <th scope="col">노출 기간</th>
           <th scope="col">타겟</th>
+          <th scope="col">디바이스</th>
+          <th scope="col">타입</th>
+          <th scope="col">순서</th>
           <th scope="col">활성</th>
           <th scope="col">액션</th>
         </tr>
@@ -82,6 +101,8 @@ export function PopupListTable({
             SEGMENT_CLASS[item.target_segment] ?? styles.segmentAll;
           const segmentLabel =
             SEGMENT_LABEL[item.target_segment] ?? item.target_segment;
+          const deviceLabel = DEVICE_LABEL[item.target_device] ?? item.target_device;
+          const typeLabel = TYPE_LABEL[item.popup_type] ?? item.popup_type;
           const isToggling = togglingId === item.id;
           return (
             <tr key={item.id}>
@@ -92,6 +113,9 @@ export function PopupListTable({
                   {segmentLabel}
                 </span>
               </td>
+              <td>{deviceLabel}</td>
+              <td>{typeLabel}</td>
+              <td>{item.sort_order}</td>
               <td>
                 <button
                   type="button"

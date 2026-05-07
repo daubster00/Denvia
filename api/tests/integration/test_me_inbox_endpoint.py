@@ -252,7 +252,9 @@ class TestUnreadCountEndpoint:
 
 
 @pytest.mark.asyncio
-class TestActivePopupEndpoint:
+class TestActivePopupsEndpoint:
+    """Story 7.2 v2: 배열 응답 + 디바이스 쿼리 + seen 엔드포인트 제거 회귀."""
+
     async def test_unauth_returns_401(self):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -260,112 +262,90 @@ class TestActivePopupEndpoint:
             res = await client.get("/api/v1/me/popups/active")
         assert res.status_code == 401
 
-    async def test_returns_204_when_no_match(self, monkeypatch):
+    async def test_returns_empty_array_when_no_match(self, monkeypatch):
         user = _make_user()
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = _stub_session()
 
-        async def _active(db, u):
-            return None
+        async def _active(db, u, device):
+            return []
 
         monkeypatch.setattr(
-            "api.src.routers.me.inbox_service.get_active_popup", _active
+            "api.src.routers.me.inbox_service.get_active_popups", _active
         )
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
-            res = await client.get("/api/v1/me/popups/active")
-        assert res.status_code == 204
+            res = await client.get("/api/v1/me/popups/active?device=pc")
+        assert res.status_code == 200
+        assert res.json() == []
 
-    async def test_returns_200_with_popup(self, monkeypatch):
+    async def test_returns_array_with_popups(self, monkeypatch):
         user = _make_user()
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = _stub_session()
 
-        async def _active(db, u):
-            return ActivePopupResponse(
-                popup_id=12,
-                title="신규 서비스 안내",
-                body_html_safe="<p>안녕</p>",
-                link_url="https://denvia.kr",
-                display_end="2026-05-31T00:00:00+00:00",
-            )
+        captured_device: list[str] = []
+
+        async def _active(db, u, device):
+            captured_device.append(device)
+            return [
+                ActivePopupResponse(
+                    popup_id=12,
+                    title="신규 서비스 안내",
+                    popup_type="editor",
+                    image_url=None,
+                    body_html_safe="<p>안녕</p>",
+                    link_url="https://denvia.kr",
+                    display_end="2026-05-31T00:00:00+00:00",
+                ),
+                ActivePopupResponse(
+                    popup_id=13,
+                    title="이미지 팝업",
+                    popup_type="image",
+                    image_url="/static/popup-images/abc.png",
+                    body_html_safe=None,
+                    link_url=None,
+                    display_end="2026-05-31T00:00:00+00:00",
+                ),
+            ]
 
         monkeypatch.setattr(
-            "api.src.routers.me.inbox_service.get_active_popup", _active
+            "api.src.routers.me.inbox_service.get_active_popups", _active
         )
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
-            res = await client.get("/api/v1/me/popups/active")
+            res = await client.get("/api/v1/me/popups/active?device=mobile")
         assert res.status_code == 200
         body = res.json()
-        assert body["popup_id"] == 12
-        assert body["link_url"] == "https://denvia.kr"
+        assert len(body) == 2
+        assert body[0]["popup_id"] == 12
+        assert body[1]["popup_type"] == "image"
+        assert captured_device == ["mobile"]
+
+    async def test_invalid_device_returns_422(self):
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_session] = _stub_session()
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            res = await client.get("/api/v1/me/popups/active?device=tablet")
+        assert res.status_code == 422
 
 
 @pytest.mark.asyncio
-class TestPopupSeenEndpoint:
-    async def test_unauth_returns_401(self):
+class TestPopupSeenEndpointRemoved:
+    """Story 7.2 v2: seen 엔드포인트는 완전히 제거되어 404를 반환한다."""
+
+    async def test_seen_endpoint_returns_404(self):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
             res = await client.post("/api/v1/me/popups/1/seen")
-        assert res.status_code == 401
-
-    async def test_returns_204_on_first_seen(self, monkeypatch):
-        user = _make_user()
-        app.dependency_overrides[get_current_user] = lambda: user
-        app.dependency_overrides[get_session] = _stub_session()
-
-        async def _seen(db, user_id, popup_id):
-            return "inserted"
-
-        monkeypatch.setattr(
-            "api.src.routers.me.inbox_service.mark_popup_seen", _seen
-        )
-
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            res = await client.post("/api/v1/me/popups/12/seen")
-        assert res.status_code == 204
-
-    async def test_returns_204_on_repeat_seen(self, monkeypatch):
-        user = _make_user()
-        app.dependency_overrides[get_current_user] = lambda: user
-        app.dependency_overrides[get_session] = _stub_session()
-
-        async def _seen(db, user_id, popup_id):
-            return "updated"
-
-        monkeypatch.setattr(
-            "api.src.routers.me.inbox_service.mark_popup_seen", _seen
-        )
-
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            res = await client.post("/api/v1/me/popups/12/seen")
-        assert res.status_code == 204
-
-    async def test_returns_404_for_unknown_popup(self, monkeypatch):
-        user = _make_user()
-        app.dependency_overrides[get_current_user] = lambda: user
-        app.dependency_overrides[get_session] = _stub_session()
-
-        async def _seen(db, user_id, popup_id):
-            return "not_found"
-
-        monkeypatch.setattr(
-            "api.src.routers.me.inbox_service.mark_popup_seen", _seen
-        )
-
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            res = await client.post("/api/v1/me/popups/999/seen")
+        # 라우트 자체가 없으므로 인증 검사 전에 404. (인증되어 있어도 동일)
         assert res.status_code == 404
-        assert res.json()["code"] == "POPUP_NOT_FOUND"

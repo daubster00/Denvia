@@ -214,6 +214,35 @@
   cursor: not-allowed;
 }
 
+.imagePreview {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.imagePreview img {
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.imageRemoveBtn {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.imageRemoveBtn:hover {
+  background: #fecaca;
+}
+
 @media (max-width: 768px) {
   .dialog {
     max-height: 100vh;

@@ -34,8 +34,7 @@ vi.mock("@/features/inbox/api", () => ({
   ),
   fetchUnreadCount: vi.fn(() => Promise.resolve({ unread_count: 0 })),
   markInboxRead: vi.fn(),
-  fetchActivePopup: vi.fn(),
-  markPopupSeen: vi.fn(),
+  fetchActivePopups: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("@/features/auth/api", () => ({

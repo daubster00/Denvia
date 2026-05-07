@@ -79,9 +79,13 @@ def _popup_row(
     *,
     popup_id: int = 1,
     title: str = "5월 프로모션",
-    body_html: str = "<p>안녕</p>",
+    body_html: str | None = "<p>안녕</p>",
+    image_url: str | None = None,
     link_url: str | None = "https://example.com",
     target_segment: str = "all",
+    target_device: str = "both",
+    popup_type: str = "editor",
+    sort_order: int = 0,
     is_active: bool = True,
     deleted_at: datetime | None = None,
 ):
@@ -90,10 +94,14 @@ def _popup_row(
     popup.id = popup_id
     popup.title = title
     popup.body_html = body_html
+    popup.image_url = image_url
     popup.link_url = link_url
     popup.display_start = now
     popup.display_end = now + timedelta(days=7)
     popup.target_segment = target_segment
+    popup.target_device = target_device
+    popup.popup_type = popup_type
+    popup.sort_order = sort_order
     popup.is_active = is_active
     popup.deleted_at = deleted_at
     popup.created_at = now

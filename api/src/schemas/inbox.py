@@ -35,11 +35,16 @@ class UnreadCountResponse(BaseModel):
 
 
 class ActivePopupResponse(BaseModel):
-    """GET /api/v1/me/popups/active 200 응답 (204면 빈 body)."""
+    """GET /api/v1/me/popups/active items[i] — Story 7.2 v2.
+
+    캐러셀 배열의 한 슬라이드. popup_type에 따라 image_url/body_html_safe 중 하나가 채워짐.
+    """
 
     popup_id: int
     title: str
-    body_html_safe: str
+    popup_type: Literal["image", "editor"]
+    image_url: str | None
+    body_html_safe: str | None
     link_url: str | None
     display_end: str  # ISO 8601
 

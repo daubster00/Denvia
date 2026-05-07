@@ -3,7 +3,7 @@ import { z } from "zod";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ──────────────────────────────────────────────────────────────────────────────
-// zod 스키마 (AC-13 — Pydantic과 1:1 일치)
+// zod 스키마 — Story 7.2 v2 (백엔드 Pydantic과 1:1)
 // ──────────────────────────────────────────────────────────────────────────────
 
 export const popupFormSchema = z
@@ -12,10 +12,14 @@ export const popupFormSchema = z
       .string()
       .min(1, "제목을 입력해주세요")
       .max(200, "제목은 200자 이내"),
+    popup_type: z.enum(["image", "editor"]),
+    target_device: z.enum(["pc", "mobile", "both"]),
     body_html: z
       .string()
-      .min(1, "본문을 입력해주세요")
-      .max(20000, "본문이 너무 깁니다"),
+      .max(20000, "본문이 너무 깁니다")
+      .optional()
+      .or(z.literal("")),
+    image_url: z.string().max(500).optional().or(z.literal("")),
     link_url: z
       .string()
       .max(500)
@@ -25,6 +29,11 @@ export const popupFormSchema = z
     display_start: z.string().min(1, "노출 시작 시각을 입력해주세요"),
     display_end: z.string().min(1, "노출 종료 시각을 입력해주세요"),
     target_segment: z.enum(["all", "doctor", "hygienist", "student_other"]),
+    sort_order: z
+      .number()
+      .int()
+      .min(0, "0 이상")
+      .max(999, "999 이하"),
     is_active: z.boolean(),
   })
   .refine(
@@ -33,11 +42,30 @@ export const popupFormSchema = z
       message: "종료일은 시작일보다 늦어야 합니다",
       path: ["display_end"],
     },
+  )
+  .refine(
+    (data) =>
+      data.popup_type !== "image" || (data.image_url && data.image_url !== ""),
+    {
+      message: "이미지를 업로드해주세요",
+      path: ["image_url"],
+    },
+  )
+  .refine(
+    (data) =>
+      data.popup_type !== "editor" ||
+      (data.body_html && data.body_html.trim() !== ""),
+    {
+      message: "본문을 입력해주세요",
+      path: ["body_html"],
+    },
   );
 
 export type PopupFormInput = z.infer<typeof popupFormSchema>;
 
 export type TargetSegment = "all" | "doctor" | "hygienist" | "student_other";
+export type TargetDevice = "pc" | "mobile" | "both";
+export type PopupType = "image" | "editor";
 
 export interface PopupListItem {
   id: number;
@@ -45,6 +73,10 @@ export interface PopupListItem {
   display_start: string;
   display_end: string;
   target_segment: TargetSegment;
+  target_device: TargetDevice;
+  popup_type: PopupType;
+  image_url: string | null;
+  sort_order: number;
   is_active: boolean;
   link_url: string | null;
   created_by_admin_id: number;
@@ -53,7 +85,7 @@ export interface PopupListItem {
 }
 
 export interface PopupDetail extends PopupListItem {
-  body_html: string;
+  body_html: string | null;
 }
 
 export interface PopupListResponse {
@@ -69,8 +101,14 @@ export interface PopupToggleResponse {
   updated_at: string;
 }
 
+export interface PopupImageUploadResponse {
+  image_url: string;
+  size_bytes: number;
+  mime_type: string;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
-// fetcher 6종
+// fetcher
 // ──────────────────────────────────────────────────────────────────────────────
 
 class ApiError extends Error {
@@ -116,13 +154,29 @@ export async function fetchPopupDetail(id: number): Promise<PopupDetail> {
 }
 
 function toRequestBody(input: PopupFormInput) {
+  const body_html =
+    input.popup_type === "editor"
+      ? input.body_html && input.body_html !== ""
+        ? input.body_html
+        : null
+      : null;
+  const image_url =
+    input.popup_type === "image"
+      ? input.image_url && input.image_url !== ""
+        ? input.image_url
+        : null
+      : null;
   return {
     title: input.title,
-    body_html: input.body_html,
+    popup_type: input.popup_type,
+    target_device: input.target_device,
+    body_html,
+    image_url,
     link_url: input.link_url === "" ? null : (input.link_url ?? null),
     display_start: new Date(input.display_start).toISOString(),
     display_end: new Date(input.display_end).toISOString(),
     target_segment: input.target_segment,
+    sort_order: input.sort_order,
     is_active: input.is_active,
   };
 }
@@ -174,6 +228,20 @@ export async function deletePopup(id: number): Promise<void> {
     credentials: "include",
   });
   if (!res.ok) throw await parseError(res);
+}
+
+export async function uploadPopupImage(
+  file: File,
+): Promise<PopupImageUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/api/v1/admin/popups/image-upload`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  if (!res.ok) throw await parseError(res);
+  return res.json();
 }
 
 export { ApiError };

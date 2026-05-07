@@ -37,9 +37,13 @@ def _popup_row(
     *,
     popup_id: int = 1,
     title: str = "5월 프로모션",
-    body_html: str = "<p>안녕</p>",
+    body_html: str | None = "<p>안녕</p>",
+    image_url: str | None = None,
     link_url: str | None = "https://example.com",
     target_segment: str = "all",
+    target_device: str = "both",
+    popup_type: str = "editor",
+    sort_order: int = 0,
     is_active: bool = True,
     deleted_at: datetime | None = None,
     created_by_admin_id: int = 1,
@@ -49,10 +53,14 @@ def _popup_row(
     popup.id = popup_id
     popup.title = title
     popup.body_html = body_html
+    popup.image_url = image_url
     popup.link_url = link_url
     popup.display_start = now
     popup.display_end = now + timedelta(days=7)
     popup.target_segment = target_segment
+    popup.target_device = target_device
+    popup.popup_type = popup_type
+    popup.sort_order = sort_order
     popup.is_active = is_active
     popup.deleted_at = deleted_at
     popup.created_at = now
@@ -64,20 +72,28 @@ def _popup_row(
 def _make_create_request(
     *,
     title: str = "5월 프로모션",
-    body_html: str = "<p>안녕</p>",
+    body_html: str | None = "<p>안녕</p>",
+    image_url: str | None = None,
     link_url: str | None = "https://example.com/promo",
     is_active: bool = True,
     target_segment: str = "all",
+    target_device: str = "both",
+    popup_type: str = "editor",
+    sort_order: int = 0,
     days_offset: int = 7,
 ) -> PopupCreateRequest:
     start = datetime(2026, 5, 1, tzinfo=timezone.utc)
     return PopupCreateRequest(
         title=title,
         body_html=body_html,
+        image_url=image_url,
         link_url=link_url,
         display_start=start,
         display_end=start + timedelta(days=days_offset),
         target_segment=target_segment,
+        target_device=target_device,
+        popup_type=popup_type,
+        sort_order=sort_order,
         is_active=is_active,
     )
 

@@ -1,6 +1,11 @@
-"""팝업 ORM — Story 4.5 DDL, Story 7.2 admin CRUD 책임.
+"""팝업 ORM — Story 4.5(DDL) + 7.2 v2 재설계.
 
-본 스토리는 SELECT만 사용 (GET /me/popups/active).
+target_device: 노출 디바이스 (pc/mobile/both)
+popup_type   : 'image'(한 장 이미지) 또는 'editor'(Tiptap 본문)
+image_url    : popup_type='image' 일 때 사용
+sort_order   : 캐러셀 내 노출 순서 (작은 값 먼저)
+
+CHECK ck_popups_type_payload: 타입별 페이로드 일치 보장.
 """
 
 from datetime import datetime
@@ -12,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
+    Integer,
     String,
     Text,
     func,
@@ -26,7 +32,8 @@ class Popup(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    body_html: Mapped[str] = mapped_column(Text, nullable=False)
+    body_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     link_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     display_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -46,6 +53,28 @@ class Popup(Base):
         nullable=False,
         server_default="all",
     )
+    target_device: Mapped[str] = mapped_column(
+        SQLEnum(
+            "pc",
+            "mobile",
+            "both",
+            name="popup_target_device_enum",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default="both",
+    )
+    popup_type: Mapped[str] = mapped_column(
+        SQLEnum(
+            "image",
+            "editor",
+            name="popup_type_enum",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default="editor",
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="TRUE"
     )
@@ -67,4 +96,9 @@ class Popup(Base):
 
     __table_args__ = (
         CheckConstraint("display_start < display_end", name="ck_popups_display_window"),
+        CheckConstraint(
+            "(popup_type = 'image' AND image_url IS NOT NULL) "
+            "OR (popup_type = 'editor' AND body_html IS NOT NULL)",
+            name="ck_popups_type_payload",
+        ),
     )

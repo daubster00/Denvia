@@ -1,22 +1,20 @@
-"""쪽지함·팝업 서비스 — Story 4.5.
+"""쪽지함·팝업 서비스 — Story 4.5 + 7.2 v2 재설계.
 
 함수 목록:
 - list_inbox(): 쪽지함 페이지네이션 조회 + sanitize
 - mark_read(): 단일 쪽지 읽음 처리(멱등)
 - get_unread_count(): TopNav 뱃지용 미읽음 개수
-- get_active_popup(): 메인 진입 시 노출 후보 1건 조회
-- mark_popup_seen(): 팝업 X/ESC 클릭 → inbox UPSERT (seen_popup_at = NOW())
+- get_active_popups(): 메인 진입 시 노출 후보 배열 조회 (디바이스 필터)
+- (제거됨) mark_popup_seen — Story 7.2 v2에서 쪽지함 보관 중단. 노출 추적은 클라이언트 sessionStorage.
 
 권한 경계: 모든 함수가 user_id를 강제 매개변수로 받고 WHERE 절에 항상 포함한다.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import and_, func, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.inbox_message import InboxMessage
@@ -132,29 +130,31 @@ async def get_unread_count(db: AsyncSession, user_id: int) -> int:
     )
 
 
-async def get_active_popup(
-    db: AsyncSession, user: User
-) -> ActivePopupResponse | None:
-    """메인 진입 시 자동 노출 후보 1건.
+async def get_active_popups(
+    db: AsyncSession,
+    user: User,
+    device: Literal["pc", "mobile"],
+) -> list[ActivePopupResponse]:
+    """메인 진입 시 노출 후보 배열 — Story 7.2 v2.
 
-    조건: is_active=TRUE AND display_window 내 AND target_segment 매칭 AND
-          (사용자가 아직 X 클릭 안 했음 = inbox_messages.seen_popup_at IS NULL)
+    조건:
+    - is_active=TRUE
+    - deleted_at IS NULL
+    - display_start <= NOW() <= display_end
+    - target_segment 'all' 또는 사용자 segment 일치 (사용자 segment NULL이면 'all'만)
+    - target_device 'both' 또는 요청 디바이스 일치
 
-    target_segment 매칭: 'all' 또는 사용자 segment.
-    사용자 segment IS NULL이면 'all' 타깃만 매칭.
+    정렬: sort_order ASC (관리자가 캐러셀 순서 통제), display_start DESC, id DESC.
+
+    노출 1회/세션 + '오늘 안보기' 필터는 클라이언트에서 처리한다 (sessionStorage / localStorage).
     """
     segment_match: list = [Popup.target_segment == "all"]
     if user.segment is not None:
         segment_match.append(Popup.target_segment == user.segment)
 
-    seen_subq = (
-        select(InboxMessage.popup_id)
-        .where(
-            InboxMessage.user_id == user.id,
-            InboxMessage.popup_id.is_not(None),
-            InboxMessage.seen_popup_at.is_not(None),
-        )
-        .scalar_subquery()
+    device_match = or_(
+        Popup.target_device == "both",
+        Popup.target_device == device,
     )
 
     stmt = (
@@ -165,23 +165,30 @@ async def get_active_popup(
             Popup.display_start <= func.now(),
             Popup.display_end >= func.now(),
             or_(*segment_match),
-            Popup.id.notin_(seen_subq),
+            device_match,
         )
-        .order_by(Popup.display_start.desc(), Popup.id.desc())
-        .limit(1)
+        .order_by(
+            Popup.sort_order.asc(),
+            Popup.display_start.desc(),
+            Popup.id.desc(),
+        )
     )
 
-    popup = (await db.execute(stmt)).scalar_one_or_none()
-    if popup is None:
-        return None
-
-    return ActivePopupResponse(
-        popup_id=popup.id,
-        title=popup.title,
-        body_html_safe=sanitize_body_html(popup.body_html),
-        link_url=safe_external_url(popup.link_url),
-        display_end=popup.display_end.isoformat(),
-    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [
+        ActivePopupResponse(
+            popup_id=p.id,
+            title=p.title,
+            popup_type=p.popup_type,
+            image_url=p.image_url,
+            body_html_safe=(
+                sanitize_body_html(p.body_html) if p.body_html else None
+            ),
+            link_url=safe_external_url(p.link_url),
+            display_end=p.display_end.isoformat(),
+        )
+        for p in rows
+    ]
 
 
 async def get_preview_messages(
@@ -218,71 +225,10 @@ async def get_preview_messages(
     return InboxPreviewResponse(items=items, max_count=max_count)
 
 
-async def mark_popup_seen(
-    db: AsyncSession, user_id: int, popup_id: int
-) -> Literal["inserted", "updated", "not_found"]:
-    """팝업 X/ESC 클릭 시 inbox_messages UPSERT.
-
-    partial UNIQUE(uniq_inbox_user_popup)에 의해 사용자×팝업 1행 보장.
-
-    Returns:
-        "inserted" — 신규 삽입(첫 노출)
-        "updated"  — 기존 행 seen_popup_at 갱신(재노출)
-        "not_found" — popup_id 미존재 또는 is_active=false
-    """
-    popup = (
-        await db.execute(
-            select(Popup).where(
-                Popup.id == popup_id,
-                Popup.is_active.is_(True),
-                Popup.deleted_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if popup is None:
-        return "not_found"
-
-    stmt = (
-        pg_insert(InboxMessage)
-        .values(
-            user_id=user_id,
-            notice_id=None,
-            popup_id=popup.id,
-            type="notice",
-            title=popup.title,
-            body_html=popup.body_html,
-            is_read=True,
-            seen_popup_at=func.now(),
-        )
-        .on_conflict_do_update(
-            index_elements=["user_id", "popup_id"],
-            index_where=InboxMessage.popup_id.is_not(None),
-            set_={"seen_popup_at": func.now()},
-        )
-        .returning(InboxMessage.id, InboxMessage.created_at)
-    )
-    # SQLAlchemy/psycopg returns (id, created_at). 신규 INSERT vs UPDATE 분기는
-    # ON CONFLICT 시 created_at은 보존되므로 행 존재 여부를 사전 SELECT로 판정한다.
-    pre_existing = (
-        await db.execute(
-            select(InboxMessage.id).where(
-                InboxMessage.user_id == user_id,
-                InboxMessage.popup_id == popup.id,
-            )
-        )
-    ).scalar_one_or_none()
-
-    await db.execute(stmt)
-    await db.commit()
-
-    return "updated" if pre_existing is not None else "inserted"
-
-
 __all__ = [
     "list_inbox",
     "mark_read",
     "get_unread_count",
-    "get_active_popup",
+    "get_active_popups",
     "get_preview_messages",
-    "mark_popup_seen",
 ]

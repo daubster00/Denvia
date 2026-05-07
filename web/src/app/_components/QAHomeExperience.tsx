@@ -11,6 +11,7 @@ import { useQAStore } from "@/stores/qa-store";
 import { useQAStream } from "@/features/qa/hooks/useQAStream";
 import { useQuota } from "@/features/qa/hooks/useQuota";
 import { postClientEvent } from "@/features/qa/api/events";
+import { PopupCarousel } from "@/features/inbox/components/PopupCarousel";
 import styles from "./QAHomeExperience.module.css";
 
 export function AuthenticatedQAExperience() {
@@ -63,6 +64,7 @@ export function AuthenticatedQAExperience() {
   return (
     <>
       <TopNav onResetChat={handleReset} />
+      <PopupCarousel />
       {isHero ? (
         <>
           <HeroSection>

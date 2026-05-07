@@ -1,4 +1,4 @@
-/** useUnreadCount/useActivePopup enabled 가드 테스트 — Story 4.5. */
+/** useUnreadCount / useActivePopups enabled 가드 — Story 4.5 + 7.2 v2. */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -6,15 +6,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import { useUnreadCount } from "../hooks/useUnreadCount";
-import { useActivePopup } from "../hooks/useActivePopup";
+import { useActivePopups } from "../hooks/useActivePopup";
 import { useSessionStore } from "@/stores/session-store";
 
 vi.mock("../api", () => ({
   fetchUnreadCount: vi.fn(),
-  fetchActivePopup: vi.fn(),
+  fetchActivePopups: vi.fn(),
 }));
 
-const { fetchUnreadCount, fetchActivePopup } = await import("../api");
+const { fetchUnreadCount, fetchActivePopups } = await import("../api");
 
 function makeWrapper() {
   return function wrapper({ children }: { children: ReactNode }) {
@@ -27,7 +27,7 @@ function makeWrapper() {
 
 beforeEach(() => {
   vi.mocked(fetchUnreadCount).mockReset();
-  vi.mocked(fetchActivePopup).mockReset();
+  vi.mocked(fetchActivePopups).mockReset();
   useSessionStore.setState({ user: null });
 });
 
@@ -64,13 +64,13 @@ describe("useUnreadCount — enabled 가드", () => {
   });
 });
 
-describe("useActivePopup — enabled 가드", () => {
+describe("useActivePopups — enabled 가드", () => {
   it("user=null → fetch 호출 안 함", async () => {
     useSessionStore.setState({ user: null });
-    vi.mocked(fetchActivePopup).mockResolvedValue(null);
+    vi.mocked(fetchActivePopups).mockResolvedValue([]);
 
-    renderHook(() => useActivePopup(), { wrapper: makeWrapper() });
+    renderHook(() => useActivePopups(), { wrapper: makeWrapper() });
     await new Promise((r) => setTimeout(r, 10));
-    expect(fetchActivePopup).not.toHaveBeenCalled();
+    expect(fetchActivePopups).not.toHaveBeenCalled();
   });
 });
