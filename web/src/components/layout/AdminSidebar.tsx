@@ -19,20 +19,43 @@ import styles from "./AdminSidebar.module.css";
 
 type IconComponent = React.ComponentType<React.SVGProps<SVGSVGElement>>;
 
+interface SubMenuItem {
+  label: string;
+  href: string;
+}
+
 interface MenuItem {
   icon: IconComponent;
   label: string;
   href: string;
+  children?: SubMenuItem[];
 }
 
 const MENU_ITEMS: MenuItem[] = [
   { icon: IconApps as IconComponent, label: "대시보드", href: "/admin" },
   { icon: IconPersons as IconComponent, label: "고객관리", href: "/admin/users" },
   { icon: IconCircleBlock as IconComponent, label: "이상탐지", href: "/admin/anomaly" },
-  { icon: IconDocument as IconComponent, label: "콘텐츠", href: "/admin/content" },
+  {
+    icon: IconDocument as IconComponent,
+    label: "콘텐츠",
+    href: "/admin/content",
+    children: [
+      { label: "서비스 토글", href: "/admin/content" },
+      { label: "팝업 관리", href: "/admin/content/popups" },
+      { label: "공지(쪽지) 관리", href: "/admin/content/notices" },
+    ],
+  },
   { icon: IconStorage as IconComponent, label: "RAG 데이터", href: "/admin/rag" },
   { icon: IconCode as IconComponent, label: "프롬프트", href: "/admin/prompt" },
-  { icon: IconCoins as IconComponent, label: "재무", href: "/admin/finance" },
+  {
+    icon: IconCoins as IconComponent,
+    label: "재무",
+    href: "/admin/finance",
+    children: [
+      { label: "결제 기록", href: "/admin/finance/payments" },
+      { label: "매출 대시보드", href: "/admin/finance/revenue" },
+    ],
+  },
   { icon: IconBubble as IconComponent, label: "CS", href: "/admin/cs" },
   { icon: IconSetting as IconComponent, label: "설정", href: "/admin/settings" },
 ];
@@ -41,12 +64,23 @@ function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");
 }
 
+function isHrefActive(pathname: string, href: string): boolean {
+  if (href === "/admin") return pathname === "/admin";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isSubItemActive(pathname: string, href: string, parentHref: string): boolean {
+  // 서브가 부모와 정확히 같은 URL이면 정확 매칭만 (다른 서브 활성 시 부모 서브가 같이 빛나는 것 방지)
+  if (href === parentHref) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AdminSidebar() {
   const pathname = usePathname();
   const [isTabletExpanded, setIsTabletExpanded] = useState(false);
+  const [hoveredHref, setHoveredHref] = useState<string | null>(null);
 
-  const isActive = (href: string) =>
-    href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+  const isActive = (href: string) => isHrefActive(pathname, href);
 
   return (
     <>
@@ -87,20 +121,77 @@ export function AdminSidebar() {
         </div>
 
         <ul className={styles.menu}>
-          {MENU_ITEMS.map(({ icon: Icon, label, href }) => {
+          {MENU_ITEMS.map((item) => {
+            const { icon: Icon, label, href, children } = item;
             const active = isActive(href);
+            const hasChildren = !!children && children.length > 0;
+            const isHovered = hoveredHref === href;
+            // 현재 라우트가 이 부모 밑에 있을 때만 펼침 (호버 시 미리보기 허용)
+            const isExpanded = hasChildren && (active || isHovered);
+
             return (
-              <li key={href}>
+              <li
+                key={href}
+                className={styles.menuLi}
+                onMouseEnter={hasChildren ? () => setHoveredHref(href) : undefined}
+                onMouseLeave={hasChildren ? () => setHoveredHref(null) : undefined}
+              >
                 <Link
                   href={href}
-                  aria-current={active ? "page" : undefined}
-                  className={cx(styles.menuItem, active && styles.menuItemActive)}
+                  aria-current={active && !hasChildren ? "page" : undefined}
+                  aria-expanded={hasChildren ? isExpanded : undefined}
+                  className={cx(
+                    styles.menuItem,
+                    active && !hasChildren && styles.menuItemActive,
+                    hasChildren && active && styles.menuItemParentActive,
+                  )}
                 >
                   <span className={styles.menuIcon}>
                     <Icon width="1.25rem" height="1.25rem" />
                   </span>
                   <span className={styles.menuLabel}>{label}</span>
+                  {hasChildren && (
+                    <span
+                      className={cx(
+                        styles.caret,
+                        isExpanded && styles.caretExpanded,
+                      )}
+                      aria-hidden="true"
+                    >
+                      <IconChevronRight width="0.875rem" height="0.875rem" />
+                    </span>
+                  )}
                 </Link>
+
+                {hasChildren && (
+                  <div
+                    className={cx(
+                      styles.subMenuWrap,
+                      isExpanded && styles.subMenuWrapOpen,
+                    )}
+                  >
+                    <ul className={styles.subMenu}>
+                      {children!.map((sub) => {
+                        const subActive = isSubItemActive(pathname, sub.href, href);
+                        return (
+                          <li key={sub.href}>
+                            <Link
+                              href={sub.href}
+                              aria-current={subActive ? "page" : undefined}
+                              className={cx(
+                                styles.subMenuItem,
+                                subActive && styles.subMenuItemActive,
+                              )}
+                            >
+                              <span className={styles.subMenuDot} aria-hidden="true" />
+                              <span className={styles.subMenuLabel}>{sub.label}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </li>
             );
           })}

@@ -1,7 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdminDashboardPage from "../page";
+
+beforeAll(() => {
+  // recharts ResponsiveContainer requires ResizeObserver; jsdom does not provide it.
+  // @ts-expect-error - jsdom polyfill
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
 
 vi.mock("@/features/admin-dashboard/api/budget", () => ({
   fetchBudgetCurrentMonth: vi.fn(),
@@ -13,6 +23,7 @@ vi.mock("@/features/admin-dashboard/api/analytics", () => ({
   fetchSubscribers: vi.fn(),
   fetchFeedback: vi.fn(),
   fetchSegments: vi.fn(),
+  fetchRevenueVariance: vi.fn(),
 }));
 
 vi.mock("@/features/admin-rag/api/knowledge", () => ({
@@ -47,6 +58,7 @@ describe("AdminDashboardPage", () => {
       fetchSubscribers,
       fetchFeedback,
       fetchSegments,
+      fetchRevenueVariance,
     } = await import("@/features/admin-dashboard/api/analytics");
     const { fetchRagStatus } = await import(
       "@/features/admin-rag/api/knowledge"
@@ -81,6 +93,22 @@ describe("AdminDashboardPage", () => {
       page: 1,
       per_page: 1,
       total: 154,
+    });
+    // Story 5.5: 재무 요약 위젯 stub
+    (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValue({
+      year_month: "2026-05",
+      revenue_krw: 1_485_000,
+      token_cost_usd: "12.345600",
+      token_cost_krw: 17_284,
+      usd_to_krw: 1400,
+      variance_krw: 1_467_716,
+      error_count: 3,
+      anomaly_count: 12,
+      applied_filters: {
+        year_month: "2026-05",
+        kst_start: "2026-05-01T00:00:00+09:00",
+        kst_end_exclusive: "2026-06-01T00:00:00+09:00",
+      },
     });
     // Story 6.4: 가입유형 위젯 stub
     (fetchSegments as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -229,8 +257,8 @@ describe("AdminDashboardPage", () => {
     expect(screen.getByText("피드백 비율")).toBeTruthy();
     expect(screen.getByText("재무 요약")).toBeTruthy();
     expect(screen.getByText("이상탐지/CS")).toBeTruthy();
-    // Story 5.4: 피드백 비율 위젯 활성화 → 준비 중 배지 2개 (재무/이상탐지만 placeholder 유지)
-    expect(screen.getAllByText("준비 중")).toHaveLength(2);
+    // Story 5.5: 재무 요약 활성화 → 준비 중 배지 1개 (이상탐지/CS만 placeholder 유지)
+    expect(screen.getAllByText("준비 중")).toHaveLength(1);
 
     // Story 5.3 위젯 상세 링크 활성화 — 가입자 추이 / 구독 현황
     const signupsLink = screen.getByRole("link", {
@@ -261,6 +289,12 @@ describe("AdminDashboardPage", () => {
     expect(segmentsLink.getAttribute("href")).toBe(
       "/admin/dashboard/analytics/segments",
     );
+
+    // Story 5.5: 재무 요약 위젯 상세 링크 활성화
+    const revenueLink = screen.getByRole("link", {
+      name: /재무 요약 상세 페이지로 이동/,
+    });
+    expect(revenueLink.getAttribute("href")).toBe("/admin/finance/revenue");
   });
 
   it("일부 API 실패해도 다른 위젯 렌더 (격리)", async () => {

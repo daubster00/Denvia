@@ -284,3 +284,85 @@ export async function fetchSegmentsExport(
       match?.[1] ?? `segments_${new Date().toISOString().slice(0, 10)}.xlsx`,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Story 5.5: 매출 + 토큰비용 차액 + 엑셀 export
+// ---------------------------------------------------------------------------
+
+export interface RevenueVarianceResponse {
+  year_month: string;
+  revenue_krw: number;
+  token_cost_usd: string;
+  token_cost_krw: number;
+  usd_to_krw: number;
+  variance_krw: number;
+  error_count: number;
+  anomaly_count: number;
+  applied_filters: {
+    year_month: string;
+    kst_start: string;
+    kst_end_exclusive: string;
+  };
+}
+
+export interface RevenueSeriesItem {
+  year_month: string;
+  revenue_krw: number;
+  token_cost_krw: number;
+  variance_krw: number;
+}
+
+export interface RevenueSeriesResponse {
+  months: number;
+  to: string;
+  from: string;
+  usd_to_krw: number;
+  items: RevenueSeriesItem[];
+}
+
+export async function fetchRevenueVariance(
+  params: { year_month?: string } = {},
+): Promise<RevenueVarianceResponse> {
+  const query = new URLSearchParams();
+  if (params.year_month) query.set("year_month", params.year_month);
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/revenue-variance${qs ? `?${qs}` : ""}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`revenue-variance fetch failed: ${res.status}`);
+  return res.json() as Promise<RevenueVarianceResponse>;
+}
+
+export async function fetchRevenueVarianceSeries(
+  params: { months?: number; to?: string } = {},
+): Promise<RevenueSeriesResponse> {
+  const query = new URLSearchParams();
+  if (params.months) query.set("months", String(params.months));
+  if (params.to) query.set("to", params.to);
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/revenue-variance/series${qs ? `?${qs}` : ""}`,
+    { credentials: "include" },
+  );
+  if (!res.ok)
+    throw new Error(`revenue-variance series fetch failed: ${res.status}`);
+  return res.json() as Promise<RevenueSeriesResponse>;
+}
+
+export async function fetchRevenueVarianceExport(
+  params: { year_month: string },
+): Promise<{ blob: Blob; filename: string }> {
+  const query = new URLSearchParams({ year_month: params.year_month });
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/revenue-variance/export?${query.toString()}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`revenue-variance export failed: ${res.status}`);
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return {
+    blob: await res.blob(),
+    filename: match?.[1] ?? `revenue_variance_${params.year_month}.xlsx`,
+  };
+}

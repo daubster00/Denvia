@@ -25,6 +25,10 @@ import {
   SegmentsSummaryWidget,
   SEGMENTS_SUMMARY_KEY,
 } from "@/features/admin-dashboard/components/SegmentsSummaryWidget";
+import {
+  RevenueSummaryWidget,
+  REVENUE_SUMMARY_KEY,
+} from "@/features/admin-dashboard/components/RevenueSummaryWidget";
 import styles from "./dashboardHome.module.css";
 
 const BUDGET_KEY = ["admin", "dashboard", "budget-current"] as const;
@@ -66,6 +70,7 @@ export default function AdminDashboardPage() {
     qc.invalidateQueries({ queryKey: SUBSCRIBERS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: FEEDBACK_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: SEGMENTS_SUMMARY_KEY });
+    qc.invalidateQueries({ queryKey: REVENUE_SUMMARY_KEY });
   }
 
   const budget = budgetQuery.data;
@@ -156,11 +161,7 @@ export default function AdminDashboardPage() {
         <SubscribersSummaryWidget />
         <FeedbackSummaryWidget />
         <SegmentsSummaryWidget />
-        <ComingSoonWidget
-          title="재무 요약"
-          description="매출과 토큰 비용 차액을 비교합니다."
-          storyRef="HOLD-PG 해제 후 매출/토큰 비용 차액 연결"
-        />
+        <RevenueSummaryWidget />
         <ComingSoonWidget
           title="이상탐지/CS"
           description="최근 이상 이벤트와 처리 대기 건을 표시합니다."

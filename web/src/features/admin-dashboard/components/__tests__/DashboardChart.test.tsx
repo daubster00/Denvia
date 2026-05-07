@@ -76,6 +76,28 @@ describe("DashboardChart", () => {
       ),
     ).not.toThrow();
   });
+
+  it("variant=pie data 있을 때 렌더 (예외 없이)", () => {
+    const data = [
+      { name: "무료", value: 3 },
+      { name: "Pro", value: 1 },
+    ];
+    expect(() =>
+      render(
+        <DashboardChart
+          variant="pie"
+          data={data}
+          xKey="name"
+          series={[
+            { key: "value", label: "무료", tone: "success" },
+            { key: "segment-pro", label: "Pro", tone: "brand" },
+          ]}
+          ariaLabel="구독 현황"
+        />,
+      ),
+    ).not.toThrow();
+    expect(screen.getByRole("img", { name: "구독 현황" })).toBeTruthy();
+  });
 });
 
 // suppress unused-vi import warning if any

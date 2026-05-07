@@ -55,6 +55,10 @@
   overflow-y: auto;
 }
 
+.menuLi {
+  list-style: none;
+}
+
 .menuItem {
   display: flex;
   align-items: center;
@@ -89,6 +93,12 @@
   color: #6d28d9;
 }
 
+/* 자식이 있는 부모가 활성 라우트일 때는 본인은 옅게, 활성 표시는 서브에서 처리 */
+.menuItemParentActive {
+  color: #111827;
+  font-weight: 600;
+}
+
 .menuIcon {
   display: inline-flex;
   align-items: center;
@@ -97,6 +107,100 @@
 }
 
 .menuLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  transition: transform 0.18s ease, color 0.15s ease;
+  transform: rotate(0deg);
+}
+
+.menuItem:hover .caret {
+  color: #4b5563;
+}
+
+.caretExpanded {
+  transform: rotate(90deg);
+}
+
+/* ─── 하위 메뉴 ─────────────────────────────── */
+
+.subMenuWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.subMenuWrapOpen {
+  grid-template-rows: 1fr;
+}
+
+.subMenu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.subMenuWrapOpen .subMenu {
+  margin: 2px 0 4px;
+}
+
+.subMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 2px 28px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.subMenuItem:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.subMenuItem:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+.subMenuItemActive {
+  background-color: #f5f3ff;
+  color: #6d28d9;
+}
+
+.subMenuItemActive:hover {
+  background-color: #ede9fe;
+  color: #6d28d9;
+}
+
+.subMenuDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #d1d5db;
+  flex-shrink: 0;
+}
+
+.subMenuItemActive .subMenuDot {
+  background-color: #7c3aed;
+}
+
+.subMenuLabel {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -127,7 +231,8 @@
 
   .brandText,
   .menuLabel,
-  .footer {
+  .footer,
+  .caret {
     display: none;
   }
 
@@ -177,6 +282,11 @@
     padding: 10px 0;
   }
 
+  /* 접힌 상태에서는 하위 메뉴를 숨김 — 펼친 후에만 노출 */
+  .subMenuWrap {
+    display: none;
+  }
+
   /* 태블릿에서 펼친 상태 — 오버레이 */
   .sidebarExpanded {
     position: fixed;
@@ -195,6 +305,13 @@
 
   .sidebarExpanded .brandText,
   .sidebarExpanded .menuLabel,
+  .sidebarExpanded .footer,
+  .sidebarExpanded .caret {
+    display: inline-flex;
+  }
+
+  .sidebarExpanded .brandText,
+  .sidebarExpanded .menuLabel,
   .sidebarExpanded .footer {
     display: block;
   }
@@ -206,6 +323,10 @@
   .sidebarExpanded .menuItem {
     justify-content: flex-start;
     padding: 10px 12px;
+  }
+
+  .sidebarExpanded .subMenuWrap {
+    display: grid;
   }
 
   .toggleIconRotated {

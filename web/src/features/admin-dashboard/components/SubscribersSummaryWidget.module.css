@@ -1,7 +1,13 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .figures {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
   font-size: 14px;
   color: #475569;
   margin: 0;
@@ -14,7 +20,7 @@
 }
 
 .figureLabel {
-  font-size: 14px;
+  font-size: 13px;
   color: #94a3b8;
   margin: 0;
 }
@@ -24,4 +30,10 @@
   font-weight: 600;
   color: #111827;
   margin: 0;
+}
+
+@media (max-width: 767px) {
+  .figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

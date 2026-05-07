@@ -108,3 +108,28 @@ async def set_inbox_preview_max_count(
     clamped = _clamp_preview_max_count(value)
     await redis_runtime.set(KEY_INBOX_PREVIEW_MAX_COUNT, str(clamped))
     return clamped
+
+
+# =============================================================================
+# Story 5.5 — USD→KRW 환산 환율 (read-only, runtime:usd_to_krw)
+# 운영자가 환율 변경 시 redis-cli SET 수동 실행. 편집 UI는 후속 스토리 책임.
+# =============================================================================
+
+KEY_USD_TO_KRW = "runtime:usd_to_krw"
+DEFAULT_USD_TO_KRW = 1400
+USD_TO_KRW_MIN = 1000
+USD_TO_KRW_MAX = 3000
+
+
+async def get_usd_to_krw(redis_runtime: AsyncRedis) -> int:
+    """USD→KRW 환산 환율 조회. 미설정 또는 sanity(1000~3000) 위반 시 기본 1400."""
+    raw = await redis_runtime.get(KEY_USD_TO_KRW)
+    if raw is None:
+        return DEFAULT_USD_TO_KRW
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_USD_TO_KRW
+    if not (USD_TO_KRW_MIN <= v <= USD_TO_KRW_MAX):
+        return DEFAULT_USD_TO_KRW
+    return v

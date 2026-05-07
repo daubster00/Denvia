@@ -18,7 +18,7 @@ import {
 } from "recharts";
 import styles from "./DashboardChart.module.css";
 
-export type ChartVariant = "line" | "area" | "bar" | "donut";
+export type ChartVariant = "line" | "area" | "bar" | "pie" | "donut";
 export type ChartTone = "brand" | "success" | "warning" | "error" | "neutral";
 
 export interface ChartSeries {
@@ -88,13 +88,18 @@ export function DashboardChart({
   return (
     <div className={styles.wrapper} aria-label={ariaLabel} role="img">
       <div className={styles.chartBox} style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer
+          width="100%"
+          height={height}
+          minWidth={1}
+          minHeight={height}
+        >
           {renderChart(variant, data, xKey, series)}
         </ResponsiveContainer>
       </div>
       <ul className={styles.legend} aria-hidden="true">
         {series.map((s) => (
-          <li key={s.key} className={styles.legendItem}>
+          <li key={`${s.key}:${s.label}`} className={styles.legendItem}>
             <span
               className={`${styles.legendSwatch} ${toneClass(s.tone)}`}
               aria-hidden="true"
@@ -115,10 +120,10 @@ function renderChart(
 ) {
   if (variant === "line") {
     return (
-      <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         <XAxis dataKey={xKey} fontSize={11} stroke="#64748b" />
-        <YAxis fontSize={11} stroke="#64748b" />
+        <YAxis width={34} fontSize={11} stroke="#64748b" tickMargin={4} />
         <Tooltip />
         {series.map((s) => (
           <Line
@@ -136,10 +141,10 @@ function renderChart(
 
   if (variant === "area") {
     return (
-      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         <XAxis dataKey={xKey} fontSize={11} stroke="#64748b" />
-        <YAxis fontSize={11} stroke="#64748b" />
+        <YAxis width={34} fontSize={11} stroke="#64748b" tickMargin={4} />
         <Tooltip />
         {series.map((s) => (
           <Area
@@ -157,10 +162,10 @@ function renderChart(
 
   if (variant === "bar") {
     return (
-      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <BarChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         <XAxis dataKey={xKey} fontSize={11} stroke="#64748b" />
-        <YAxis fontSize={11} stroke="#64748b" />
+        <YAxis width={34} fontSize={11} stroke="#64748b" tickMargin={4} />
         <Tooltip />
         {series.map((s) => (
           <Bar
@@ -174,8 +179,22 @@ function renderChart(
     );
   }
 
-  // donut
+  if (variant === "pie" || variant === "donut") {
+    return renderPieChart(variant, data, xKey, series);
+  }
+
+  return null;
+}
+
+function renderPieChart(
+  variant: "pie" | "donut",
+  data: Array<Record<string, string | number>>,
+  xKey: string,
+  series: ChartSeries[],
+) {
   const seriesKey = series[0]?.key ?? "value";
+  const isDonut = variant === "donut";
+
   return (
     <PieChart>
       <Tooltip />
@@ -183,7 +202,7 @@ function renderChart(
         data={data}
         dataKey={seriesKey}
         nameKey={xKey}
-        innerRadius={40}
+        innerRadius={isDonut ? 40 : 0}
         outerRadius={70}
         paddingAngle={2}
       >

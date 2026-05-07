@@ -15,18 +15,25 @@ users 테이블 기존 컬럼(created_at, withdrawn_at, subscription_status)만 
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 from typing import Literal
 
 from typing import Any
 
+from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy import and_, select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.src.models.anomaly_event import AnomalyEvent
+from api.src.models.payment import Payment
+from api.src.models.payment_event import PaymentEvent
 from api.src.models.qa_feedback import QAFeedback
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
+from api.src.services import runtime_config_service
 from api.src.services.budget_service import KST
 
 Unit = Literal["day", "week", "month", "year"]
@@ -641,4 +648,272 @@ async def get_segment_export_rows(
         }
         for u in users
     ]
+    return rows, truncated
+
+
+# =============================================================================
+# Story 5.5 — 매출 + 토큰비용 차액 (A-106) + xlsx export (A-107)
+# 9.1 finance_service / 5.4 analytics 패턴 그대로 차용. 신규 마이그레이션 0건.
+# =============================================================================
+
+YEAR_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+ALLOWED_SERIES_MONTHS = (3, 6, 12, 24)
+EXPORT_DETAIL_LIMIT_REVENUE = 10_000  # 9.1 finance_service.EXPORT_DETAIL_LIMIT과 동일 값, 모듈 분리
+
+
+def _kst_month_bounds_from_str(year_month: str) -> tuple[datetime, datetime]:
+    """YYYY-MM → (kst_start, kst_end_exclusive). 422 가드는 라우터에서."""
+    y_str, m_str = year_month.split("-")
+    y, m = int(y_str), int(m_str)
+    start = datetime(y, m, 1, tzinfo=KST)
+    if m == 12:
+        end_excl = datetime(y + 1, 1, 1, tzinfo=KST)
+    else:
+        end_excl = datetime(y, m + 1, 1, tzinfo=KST)
+    return start, end_excl
+
+
+async def get_revenue_variance_month(
+    session: AsyncSession,
+    *,
+    redis_runtime: AsyncRedis,
+    year_month: str,
+) -> dict[str, Any]:
+    """단월 매출·토큰비용·차액·에러·이상 카운트.
+
+    - revenue_krw: payment_events.event_type='charge_success' 가 발생한 payments.amount_krw SUM
+      (gross revenue 기준 — 환불되어 status='refunded'로 전이된 결제도 그 달 매출에 포함된다.
+       동일 payment_id에 charge_success 이벤트가 중복돼도 payment_id 단위로 dedupe.)
+    - token_cost_usd: qa_logs.cost_usd SUM (NULL 자동 제외)
+    - token_cost_krw: round(token_cost_usd × usd_to_krw)
+    - variance_krw: revenue_krw − token_cost_krw  (음수 가능)
+    - error_count: payment_events.event_type='charge_failed' COUNT
+    - anomaly_count: anomaly_events COUNT
+    """
+    start, end_excl = _kst_month_bounds_from_str(year_month)
+
+    charge_success_payment_ids = (
+        select(PaymentEvent.payment_id)
+        .where(
+            PaymentEvent.event_type == "charge_success",
+            PaymentEvent.created_at >= start,
+            PaymentEvent.created_at < end_excl,
+        )
+        .distinct()
+        .scalar_subquery()
+    )
+    rev_stmt = select(
+        func.coalesce(func.sum(Payment.amount_krw), 0)
+    ).where(Payment.id.in_(charge_success_payment_ids))
+    cost_stmt = select(
+        func.coalesce(func.sum(QALog.cost_usd), Decimal("0"))
+    ).where(
+        QALog.created_at >= start,
+        QALog.created_at < end_excl,
+    )
+    err_stmt = select(func.count(PaymentEvent.id)).where(
+        PaymentEvent.event_type == "charge_failed",
+        PaymentEvent.created_at >= start,
+        PaymentEvent.created_at < end_excl,
+    )
+    anomaly_stmt = select(func.count(AnomalyEvent.id)).where(
+        AnomalyEvent.created_at >= start,
+        AnomalyEvent.created_at < end_excl,
+    )
+
+    revenue_krw = int((await session.execute(rev_stmt)).scalar_one() or 0)
+    token_cost_usd_raw = (await session.execute(cost_stmt)).scalar_one()
+    token_cost_usd: Decimal = (
+        token_cost_usd_raw if isinstance(token_cost_usd_raw, Decimal) else Decimal(token_cost_usd_raw or 0)
+    )
+    error_count = int((await session.execute(err_stmt)).scalar_one() or 0)
+    anomaly_count = int((await session.execute(anomaly_stmt)).scalar_one() or 0)
+
+    usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
+    token_cost_krw = int(
+        (token_cost_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
+    variance_krw = revenue_krw - token_cost_krw
+
+    return {
+        "year_month": year_month,
+        "revenue_krw": revenue_krw,
+        "token_cost_usd": str(token_cost_usd.quantize(Decimal("0.000001"))),
+        "token_cost_krw": token_cost_krw,
+        "usd_to_krw": usd_to_krw,
+        "variance_krw": variance_krw,
+        "error_count": error_count,
+        "anomaly_count": anomaly_count,
+        "applied_filters": {
+            "year_month": year_month,
+            "kst_start": start.isoformat(),
+            "kst_end_exclusive": end_excl.isoformat(),
+        },
+    }
+
+
+def _shift_month(start: datetime, delta_months: int) -> datetime:
+    """KST aware 월 1일 datetime을 delta_months 만큼 이동."""
+    total = (start.year * 12 + (start.month - 1)) + delta_months
+    new_year, new_month0 = divmod(total, 12)
+    return datetime(new_year, new_month0 + 1, 1, tzinfo=KST)
+
+
+async def get_revenue_variance_series(
+    session: AsyncSession,
+    *,
+    redis_runtime: AsyncRedis,
+    months: int,
+    to_year_month: str,
+) -> dict[str, Any]:
+    """월별 매출·토큰비용·차액 시계열 (오름차순). 단일 SQL 2 쿼리 + 빈 월 0 채움."""
+    to_start, _to_end_excl = _kst_month_bounds_from_str(to_year_month)
+    from_start = _shift_month(to_start, -(months - 1))
+    to_end_excl = _shift_month(to_start, 1)
+
+    # payment_id별 첫 charge_success 이벤트만 집계해 중복 합산을 방지하고,
+    # 환불되어 status='refunded' 가 된 결제도 그 달 매출에 포함되도록 한다.
+    first_charge_success = (
+        select(
+            PaymentEvent.payment_id.label("pid"),
+            func.min(PaymentEvent.created_at).label("first_at"),
+        )
+        .where(
+            PaymentEvent.event_type == "charge_success",
+            PaymentEvent.created_at >= from_start,
+            PaymentEvent.created_at < to_end_excl,
+        )
+        .group_by(PaymentEvent.payment_id)
+        .subquery()
+    )
+    rev_stmt = (
+        select(
+            func.date_trunc(
+                "month", func.timezone("Asia/Seoul", first_charge_success.c.first_at)
+            ).label("bucket"),
+            func.coalesce(func.sum(Payment.amount_krw), 0).label("rev"),
+        )
+        .join(Payment, Payment.id == first_charge_success.c.pid)
+        .group_by("bucket")
+    )
+    cost_stmt = (
+        select(
+            func.date_trunc(
+                "month", func.timezone("Asia/Seoul", QALog.created_at)
+            ).label("bucket"),
+            func.coalesce(func.sum(QALog.cost_usd), Decimal("0")).label("cost"),
+        )
+        .where(
+            QALog.created_at >= from_start,
+            QALog.created_at < to_end_excl,
+        )
+        .group_by("bucket")
+    )
+
+    rev_rows = (await session.execute(rev_stmt)).all()
+    cost_rows = (await session.execute(cost_stmt)).all()
+
+    usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
+
+    def _to_ym(dt: Any) -> str:
+        if dt is None:
+            return ""
+        return dt.strftime("%Y-%m")
+
+    rev_map: dict[str, int] = {_to_ym(r.bucket): int(r.rev or 0) for r in rev_rows}
+    cost_map: dict[str, Decimal] = {
+        _to_ym(r.bucket): (r.cost if isinstance(r.cost, Decimal) else Decimal(r.cost or 0))
+        for r in cost_rows
+    }
+
+    items: list[dict[str, Any]] = []
+    cur = from_start
+    for _ in range(months):
+        ym = cur.strftime("%Y-%m")
+        rev_v = rev_map.get(ym, 0)
+        cost_v = cost_map.get(ym, Decimal("0"))
+        cost_krw = int((cost_v * Decimal(usd_to_krw)).quantize(Decimal("1")))
+        items.append(
+            {
+                "year_month": ym,
+                "revenue_krw": rev_v,
+                "token_cost_krw": cost_krw,
+                "variance_krw": rev_v - cost_krw,
+            }
+        )
+        cur = _shift_month(cur, 1)
+
+    return {
+        "months": months,
+        "to": to_year_month,
+        "from": items[0]["year_month"] if items else to_year_month,
+        "usd_to_krw": usd_to_krw,
+        "items": items,
+    }
+
+
+async def get_revenue_variance_export_rows(
+    session: AsyncSession,
+    *,
+    year_month: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Detail 시트용 결제 성공 row + truncated 플래그. 9.1 limit+1 fetch 패턴.
+
+    summary 함수와 동일하게 payment_events.charge_success 발생 시점을 기준으로 매출에 포함된
+    결제 row(환불되어 status='refunded' 인 row 포함)를 모두 내려준다. payment_id 단위 dedupe.
+    """
+    start, end_excl = _kst_month_bounds_from_str(year_month)
+
+    first_charge_success = (
+        select(
+            PaymentEvent.payment_id.label("pid"),
+            func.min(PaymentEvent.created_at).label("first_at"),
+        )
+        .where(
+            PaymentEvent.event_type == "charge_success",
+            PaymentEvent.created_at >= start,
+            PaymentEvent.created_at < end_excl,
+        )
+        .group_by(PaymentEvent.payment_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            Payment.id.label("payment_id"),
+            Payment.charged_at,
+            Payment.amount_krw,
+            Payment.user_id,
+            Payment.provider_order_id,
+            Payment.subscription_id,
+            User.email,
+        )
+        .join(User, User.id == Payment.user_id)
+        .join(first_charge_success, first_charge_success.c.pid == Payment.id)
+        .order_by(Payment.charged_at.desc(), Payment.id.desc())
+        .limit(limit + 1)
+    )
+    raw = (await session.execute(stmt)).all()
+    truncated = len(raw) > limit
+    if truncated:
+        raw = raw[:limit]
+
+    rows: list[dict[str, Any]] = []
+    for r in raw:
+        if r.charged_at is not None:
+            charged_kst = r.charged_at.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            charged_kst = ""
+        rows.append(
+            {
+                "payment_id": r.payment_id,
+                "charged_at_kst": charged_kst,
+                "amount_krw": r.amount_krw,
+                "user_id": r.user_id,
+                "email_masked": _mask_email(r.email),
+                "provider_order_id": r.provider_order_id,
+                "subscription_id": r.subscription_id if r.subscription_id is not None else "",
+            }
+        )
     return rows, truncated

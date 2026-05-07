@@ -6,20 +6,26 @@ from decimal import Decimal
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from redis.asyncio import Redis as AsyncRedis
+
 from api.src.deps.auth import require_admin
+from api.src.deps.redis import get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.services.analytics_service import (
+    ALLOWED_SERIES_MONTHS,
     EXPORT_DETAIL_LIMIT,
+    EXPORT_DETAIL_LIMIT_REVENUE,
     SEGMENT_LABELS_KR,
     Unit,
+    YEAR_MONTH_RE,
     _feedback_default_window,
     _kst_datetime,
     get_feedback_export_rows,
@@ -27,12 +33,16 @@ from api.src.services.analytics_service import (
     get_feedback_items_total,
     get_feedback_series,
     get_feedback_summary,
+    get_revenue_variance_export_rows,
+    get_revenue_variance_month,
+    get_revenue_variance_series,
     get_segment_export_rows,
     get_segment_stats,
     get_signups_buckets,
     get_subscriber_counts,
 )
 from api.src.services.budget_service import KST, kst_month_bounds
+from api.src.services.finance_service import _excel_safe_cell
 
 logger = structlog.get_logger(__name__)
 
@@ -619,3 +629,211 @@ async def segments_export(
     if truncated:
         headers["X-Truncated"] = "true"
     return StreamingResponse(buf, media_type=content_type, headers=headers)
+
+
+# =============================================================================
+# Story 5.5 — 매출 + 토큰비용 차액 (A-106) + xlsx export (A-107)
+# =============================================================================
+
+
+def _validate_year_month(year_month: str | None) -> str:
+    """year_month 검증 + None이면 현재 KST 월로 fallback."""
+    if year_month is None:
+        _start, _next, ym = kst_month_bounds()
+        return ym
+    if not YEAR_MONTH_RE.match(year_month):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_PARAM",
+                "message": "year_month는 YYYY-MM 형식이어야 합니다.",
+            },
+        )
+    return year_month
+
+
+class RevenueVarianceFilters(BaseModel):
+    year_month: str
+    kst_start: str
+    kst_end_exclusive: str
+
+
+class RevenueVarianceResponse(BaseModel):
+    year_month: str
+    revenue_krw: int
+    token_cost_usd: str
+    token_cost_krw: int
+    usd_to_krw: int
+    variance_krw: int
+    error_count: int
+    anomaly_count: int
+    applied_filters: RevenueVarianceFilters
+
+
+class RevenueSeriesItem(BaseModel):
+    year_month: str
+    revenue_krw: int
+    token_cost_krw: int
+    variance_krw: int
+
+
+class RevenueSeriesResponse(BaseModel):
+    months: int
+    to: str
+    from_: str = Field(alias="from")
+    usd_to_krw: int
+    items: list[RevenueSeriesItem]
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get(
+    "/revenue-variance",
+    response_model=RevenueVarianceResponse,
+)
+async def revenue_variance(
+    response: Response,
+    year_month: str | None = Query(None),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> RevenueVarianceResponse:
+    ym = _validate_year_month(year_month)
+    data = await get_revenue_variance_month(
+        db, redis_runtime=redis_runtime, year_month=ym
+    )
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.finance.revenue_variance.viewed",
+        actor_user_id=actor.id,
+        year_month=ym,
+        revenue_krw=data["revenue_krw"],
+        variance_krw=data["variance_krw"],
+    )
+    return RevenueVarianceResponse(**data)
+
+
+@router.get(
+    "/revenue-variance/series",
+    response_model=RevenueSeriesResponse,
+    response_model_by_alias=True,
+)
+async def revenue_variance_series(
+    response: Response,
+    months: int = Query(12),
+    to: str | None = Query(None),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> RevenueSeriesResponse:
+    if months not in ALLOWED_SERIES_MONTHS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_PARAM",
+                "message": "months는 3/6/12/24 중 하나여야 합니다.",
+            },
+        )
+    to_ym = _validate_year_month(to)
+    data = await get_revenue_variance_series(
+        db, redis_runtime=redis_runtime, months=months, to_year_month=to_ym
+    )
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.finance.revenue_variance.series.viewed",
+        actor_user_id=actor.id,
+        months=months,
+        to=to_ym,
+    )
+    return RevenueSeriesResponse(
+        months=data["months"],
+        to=data["to"],
+        usd_to_krw=data["usd_to_krw"],
+        items=[RevenueSeriesItem(**i) for i in data["items"]],
+        **{"from": data["from"]},
+    )
+
+
+@router.get("/revenue-variance/export")
+async def revenue_variance_export(
+    year_month: str = Query(...),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> StreamingResponse:
+    import openpyxl
+
+    ym = _validate_year_month(year_month)
+    summary = await get_revenue_variance_month(
+        db, redis_runtime=redis_runtime, year_month=ym
+    )
+    rows, truncated = await get_revenue_variance_export_rows(
+        db, year_month=ym, limit=EXPORT_DETAIL_LIMIT_REVENUE
+    )
+
+    wb = openpyxl.Workbook()
+    ws_sum = wb.active
+    ws_sum.title = "Summary"
+    ws_sum.append(["항목", "값"])
+    ws_sum.append(["기간", f"{ym} (KST 1일 00:00 ~ 다음 달 1일 00:00)"])
+    ws_sum.append(["당월 매출 (KRW)", summary["revenue_krw"]])
+    ws_sum.append(["당월 토큰 비용 (USD)", summary["token_cost_usd"]])
+    ws_sum.append(["적용 환율 (KRW/USD)", summary["usd_to_krw"]])
+    ws_sum.append(["당월 토큰 비용 (KRW)", summary["token_cost_krw"]])
+    ws_sum.append(["차액 (KRW)", summary["variance_krw"]])
+    ws_sum.append(["결제 실패 건수", summary["error_count"]])
+    ws_sum.append(["이상 이벤트 건수", summary["anomaly_count"]])
+    ws_sum.append(["행 제한 (Detail)", EXPORT_DETAIL_LIMIT_REVENUE])
+    ws_sum.append(["잘림 여부", "예" if truncated else "아니오"])
+
+    ws_det = wb.create_sheet("Detail")
+    if truncated:
+        ws_det.append([f"※ {EXPORT_DETAIL_LIMIT_REVENUE}행으로 제한됨"])
+    ws_det.append(
+        [
+            "payment_id",
+            "charged_at_kst",
+            "amount_krw",
+            "user_id",
+            "email_masked",
+            "provider_order_id",
+            "subscription_id",
+        ]
+    )
+    for r in rows:
+        ws_det.append(
+            [
+                _excel_safe_cell(r["payment_id"]),
+                _excel_safe_cell(r["charged_at_kst"]),
+                _excel_safe_cell(r["amount_krw"]),
+                _excel_safe_cell(r["user_id"]),
+                _excel_safe_cell(r["email_masked"]),
+                _excel_safe_cell(r["provider_order_id"]),
+                _excel_safe_cell(r["subscription_id"]),
+            ]
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"revenue_variance_{ym}.xlsx"
+    headers_resp = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    if truncated:
+        headers_resp["X-Truncated"] = "true"
+
+    logger.info(
+        "admin.finance.revenue_variance.exported",
+        actor_user_id=actor.id,
+        year_month=ym,
+        row_count=len(rows),
+        truncated=truncated,
+    )
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers_resp,
+    )
