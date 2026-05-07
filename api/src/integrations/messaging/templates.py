@@ -11,11 +11,17 @@ class TemplateCategory(str, Enum):
     SUBSCRIPTION = "subscription"  # 구독 관련 — 야간에도 즉시 발송
     NOTICE = "notice"             # 공지·광고성 — 21~08 KST 야간 차단 대상
     SYSTEM = "system"             # 시스템 긴급 — 야간에도 즉시 발송
+    SUPPORT = "support"           # Story 9.3 — 고객문의 답변 알림 (야간에도 즉시 발송)
 
 
 # URGENT_CATEGORIES: 야간 차단에서 제외되는 카테고리
 URGENT_CATEGORIES = frozenset(
-    [TemplateCategory.BILLING, TemplateCategory.SUBSCRIPTION, TemplateCategory.SYSTEM]
+    [
+        TemplateCategory.BILLING,
+        TemplateCategory.SUBSCRIPTION,
+        TemplateCategory.SYSTEM,
+        TemplateCategory.SUPPORT,
+    ]
 )
 
 
@@ -104,6 +110,16 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["amount_krw", "effective_at"],
         category=TemplateCategory.BILLING,
     ),
+    "billing.refund_denied": TemplateDefinition(
+        title="환불 요청 거부 안내",
+        body=(
+            "환불 요청이 거부되었습니다.\n"
+            "사유 요약: {reason_summary}\n"
+            "자세한 안내는 쪽지함을 확인해주세요."
+        ),
+        variables=["reason_summary"],
+        category=TemplateCategory.BILLING,
+    ),
     # ── 구독 (subscription) ──────────────────────────────────────────────────
     "subscription.cancel_requested": TemplateDefinition(
         title="구독 해지 예약 완료",
@@ -131,6 +147,17 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["next_charge_at"],
         category=TemplateCategory.SUBSCRIPTION,
+    ),
+    # ── 고객문의 (support) — Story 9.3 ───────────────────────────────────────
+    "support.reply_received": TemplateDefinition(
+        title="고객문의 답변이 도착했습니다",
+        body=(
+            "Denvia 고객문의에 답변이 등록되었습니다.\n"
+            "문의 제목: {inquiry_subject}\n"
+            "쪽지함에서 자세한 내용을 확인해주세요."
+        ),
+        variables=["inquiry_subject"],
+        category=TemplateCategory.SUPPORT,
     ),
     # ── 공지 (notice) ────────────────────────────────────────────────────────
     "notice.generic": TemplateDefinition(

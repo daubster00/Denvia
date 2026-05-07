@@ -2,23 +2,23 @@
 
 import { type KeyboardEvent, useMemo } from "react";
 import type {
-  InquiryListItem,
-  InquiryListResponse,
-} from "@/features/admin-support/api/inquiries";
+  RefundQueueItem,
+  RefundQueueListResponse,
+} from "@/features/admin-support/api/refunds";
 import {
-  formatInquiryStatus,
-  formatSegment,
+  REFUND_QUEUE_STATUS_LABELS,
+  formatRefundReason,
 } from "@/features/admin-support/labels";
-import styles from "./InquiryListTable.module.css";
+import styles from "./RefundQueueTable.module.css";
 
 interface Props {
-  data: InquiryListResponse | undefined;
+  data: RefundQueueListResponse | undefined;
   isLoading: boolean;
   isError: boolean;
   page: number;
   perPage: number;
   onPageChange: (next: number) => void;
-  onSelect: (item: InquiryListItem) => void;
+  onSelect: (item: RefundQueueItem) => void;
   onResetFilters: () => void;
   onRetry: () => void;
 }
@@ -41,13 +41,15 @@ function formatDateTime(value: string | null): string {
   }
 }
 
-function badgeClassFor(status: string): string {
-  if (status === "resolved") return styles.badgeResolved;
-  if (status === "in_progress") return styles.badgeProgress;
-  return styles.badgeOpen;
+const KRW = new Intl.NumberFormat("ko-KR");
+
+function badgeClassFor(status: RefundQueueItem["status"]): string {
+  if (status === "approved") return styles.badgeApproved;
+  if (status === "denied") return styles.badgeDenied;
+  return styles.badgePending;
 }
 
-export function InquiryListTable({
+export function RefundQueueTable({
   data,
   isLoading,
   isError,
@@ -67,7 +69,7 @@ export function InquiryListTable({
 
   function handleRowKey(
     event: KeyboardEvent<HTMLTableRowElement>,
-    item: InquiryListItem,
+    item: RefundQueueItem,
   ) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -78,7 +80,7 @@ export function InquiryListTable({
   if (isError) {
     return (
       <div className={styles.errorBox} role="alert">
-        <p className={styles.errorText}>문의 목록을 불러오지 못했습니다.</p>
+        <p className={styles.errorText}>환불 요청 목록을 불러오지 못했습니다.</p>
         <button type="button" className={styles.retryButton} onClick={onRetry}>
           다시 시도
         </button>
@@ -89,8 +91,8 @@ export function InquiryListTable({
   if (!isLoading && items.length === 0) {
     return (
       <div className={styles.emptyBox} role="status">
-        <p className={styles.emptyTitle}>해당 조건의 문의가 없습니다</p>
-        <p className={styles.emptyHint}>상태 또는 검색어를 바꿔보세요.</p>
+        <p className={styles.emptyTitle}>해당 조건의 환불 요청이 없습니다</p>
+        <p className={styles.emptyHint}>상태나 기간 필터를 바꿔보세요.</p>
         <button
           type="button"
           className={styles.resetButton}
@@ -112,40 +114,44 @@ export function InquiryListTable({
       >
         <thead className={styles.thead}>
           <tr>
-            <th scope="col">제목</th>
             <th scope="col">사용자</th>
-            <th scope="col">가입유형</th>
+            <th scope="col">금액</th>
+            <th scope="col">카드</th>
+            <th scope="col">사유</th>
+            <th scope="col">경과일</th>
+            <th scope="col">질의수</th>
             <th scope="col">상태</th>
-            <th scope="col">접수일</th>
-            <th scope="col">완료일</th>
+            <th scope="col">요청일</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
             <tr
-              key={item.id}
+              key={item.queue_id}
               className={styles.row}
               role="row"
               tabIndex={0}
               onClick={() => onSelect(item)}
               onKeyDown={(e) => handleRowKey(e, item)}
-              data-testid={`inquiry-row-${item.id}`}
+              data-testid={`refund-row-${item.queue_id}`}
             >
-              <td className={styles.subjectCell}>
-                <div className={styles.subjectLine}>{item.subject}</div>
-                {item.body_preview ? (
-                  <div className={styles.preview}>{item.body_preview}</div>
-                ) : null}
+              <td>{item.user_email_masked}</td>
+              <td className={styles.amountCell}>
+                {KRW.format(item.amount_krw)}원
               </td>
-              <td>{item.user_email}</td>
-              <td>{formatSegment(item.segment)}</td>
+              <td>
+                {item.card_company ?? "-"}{" "}
+                {item.card_last4 ? `****${item.card_last4}` : ""}
+              </td>
+              <td className={styles.reasonCell}>{formatRefundReason(item.reason_code)}</td>
+              <td>{item.days_since_charge}일</td>
+              <td>{item.qa_count_during_period}건</td>
               <td>
                 <span className={badgeClassFor(item.status)}>
-                  {formatInquiryStatus(item.status)}
+                  {REFUND_QUEUE_STATUS_LABELS[item.status]}
                 </span>
               </td>
-              <td>{formatDateTime(item.created_at)}</td>
-              <td>{formatDateTime(item.resolved_at)}</td>
+              <td>{formatDateTime(item.requested_at)}</td>
             </tr>
           ))}
         </tbody>

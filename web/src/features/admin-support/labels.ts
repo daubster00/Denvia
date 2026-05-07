@@ -1,6 +1,10 @@
-/** Admin 고객문의 — 한국어 라벨. */
+/** Admin 고객문의 + 환불 — 한국어 라벨. */
 
-import type { InquiryStatus } from "@/features/admin-support/api/inquiries";
+import type { InquiryStatus, UserSegment } from "@/features/admin-support/api/inquiries";
+import type {
+  RefundQueueStatus,
+  RefundReasonCode,
+} from "@/features/admin-support/api/refunds";
 
 export const INQUIRY_STATUS_LABELS: Record<InquiryStatus, string> = {
   open: "신규",
@@ -10,4 +14,33 @@ export const INQUIRY_STATUS_LABELS: Record<InquiryStatus, string> = {
 
 export function formatInquiryStatus(status: InquiryStatus): string {
   return INQUIRY_STATUS_LABELS[status] ?? status;
+}
+
+export const SEGMENT_LABELS: Record<UserSegment, string> = {
+  doctor: "치과의사",
+  hygienist: "치위생사",
+  student_other: "학생/기타",
+};
+
+export function formatSegment(segment: UserSegment | null): string {
+  if (segment === null) return "-";
+  return SEGMENT_LABELS[segment] ?? segment;
+}
+
+export const REFUND_QUEUE_STATUS_LABELS: Record<RefundQueueStatus, string> = {
+  pending: "대기",
+  approved: "승인됨",
+  denied: "거부됨",
+};
+
+export const REFUND_REASON_CODE_LABELS: Record<RefundReasonCode, string> = {
+  period_exceeded: "환불 가능 기간(7일) 초과",
+  qa_count_exceeded: "질의 사용 발생",
+  both: "기간 초과 + 질의 사용",
+  no_subscription: "구독 정보 없음",
+};
+
+export function formatRefundReason(code: RefundReasonCode | null): string {
+  if (code === null) return "-";
+  return REFUND_REASON_CODE_LABELS[code] ?? code;
 }

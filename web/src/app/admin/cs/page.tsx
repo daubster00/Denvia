@@ -1,75 +1,64 @@
 "use client";
 
-import { useState } from "react";
-import type { InquiryStatus } from "@/features/admin-support/api/inquiries";
-import { InquiryDetailDrawer } from "@/features/admin-support/components/InquiryDetailDrawer";
-import { InquiryListTable } from "@/features/admin-support/components/InquiryListTable";
-import { StatusFilterBar } from "@/features/admin-support/components/StatusFilterBar";
-import { useInquiriesSearch } from "@/features/admin-support/hooks/useInquiriesSearch";
-import { useInquiryDetail } from "@/features/admin-support/hooks/useInquiryDetail";
-import { CsTabsNav } from "@/features/admin-cs-notices/components/CsTabsNav";
+import { useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { InquiriesTabPanel } from "@/features/admin-support/components/InquiriesTabPanel";
+import { RefundsTabPanel } from "@/features/admin-support/components/RefundsTabPanel";
+import {
+  SupportTabsNav,
+  type SupportTabKey,
+} from "@/features/admin-support/components/SupportTabsNav";
+import { useSupportCounts } from "@/features/admin-support/hooks/useSupportCounts";
 import styles from "./page.module.css";
 
-const PER_PAGE = 20;
+const VALID_TABS: SupportTabKey[] = ["inquiries", "refunds"];
+
+function parseTab(raw: string | null): SupportTabKey {
+  if (raw && (VALID_TABS as string[]).includes(raw)) {
+    return raw as SupportTabKey;
+  }
+  return "inquiries";
+}
 
 export default function CsPage() {
-  const [status, setStatus] = useState<InquiryStatus | null>(null);
-  const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const sp = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab = parseTab(sp.get("tab"));
 
-  const list = useInquiriesSearch({
-    status: status ?? undefined,
-    page,
-    per_page: PER_PAGE,
-  });
-  const detail = useInquiryDetail(selectedId);
+  const counts = useSupportCounts();
 
-  function handleStatusChange(next: InquiryStatus | null) {
-    setStatus(next);
-    setPage(1);
-  }
+  const setTab = useCallback(
+    (next: SupportTabKey) => {
+      const params = new URLSearchParams(sp.toString());
+      params.set("tab", next);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [sp, router, pathname],
+  );
 
   return (
     <section className={styles.page} aria-labelledby="admin-cs-title">
-      <CsTabsNav />
       <header className={styles.header}>
         <div className={styles.titleGroup}>
           <h1 id="admin-cs-title" className={styles.title}>
             CS
           </h1>
           <p className={styles.caption}>
-            고객 문의를 조회하고 답변을 등록합니다. 답변은 사용자 알림함으로 즉시 발송됩니다.
+            고객 문의와 환불 요청을 검토·응답합니다. 답변과 환불 처리는 사용자에게
+            알림톡과 쪽지함으로 즉시 발송됩니다.
           </p>
         </div>
       </header>
 
-      <StatusFilterBar
-        value={status}
-        onChange={handleStatusChange}
-        onRefresh={() => list.refetch()}
-        isFetching={list.isFetching}
+      <SupportTabsNav
+        activeTab={tab}
+        onChange={setTab}
+        inquiryCount={counts.data?.open_inquiries ?? 0}
+        refundCount={counts.data?.pending_refunds ?? 0}
       />
 
-      <InquiryListTable
-        data={list.data}
-        isLoading={list.isLoading}
-        isError={list.isError}
-        page={page}
-        perPage={PER_PAGE}
-        onPageChange={setPage}
-        onSelect={(item) => setSelectedId(item.id)}
-        onResetFilters={() => handleStatusChange(null)}
-        onRetry={() => list.refetch()}
-      />
-
-      <InquiryDetailDrawer
-        open={selectedId !== null}
-        detail={detail.data}
-        isLoading={detail.isLoading}
-        isError={detail.isError}
-        onClose={() => setSelectedId(null)}
-        onRetry={() => detail.refetch()}
-      />
+      {tab === "inquiries" ? <InquiriesTabPanel /> : <RefundsTabPanel />}
     </section>
   );
 }

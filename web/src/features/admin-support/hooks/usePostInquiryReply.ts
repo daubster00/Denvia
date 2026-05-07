@@ -2,22 +2,25 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  updateInquiry,
-  type InquiryDetailResponse,
-  type InquiryUpdatePayload,
+  postInquiryReply,
+  type InquiryReplyPayload,
+  type InquiryReplyResponse,
 } from "@/features/admin-support/api/inquiries";
 
-export function useUpdateInquiry(inquiryId: number | null) {
+export function usePostInquiryReply(inquiryId: number | null) {
   const queryClient = useQueryClient();
-  return useMutation<InquiryDetailResponse, Error, InquiryUpdatePayload>({
+  return useMutation<InquiryReplyResponse, Error, InquiryReplyPayload>({
     mutationFn: (payload) => {
       if (inquiryId === null) {
         return Promise.reject(new Error("inquiryId is null"));
       }
-      return updateInquiry(inquiryId, payload);
+      return postInquiryReply(inquiryId, payload);
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(["admin", "support", "inquiry", data.id], data);
+    onSuccess: ({ inquiry }) => {
+      queryClient.setQueryData(
+        ["admin", "support", "inquiry", inquiry.id],
+        inquiry,
+      );
       queryClient.invalidateQueries({ queryKey: ["admin", "support", "inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "support", "counts"] });
     },

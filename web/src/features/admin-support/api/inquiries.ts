@@ -1,24 +1,29 @@
 /**
- * Admin 고객문의 관리 API 클라이언트.
+ * Admin 고객문의 관리 API 클라이언트 — Story 4.5 + Story 9.3 확장.
  *
  * 백엔드:
- *   GET   /api/v1/admin/support/inquiries
- *   GET   /api/v1/admin/support/inquiries/{id}
- *   PATCH /api/v1/admin/support/inquiries/{id}
+ *   GET   /api/v1/admin/support/inquiries              (status_in/q/from/to 추가)
+ *   GET   /api/v1/admin/support/inquiries/{id}         (recent_qa + replies 추가)
+ *   PATCH /api/v1/admin/support/inquiries/{id}         (force 추가)
+ *   POST  /api/v1/admin/support/inquiries/{id}/reply   (Tiptap reply_html, 신규)
+ *   GET   /api/v1/admin/support/counts                 (탭 카운트, 신규)
  *
- * 패턴은 features/admin-users/api/users.ts 와 동일하게 NEXT_PUBLIC_API_URL,
- * credentials:'include', CSRF 헤더(PATCH 시) 사용.
+ * 모든 mutate 호출에 X-CSRF-Token 헤더 부착.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type InquiryStatus = "open" | "in_progress" | "resolved";
+export type UserSegment = "doctor" | "hygienist" | "student_other";
+export type UserSubscriptionStatus = "free" | "pro" | "blocked";
 
 export interface InquiryListItem {
   id: number;
   user_id: number;
   user_email: string;
   subject: string;
+  body_preview: string;
+  segment: UserSegment | null;
   status: InquiryStatus;
   created_at: string;
   resolved_at: string | null;
@@ -31,6 +36,20 @@ export interface InquiryListResponse {
   total: number;
 }
 
+export interface RecentQAExcerpt {
+  qa_log_id: number;
+  question_excerpt: string;
+  created_at: string;
+}
+
+export interface InquiryReplyItem {
+  reply_id: number;
+  admin_id: number;
+  admin_email_masked: string;
+  reply_html_safe: string;
+  created_at: string;
+}
+
 export interface InquiryDetailResponse {
   id: number;
   user_id: number;
@@ -41,10 +60,19 @@ export interface InquiryDetailResponse {
   status: InquiryStatus;
   created_at: string;
   resolved_at: string | null;
+  user_segment: UserSegment | null;
+  user_subscription_status: UserSubscriptionStatus;
+  user_created_at: string;
+  recent_qa: RecentQAExcerpt[];
+  replies: InquiryReplyItem[];
 }
 
 export interface FetchInquiriesParams {
   status?: InquiryStatus;
+  status_in?: InquiryStatus[];
+  q?: string;
+  from?: string;
+  to?: string;
   page?: number;
   per_page?: number;
 }
@@ -52,19 +80,42 @@ export interface FetchInquiriesParams {
 export interface InquiryUpdatePayload {
   status?: InquiryStatus;
   reply_message?: string;
+  force?: boolean;
+}
+
+export interface InquiryReplyPayload {
+  reply_html: string;
+  new_status?: "in_progress" | "resolved" | null;
+}
+
+export interface InquiryReplyResponse {
+  inquiry: InquiryDetailResponse;
+}
+
+export interface SupportCountsResponse {
+  open_inquiries: number;
+  pending_refunds: number;
 }
 
 export class InquiryUpdateError extends Error {
   status: number;
   code: string;
   traceId?: string;
+  details?: Record<string, unknown>;
 
-  constructor(status: number, code: string, message: string, traceId?: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    traceId?: string,
+    details?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = "InquiryUpdateError";
     this.status = status;
     this.code = code;
     this.traceId = traceId;
+    this.details = details;
   }
 }
 
@@ -76,11 +127,45 @@ function _readCookie(name: string): string | undefined {
   return match ? decodeURIComponent(match[1]) : undefined;
 }
 
+function _withCsrf(headers: Record<string, string>): Record<string, string> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+  return headers;
+}
+
+async function _toError(res: Response, fallback: string): Promise<InquiryUpdateError> {
+  let code = "UNKNOWN_ERROR";
+  let message = fallback;
+  let traceId: string | undefined;
+  let details: Record<string, unknown> | undefined;
+  try {
+    const body = (await res.json()) as {
+      code?: string;
+      message?: string;
+      trace_id?: string;
+      details?: Record<string, unknown>;
+    };
+    if (body.code) code = body.code;
+    if (body.message) message = body.message;
+    if (body.trace_id) traceId = body.trace_id;
+    if (body.details) details = body.details;
+  } catch {
+    /* fallthrough */
+  }
+  return new InquiryUpdateError(res.status, code, message, traceId, details);
+}
+
 export async function fetchInquiries(
   params: FetchInquiriesParams = {},
 ): Promise<InquiryListResponse> {
   const query = new URLSearchParams();
   if (params.status) query.set("status", params.status);
+  if (params.status_in && params.status_in.length > 0) {
+    query.set("status_in", params.status_in.join(","));
+  }
+  if (params.q) query.set("q", params.q);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
   if (params.page) query.set("page", String(params.page));
   if (params.per_page) query.set("per_page", String(params.per_page));
 
@@ -107,14 +192,21 @@ export async function fetchInquiryDetail(
   return res.json() as Promise<InquiryDetailResponse>;
 }
 
+export async function fetchSupportCounts(): Promise<SupportCountsResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/support/counts`, {
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error(`admin support counts fetch failed: ${res.status}`);
+  }
+  return res.json() as Promise<SupportCountsResponse>;
+}
+
 export async function updateInquiry(
   inquiryId: number,
   payload: InquiryUpdatePayload,
 ): Promise<InquiryDetailResponse> {
-  const csrf = _readCookie("denvia_admin_csrf");
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (csrf) headers["X-CSRF-Token"] = csrf;
-
+  const headers = _withCsrf({ "Content-Type": "application/json" });
   const res = await fetch(
     `${API_BASE}/api/v1/admin/support/inquiries/${inquiryId}`,
     {
@@ -125,22 +217,27 @@ export async function updateInquiry(
     },
   );
   if (!res.ok) {
-    let code = "UNKNOWN_ERROR";
-    let message = "문의 처리에 실패했습니다.";
-    let traceId: string | undefined;
-    try {
-      const body = (await res.json()) as {
-        code?: string;
-        message?: string;
-        trace_id?: string;
-      };
-      if (body.code) code = body.code;
-      if (body.message) message = body.message;
-      if (body.trace_id) traceId = body.trace_id;
-    } catch {
-      /* fallthrough */
-    }
-    throw new InquiryUpdateError(res.status, code, message, traceId);
+    throw await _toError(res, "문의 처리에 실패했습니다.");
   }
   return res.json() as Promise<InquiryDetailResponse>;
+}
+
+export async function postInquiryReply(
+  inquiryId: number,
+  payload: InquiryReplyPayload,
+): Promise<InquiryReplyResponse> {
+  const headers = _withCsrf({ "Content-Type": "application/json" });
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/support/inquiries/${inquiryId}/reply`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    throw await _toError(res, "답변 등록에 실패했습니다.");
+  }
+  return res.json() as Promise<InquiryReplyResponse>;
 }

@@ -1,13 +1,34 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import type {
   InquiryDetailResponse,
+  InquiryReplyItem,
   InquiryStatus,
+  RecentQAExcerpt,
 } from "@/features/admin-support/api/inquiries";
-import { formatInquiryStatus } from "@/features/admin-support/labels";
+import { InquiryUpdateError } from "@/features/admin-support/api/inquiries";
+import {
+  formatInquiryStatus,
+  formatSegment,
+} from "@/features/admin-support/labels";
 import { useUpdateInquiry } from "@/features/admin-support/hooks/useUpdateInquiry";
+import { usePostInquiryReply } from "@/features/admin-support/hooks/usePostInquiryReply";
+import { StatusRevertConfirmDialog } from "./StatusRevertConfirmDialog";
 import styles from "./InquiryDetailDrawer.module.css";
+
+// Tiptap lazy load — Story 7.2 PopupEditDialog 패턴 답습
+const RichTextEditor = dynamic(
+  () =>
+    import("@/components/editor/RichTextEditor").then(
+      (m) => m.RichTextEditor,
+    ),
+  {
+    ssr: false,
+    loading: () => <p role="status">에디터를 불러오는 중…</p>,
+  },
+);
 
 interface Props {
   open: boolean;
@@ -45,7 +66,17 @@ function badgeClassFor(status: string): string {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"]), input, select, textarea';
 
-const STATUS_TRANSITIONS: InquiryStatus[] = ["open", "in_progress", "resolved"];
+const STATUS_OPTIONS: InquiryStatus[] = ["open", "in_progress", "resolved"];
+
+const SUBSCRIPTION_STATUS_LABEL: Record<string, string> = {
+  free: "무료",
+  pro: "Pro",
+  blocked: "차단됨",
+};
+
+function isEmptyHtml(html: string): boolean {
+  return html.replace(/<[^>]*>/g, "").trim().length === 0;
+}
 
 export function InquiryDetailDrawer({
   open,
@@ -57,14 +88,23 @@ export function InquiryDetailDrawer({
 }: Props) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
-  const [reply, setReply] = useState("");
+  const [replyHtml, setReplyHtml] = useState("");
+  const [postReplyStatus, setPostReplyStatus] = useState<"resolved" | "in_progress">(
+    "resolved",
+  );
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [revertCandidate, setRevertCandidate] = useState<InquiryStatus | null>(null);
 
-  const mutation = useUpdateInquiry(detail?.id ?? null);
+  const updateMutation = useUpdateInquiry(detail?.id ?? null);
+  const replyMutation = usePostInquiryReply(detail?.id ?? null);
 
   useEffect(() => {
-    setReply("");
+    setReplyHtml("");
+    setPostReplyStatus("resolved");
     setFeedback(null);
+    setErrorMsg(null);
+    setRevertCandidate(null);
   }, [detail?.id]);
 
   useEffect(() => {
@@ -72,7 +112,7 @@ export function InquiryDetailDrawer({
     closeBtnRef.current?.focus();
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && revertCandidate === null) {
         onClose();
         return;
       }
@@ -94,50 +134,74 @@ export function InquiryDetailDrawer({
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, revertCandidate]);
 
   if (!open) return null;
 
-  function handleStatusChange(next: InquiryStatus) {
-    if (!detail || mutation.isPending) return;
+  function executeStatusUpdate(next: InquiryStatus, force: boolean) {
+    if (!detail) return;
     setFeedback(null);
-    mutation.mutate(
-      { status: next },
+    setErrorMsg(null);
+    updateMutation.mutate(
+      { status: next, force },
       {
-        onSuccess: () => setFeedback(`상태가 "${formatInquiryStatus(next)}"로 변경되었습니다.`),
-        onError: (err) => setFeedback(err.message ?? "상태 변경에 실패했습니다."),
+        onSuccess: () => {
+          setRevertCandidate(null);
+          setFeedback(`상태가 "${formatInquiryStatus(next)}"로 변경되었습니다.`);
+        },
+        onError: (err) => {
+          if (
+            err instanceof InquiryUpdateError &&
+            err.status === 409 &&
+            err.code === "INQUIRY_STATUS_REVERT_REQUIRES_CONFIRMATION"
+          ) {
+            setRevertCandidate(next);
+            return;
+          }
+          setRevertCandidate(null);
+          setErrorMsg(err.message ?? "상태 변경에 실패했습니다.");
+        },
       },
     );
   }
 
+  function handleStatusSelect(next: InquiryStatus) {
+    if (!detail || updateMutation.isPending) return;
+    if (next === detail.status) return;
+    executeStatusUpdate(next, false);
+  }
+
+  function handleRevertConfirm() {
+    if (revertCandidate === null) return;
+    executeStatusUpdate(revertCandidate, true);
+  }
+
   function handleReplySubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!detail || mutation.isPending) return;
-    const trimmed = reply.trim();
-    if (trimmed.length === 0) {
-      setFeedback("답변 내용을 입력해주세요.");
+    if (!detail || replyMutation.isPending) return;
+    if (isEmptyHtml(replyHtml)) {
+      setErrorMsg("답변 본문을 입력해주세요.");
       return;
     }
     setFeedback(null);
-    mutation.mutate(
-      { reply_message: trimmed },
+    setErrorMsg(null);
+    replyMutation.mutate(
+      { reply_html: replyHtml, new_status: postReplyStatus },
       {
         onSuccess: () => {
-          setReply("");
-          setFeedback("답변이 등록되었고 사용자 알림함에 발송되었습니다.");
+          setReplyHtml("");
+          setFeedback("답변이 등록되었고 사용자에게 알림이 발송되었습니다.");
         },
-        onError: (err) => setFeedback(err.message ?? "답변 등록에 실패했습니다."),
+        onError: (err) => {
+          setErrorMsg(err.message ?? "답변 등록에 실패했습니다.");
+        },
       },
     );
   }
 
   return (
     <>
-      <div
-        className={styles.backdrop}
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
       <aside
         ref={drawerRef}
         className={styles.drawer}
@@ -174,7 +238,7 @@ export function InquiryDetailDrawer({
         ) : (
           <div className={styles.body}>
             <section className={styles.section}>
-              <h3 className={styles.sectionTitle}>{detail.subject}</h3>
+              <h3 className={styles.subjectTitle}>{detail.subject}</h3>
               <dl className={styles.metaList}>
                 <div className={styles.metaRow}>
                   <dt>상태</dt>
@@ -192,6 +256,21 @@ export function InquiryDetailDrawer({
                   </dd>
                 </div>
                 <div className={styles.metaRow}>
+                  <dt>가입유형</dt>
+                  <dd>{formatSegment(detail.user_segment)}</dd>
+                </div>
+                <div className={styles.metaRow}>
+                  <dt>구독 상태</dt>
+                  <dd>
+                    {SUBSCRIPTION_STATUS_LABEL[detail.user_subscription_status] ??
+                      detail.user_subscription_status}
+                  </dd>
+                </div>
+                <div className={styles.metaRow}>
+                  <dt>가입일</dt>
+                  <dd>{formatDateTime(detail.user_created_at)}</dd>
+                </div>
+                <div className={styles.metaRow}>
                   <dt>접수일</dt>
                   <dd>{formatDateTime(detail.created_at)}</dd>
                 </div>
@@ -207,54 +286,102 @@ export function InquiryDetailDrawer({
               <pre className={styles.bodyText}>{detail.body}</pre>
             </section>
 
+            {detail.replies.length > 0 ? (
+              <section className={styles.section}>
+                <h4 className={styles.sectionLabel}>
+                  답변 이력 ({detail.replies.length}건)
+                </h4>
+                <ul className={styles.replyList}>
+                  {detail.replies.map((reply: InquiryReplyItem) => (
+                    <li key={reply.reply_id} className={styles.replyItem}>
+                      <p className={styles.replyMeta}>
+                        관리자({reply.admin_email_masked}) ·{" "}
+                        {formatDateTime(reply.created_at)}
+                      </p>
+                      <div
+                        className={styles.replyContent}
+                        // sanitize는 백엔드에서 nh3로 적용 + 응답 직전 재sanitize (이중 방어)
+                        dangerouslySetInnerHTML={{ __html: reply.reply_html_safe }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            <section className={styles.section}>
+              <h4 className={styles.sectionLabel}>사용자 직전 질의 (최대 3건)</h4>
+              {detail.recent_qa.length === 0 ? (
+                <p className={styles.emptyHint}>최근 질의 이력이 없습니다.</p>
+              ) : (
+                <ol className={styles.qaList}>
+                  {detail.recent_qa.map((qa: RecentQAExcerpt, idx) => (
+                    <li key={qa.qa_log_id} className={styles.qaItem}>
+                      <span className={styles.qaIndex}>Q{idx + 1}.</span>
+                      <span className={styles.qaText}>
+                        {qa.question_excerpt} · {formatDateTime(qa.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+
             <section className={styles.section}>
               <h4 className={styles.sectionLabel}>상태 변경</h4>
-              <div className={styles.statusActions}>
-                {STATUS_TRANSITIONS.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    className={
-                      status === detail.status
-                        ? `${styles.statusButton} ${styles.statusButtonActive}`
-                        : styles.statusButton
-                    }
-                    onClick={() => handleStatusChange(status)}
-                    disabled={mutation.isPending || status === detail.status}
-                  >
+              <select
+                className={styles.statusSelect}
+                value={detail.status}
+                onChange={(e) => handleStatusSelect(e.target.value as InquiryStatus)}
+                disabled={updateMutation.isPending}
+                aria-label="상태 변경"
+              >
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
                     {formatInquiryStatus(status)}
-                  </button>
+                  </option>
                 ))}
-              </div>
+              </select>
+              <p className={styles.helpText}>
+                완료된 문의를 되돌릴 때는 한 번 더 확인을 받습니다.
+              </p>
             </section>
 
             <section className={styles.section}>
               <h4 className={styles.sectionLabel}>답변 등록</h4>
               <p className={styles.helpText}>
-                답변을 등록하면 사용자 알림함에 메시지가 발송되고 상태가 자동으로
-                완료 처리됩니다.
+                서식이 적용된 답변을 등록하면 사용자 쪽지함에 발송되고 알림톡이
+                전송됩니다.
               </p>
               <form className={styles.replyForm} onSubmit={handleReplySubmit}>
-                <textarea
-                  className={styles.replyTextarea}
-                  value={reply}
-                  onChange={(e) => setReply(e.target.value)}
-                  placeholder="답변 내용을 입력해주세요 (최대 5000자)"
-                  maxLength={5000}
-                  rows={6}
-                  disabled={mutation.isPending}
-                  aria-label="답변 본문"
+                <RichTextEditor
+                  value={replyHtml}
+                  onChange={setReplyHtml}
+                  ariaLabel="문의 답변 본문"
                 />
-                <div className={styles.replyFooter}>
-                  <span className={styles.charCount}>
-                    {reply.length} / 5000
-                  </span>
+                <div className={styles.replyControls}>
+                  <label className={styles.replyControlsLabel}>
+                    답변 후 상태:
+                    <select
+                      className={styles.replyStatusSelect}
+                      value={postReplyStatus}
+                      onChange={(e) =>
+                        setPostReplyStatus(
+                          e.target.value as "resolved" | "in_progress",
+                        )
+                      }
+                      disabled={replyMutation.isPending}
+                    >
+                      <option value="resolved">완료(기본)</option>
+                      <option value="in_progress">진행 중 유지</option>
+                    </select>
+                  </label>
                   <button
                     type="submit"
                     className={styles.submitButton}
-                    disabled={mutation.isPending || reply.trim().length === 0}
+                    disabled={replyMutation.isPending || isEmptyHtml(replyHtml)}
                   >
-                    {mutation.isPending ? "전송 중…" : "답변 보내기"}
+                    {replyMutation.isPending ? "전송 중…" : "답변 보내기"}
                   </button>
                 </div>
               </form>
@@ -265,9 +392,25 @@ export function InquiryDetailDrawer({
                 {feedback}
               </p>
             ) : null}
+            {errorMsg ? (
+              <p className={styles.error} role="alert">
+                {errorMsg}
+              </p>
+            ) : null}
           </div>
         )}
       </aside>
+
+      <StatusRevertConfirmDialog
+        open={revertCandidate !== null && detail !== undefined}
+        currentStatus={detail?.status ?? "open"}
+        requestedStatus={revertCandidate ?? "open"}
+        isPending={updateMutation.isPending}
+        onCancel={() => {
+          if (!updateMutation.isPending) setRevertCandidate(null);
+        }}
+        onConfirm={handleRevertConfirm}
+      />
     </>
   );
 }

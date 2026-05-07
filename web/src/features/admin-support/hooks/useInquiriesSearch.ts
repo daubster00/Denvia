@@ -15,8 +15,12 @@ export function useInquiriesSearch(params: FetchInquiriesParams) {
       "inquiries",
       {
         status: params.status ?? null,
+        status_in: params.status_in ? [...params.status_in].sort() : null,
+        q: params.q ?? null,
+        from: params.from ?? null,
+        to: params.to ?? null,
         page: params.page ?? 1,
-        per_page: params.per_page ?? 20,
+        per_page: params.per_page ?? 50,
       },
     ],
     queryFn: () => fetchInquiries(params),

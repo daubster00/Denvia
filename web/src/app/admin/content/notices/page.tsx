@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { CsTabsNav } from "@/features/admin-cs-notices/components/CsTabsNav";
 import { NoticeCreateDialog } from "@/features/admin-cs-notices/components/NoticeCreateDialog";
 import { ConfirmDialog } from "@/components/layout/ConfirmDialog";
 import {
@@ -103,8 +102,6 @@ export default function AdminCsNoticesPage() {
 
   return (
     <main className={styles.page}>
-      <CsTabsNav />
-
       <header className={styles.header}>
         <div>
           <h1 className={styles.heading}>쪽지 관리</h1>

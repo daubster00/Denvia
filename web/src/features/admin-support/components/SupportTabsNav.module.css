@@ -1,0 +1,55 @@
+.bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-top: 8px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.tab:hover {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.tabActive {
+  composes: tab;
+  color: #0f172a;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.badgeActive {
+  composes: badge;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.tabLabel {
+  letter-spacing: -0.01em;
+}
