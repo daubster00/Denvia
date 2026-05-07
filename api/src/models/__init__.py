@@ -23,3 +23,4 @@ from api.src.models.notice import Notice  # noqa: F401
 from api.src.models.popup import Popup  # noqa: F401
 from api.src.models.inbox_message import InboxMessage  # noqa: F401
 from api.src.models.customer_inquiry import CustomerInquiry  # noqa: F401
+from api.src.models.inquiry_reply import InquiryReply  # noqa: F401

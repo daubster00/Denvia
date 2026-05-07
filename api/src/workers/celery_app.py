@@ -83,5 +83,11 @@ celery_app.conf.update(
             "task": "anomaly_tasks.expire_blocks",
             "schedule": crontab(minute=30),
         },
+        # Story 9.1: payments + payment_events 5년 retention — 매일 03:30 KST
+        # (audit-logs 03:00과 분리해 시간/분 슬롯 충돌 회피)
+        "retention-payments-daily": {
+            "task": "retention_tasks.delete_old_payments",
+            "schedule": crontab(hour=3, minute=30),
+        },
     },
 )

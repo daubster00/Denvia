@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
@@ -28,6 +29,8 @@ from api.src.routers.admin import users as admin_users
 from api.src.routers.admin import anomaly as admin_anomaly
 from api.src.routers.admin import support as admin_support
 from api.src.routers.admin import content as admin_content
+from api.src.routers.admin import finance as admin_finance
+from api.src.routers.admin import refunds as admin_refunds
 from api.src.routers import billing as billing_router
 from api.src.routers import support as support_router
 from api.src.settings import settings
@@ -145,5 +148,17 @@ app.include_router(admin_users.router, prefix="/api/v1")
 app.include_router(admin_anomaly.router, prefix="/api/v1")
 app.include_router(admin_support.router, prefix="/api/v1")
 app.include_router(admin_content.router, prefix="/api/v1")
+app.include_router(admin_finance.router, prefix="/api/v1")
+app.include_router(admin_refunds.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")
 app.include_router(support_router.router)
+
+# 정적 자산 — 팝업 이미지 (Story 7.2 v2). 디렉터리는 첫 업로드 시 자동 생성됨.
+from api.src.services.popup_service import POPUP_IMAGE_DIR  # noqa: E402
+
+POPUP_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/static/popup-images",
+    StaticFiles(directory=str(POPUP_IMAGE_DIR)),
+    name="popup-images",
+)
