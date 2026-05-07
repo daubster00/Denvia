@@ -29,6 +29,17 @@ beforeEach(() => {
   vi.mocked(fetchUnreadCount).mockReset();
   vi.mocked(fetchActivePopups).mockReset();
   useSessionStore.setState({ user: null });
+  // useActivePopups가 마운트 직후 detectDevice() → matchMedia를 호출하므로 jsdom에 stub.
+  window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+    matches: false,
+    media: q,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
 });
 
 describe("useUnreadCount — enabled 가드", () => {

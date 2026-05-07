@@ -67,6 +67,7 @@
   height: 100%;
   transition: transform 280ms ease;
   will-change: transform;
+  transform: translateX(calc(var(--carousel-index, 0) * -100%));
 }
 
 .slide {

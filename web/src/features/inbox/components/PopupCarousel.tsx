@@ -146,7 +146,7 @@ export function PopupCarousel() {
           )}
           <div
             className={styles.track}
-            style={{ transform: `translateX(-${activeIndex * 100}%)` }}
+            style={{ "--carousel-index": activeIndex } as React.CSSProperties}
           >
             {visiblePopups.map((p) => (
               <div key={p.popup_id} className={styles.slide}>

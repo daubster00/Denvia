@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 from api.src.models.popup import Popup
 from api.src.schemas.admin.popup import (
@@ -174,13 +175,19 @@ class TestCreatePopup:
         captured: list = []
 
         def _refresh(obj):
-            obj.id = 555
             obj.created_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
             obj.updated_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
             return None
 
+        async def _flush():
+            # 실제 SQLAlchemy처럼 flush 시점에 자동증분 id 부여 시뮬레이션.
+            if captured:
+                captured[0].id = 555
+            return None
+
         db = MagicMock()
         db.add = MagicMock(side_effect=lambda obj: captured.append(obj))
+        db.flush = AsyncMock(side_effect=_flush)
         db.commit = AsyncMock()
         db.refresh = AsyncMock(side_effect=_refresh)
 
@@ -235,13 +242,18 @@ class TestCreatePopup:
         captured: list = []
 
         def _refresh(obj):
-            obj.id = 7
             obj.created_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
             obj.updated_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
             return None
 
+        async def _flush():
+            if captured:
+                captured[0].id = 7
+            return None
+
         db = MagicMock()
         db.add = MagicMock(side_effect=lambda obj: captured.append(obj))
+        db.flush = AsyncMock(side_effect=_flush)
         db.commit = AsyncMock()
         db.refresh = AsyncMock(side_effect=_refresh)
 
@@ -384,3 +396,174 @@ class TestDeletePopup:
         with pytest.raises(HTTPException) as exc:
             await popup_service.delete_popup(request, 999, admin, db)
         assert exc.value.status_code == 404
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 타입 페이로드 / 이미지 URL 검증 — Story 7.2 v2 (AC-4)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestTypePayloadValidation:
+    """popup_type vs payload 일관성 검증 (POPUP_IMAGE_REQUIRED / POPUP_BODY_REQUIRED)."""
+
+    async def test_image_type_without_image_url_raises_422(self):
+        admin = _admin_mock()
+        request = _request_mock()
+        # popup_type=image 인데 image_url 누락
+        req = _make_create_request(
+            popup_type="image",
+            image_url=None,
+            body_html="<p>본문 있어도 무시</p>",
+        )
+
+        db = MagicMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.create_popup(request, req, admin, db)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_IMAGE_REQUIRED"
+
+    async def test_editor_type_with_blank_body_raises_422(self):
+        admin = _admin_mock()
+        request = _request_mock()
+        # popup_type=editor + body_html None → blank
+        req = _make_create_request(popup_type="editor", body_html=None)
+
+        db = MagicMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.create_popup(request, req, admin, db)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_BODY_REQUIRED"
+
+    async def test_external_image_url_blocked(self):
+        """업로드 prefix가 아닌 URL은 422 (외부 URL 차단)."""
+        admin = _admin_mock()
+        request = _request_mock()
+        req = _make_create_request(
+            popup_type="image",
+            image_url="https://evil.example/x.png",
+            body_html=None,
+        )
+
+        db = MagicMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.create_popup(request, req, admin, db)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_IMAGE_URL_INVALID"
+
+    async def test_image_url_path_traversal_blocked(self):
+        """업로드 prefix 뒤 path traversal 시도는 422."""
+        admin = _admin_mock()
+        request = _request_mock()
+        req = _make_create_request(
+            popup_type="image",
+            image_url="/static/popup-images/../etc/passwd",
+            body_html=None,
+        )
+
+        db = MagicMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.create_popup(request, req, admin, db)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_IMAGE_URL_INVALID"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# upload_popup_image — Story 7.2 v2 (AC-3)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _upload_file(*, name: str, content_type: str, payload: bytes) -> UploadFile:
+    return UploadFile(
+        filename=name,
+        file=BytesIO(payload),
+        headers={"content-type": content_type},  # type: ignore[arg-type]
+    )
+
+
+class TestUploadPopupImage:
+    async def test_rejects_invalid_mime(self):
+        admin = _admin_mock()
+        request = _request_mock()
+        upload = _upload_file(name="x.gif", content_type="image/gif", payload=b"GIF")
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.upload_popup_image(request, upload, admin)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_IMAGE_MIME_INVALID"
+
+    async def test_rejects_invalid_extension(self):
+        admin = _admin_mock()
+        request = _request_mock()
+        # MIME는 OK지만 확장자가 .gif (방어 이중층)
+        upload = _upload_file(
+            name="x.gif", content_type="image/png", payload=b"\x89PNG"
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.upload_popup_image(request, upload, admin)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_IMAGE_EXT_INVALID"
+
+    async def test_rejects_oversized_file(self):
+        admin = _admin_mock()
+        request = _request_mock()
+        big = b"\x89PNG" + b"\x00" * (5 * 1024 * 1024 + 1)  # 5MB + 1 byte
+        upload = _upload_file(
+            name="x.png", content_type="image/png", payload=big
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await popup_service.upload_popup_image(request, upload, admin)
+        assert exc.value.status_code == 422
+        assert exc.value.detail["code"] == "POPUP_IMAGE_TOO_LARGE"
+
+    async def test_accepts_valid_png_returns_safe_url(self, tmp_path, monkeypatch):
+        admin = _admin_mock(user_id=42)
+        request = _request_mock()
+        upload = _upload_file(
+            name="hello.png", content_type="image/png", payload=b"\x89PNGfake"
+        )
+
+        # 디스크 쓰기를 임시 디렉터리로 격리.
+        monkeypatch.setattr(popup_service, "POPUP_IMAGE_DIR", tmp_path)
+
+        out = await popup_service.upload_popup_image(request, upload, admin)
+
+        # 응답 검증: prefix + safe filename(uuid hex + .png)
+        assert out.image_url.startswith("/static/popup-images/")
+        assert out.image_url.endswith(".png")
+        assert out.size_bytes == len(b"\x89PNGfake")
+        assert out.mime_type == "image/png"
+
+        # 실제 파일이 디스크에 기록되었는지 확인.
+        written = list(tmp_path.iterdir())
+        assert len(written) == 1
+        assert written[0].read_bytes() == b"\x89PNGfake"
+
+        # audit context 설정 검증.
+        assert request.state.audit_target_type == "popup_image"
+        assert "filename" in request.state.audit_diff["after"]
+        assert (
+            request.state.audit_diff["after"]["original_name"] == "hello.png"
+        )
+        assert request.state.audit_diff["after"]["mime_type"] == "image/png"

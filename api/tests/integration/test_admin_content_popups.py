@@ -155,9 +155,18 @@ def _make_db_session(*, fetched_popup=None, list_total: int = 0, list_items=()):
             return items_result
         return fetch_result
 
+    # 실제 SQLAlchemy처럼 flush 시점에 captured 객체에 id를 부여 — audit_target_id 검증용.
+    captured_inserts: list = []
+
+    async def _flush():
+        if captured_inserts:
+            captured_inserts[0].id = 555
+        return None
+
     session = MagicMock()
     session.execute = AsyncMock(side_effect=_execute)
-    session.add = MagicMock()
+    session.add = MagicMock(side_effect=lambda obj: captured_inserts.append(obj))
+    session.flush = AsyncMock(side_effect=_flush)
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
 
