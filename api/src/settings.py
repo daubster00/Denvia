@@ -50,7 +50,16 @@ class Settings(BaseSettings):
 
     # 메시징 어댑터 (Story 4.1)
     messaging_provider: str = "stub"           # stub | aligo | nhn_cloud
-    alimtalk_template_map_json: str = "{}"     # {"billing.first_charge_success": "KA01234", ...}
+    alimtalk_template_map_json: str = "{}"     # {"billing.first_charge_success": "TX_001", ...}
+
+    # 알리고 (Aligo) — 알림톡·SMS 공급자 (AR35 해제, 2026-05-07)
+    aligo_api_key: str = ""                    # ALIGO_API_KEY — 알리고 마이페이지 발급
+    aligo_user_id: str = ""                    # ALIGO_USER_ID — 알리고 가입 ID
+    aligo_sender: str = ""                     # ALIGO_SENDER — 사전 인증된 발신번호 (예: "01012345678")
+    aligo_sender_key: str = ""                 # ALIGO_SENDER_KEY — 알림톡 송신프로필키 (카카오 비즈니스 채널 인증 후 발급)
+    aligo_test_mode: bool = True               # ALIGO_TEST_MODE=false 로 프로덕션 실발송
+    aligo_sms_base_url: str = "https://apis.aligo.in"
+    aligo_alimtalk_base_url: str = "https://kakaoapi.aligo.in"
 
     # RAG 통합 (Story 2.1)
     faiss_current_path: str = "data/faiss/current"
