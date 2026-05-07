@@ -1,0 +1,36 @@
+.dot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.neutral {
+  background-color: #9ca3af;
+}
+
+.success {
+  background-color: #16a34a;
+}
+
+.warning {
+  background-color: #f59e0b;
+}
+
+.refundPending {
+  background-color: #6b7280;
+}
+
+.refunded {
+  background-color: #ea580c;
+}
+
+.failed {
+  background-color: #dc2626;
+}
+
+.chargeFailed {
+  background-color: transparent;
+  border: 2px solid #dc2626;
+}
