@@ -52,7 +52,11 @@ class PGProvider(Protocol):
         ...
 
     async def refund(
-        self, provider_order_id: str, amount_krw: int, reason: str
+        self, provider_order_id: str, cancel_amount: int, reason: str
     ) -> RefundResult:
-        """결제를 환불한다."""
+        """결제를 환불한다.
+
+        cancel_amount는 부분/전액 모두 지원한다. 청약철회(Story 3.6 v1.1)는
+        전액(`payment.amount_krw`), 운영 환불(Story 9.1 v1.1)은 관리자 입력 금액을 전달한다.
+        """
         ...

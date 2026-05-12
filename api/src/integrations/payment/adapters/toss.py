@@ -116,14 +116,18 @@ class TossAdapter:
         wait=wait_exponential(multiplier=1, min=1, max=10),
     )
     async def refund(
-        self, provider_order_id: str, amount_krw: int, reason: str
+        self, provider_order_id: str, cancel_amount: int, reason: str
     ) -> RefundResult:
-        """결제를 환불한다 (Story 3.6).
+        """결제를 환불한다 (Story 3.6 v1.1 + Story 9.1 v1.1 공용).
 
         토스페이먼츠 결제 취소 API는 paymentKey를 요구한다. 본 프로젝트는
         provider_order_id(=orderId)만 보관하므로 어댑터 내부에서 2-step 호출:
             1) GET /v1/payments/orders/{orderId} → paymentKey 추출
-            2) POST /v1/payments/{paymentKey}/cancel → 환불 실행
+            2) POST /v1/payments/{paymentKey}/cancel → 환불 실행 (`cancelAmount` 지정)
+
+        cancel_amount는 호출자가 전액/부분을 결정하여 전달한다. 어댑터는
+        분기 코드를 갖지 않고 토스 body의 `cancelAmount` 필드로 그대로 전달한다.
+        토스는 동일 paymentKey에 대해 여러 차례 부분 환불을 누적 처리한다.
 
         transport 장애는 tenacity 3회 재시도. 4xx 응답은 재시도 없이
         RefundResult(success=False)로 반환(서비스가 502 + 원복 처리).
@@ -156,14 +160,14 @@ class TossAdapter:
                     raw_response={"code": "PAYMENT_KEY_NOT_FOUND", "raw": order_data},
                 )
 
-            # Step 2: cancel 호출 (전액 환불)
+            # Step 2: cancel 호출 (cancel_amount = 전액 또는 부분)
             cancel_resp = await client.post(
                 f"{_TOSS_BASE}/v1/payments/{payment_key}/cancel",
                 headers={
                     "Authorization": self._auth,
                     "Content-Type": "application/json",
                 },
-                json={"cancelReason": reason, "cancelAmount": amount_krw},
+                json={"cancelReason": reason, "cancelAmount": cancel_amount},
                 timeout=30.0,
             )
             raw = cancel_resp.json()
@@ -171,7 +175,7 @@ class TossAdapter:
                 logger.info(
                     "toss.refund.success",
                     order_id=provider_order_id,
-                    amount=amount_krw,
+                    cancel_amount=cancel_amount,
                 )
                 return RefundResult(success=True, raw_response=raw)
             logger.warning(

@@ -1229,65 +1229,221 @@ async def _notify_subscription_event(
         )
 
 
-# ── Story 3.6 ────────────────────────────────────────────────────────────────
+# ── Story 3.6 v1.1 — 청약철회 (Cooling-off Refund) ────────────────────────────
+# v1.1 정책 변경(2026-05-12, ADR-0001 편차 #5)으로 자가 환불 요청 폼·수동 검토 큐 폐기.
+# 본 섹션은 청약철회 단일 경로만 담당: 7일 이내 + 질문 0건 → 즉시 해지 + 전액 환불.
+# 운영 환불(관리자 부분/전액)은 Story 9.1 v1.1 책임.
 
 
-_AUTO_REFUND_DAYS_LIMIT = 7
-# Toss cancelReason 길이 제한 — 안전 cushion(스키마 500자에서 200자로 truncate)
+_COOLING_OFF_DAYS_LIMIT = 7
+# Toss cancelReason 길이 제한 — 안전 cushion(200자로 truncate)
 _TOSS_CANCEL_REASON_MAX = 200
+_COOLING_OFF_REASON = "cooling_off"
 
 
-async def request_refund(
-    user: User,
-    payment_id: int,
-    reason: str | None,
-    db: AsyncSession,
-) -> dict:
-    """환불 요청 메인 엔트리. 자동 vs 수동 검토 분기.
+async def check_refund_eligibility(user: User, db: AsyncSession) -> dict:
+    """청약철회 가능 여부를 read-only로 조회한다 (Story 3.6 v1.1 AC1).
+
+    마이페이지(Story 4.4)가 "구독 취소" 다이얼로그에서 "즉시 해지 + 전액 환불"
+    옵션을 노출할지 결정하는 용도. 상태 변경·side effect 없음.
 
     Returns:
-        자동 환불 성공: {"status": "refunded", "amount_krw": int, "refunded_at": ISO8601}
-        수동 검토 큐 INSERT: {"status": "queued_for_review", "queue_id": int, "reason_code": str|None}
-    Raises:
-        PaymentNotFound, PaymentNotRefundable, RefundAlreadyProcessed,
-        RefundAlreadyRequested, RefundProviderUnavailable
+        {
+          "eligible": bool,
+          "payment_id": int|None,
+          "amount_krw": int|None,
+          "charged_at": datetime|None,
+          "days_since_charge": int|None,
+          "qa_count_during_period": int|None,
+          "reason_code": "ok"|"period_exceeded"|"qa_count_exceeded"|"both"|"no_active_payment",
+        }
     """
-    # row-level lock으로 동시 요청 직렬화
-    pay_result = await db.execute(
-        select(Payment).where(Payment.id == payment_id).with_for_update()
-    )
-    payment = pay_result.scalar_one_or_none()
-    if payment is None or payment.user_id != user.id:
-        raise PaymentNotFound()
+    from sqlalchemy import desc
 
+    # 1. 현재 활성/대기 구독 — 가장 최근 1건
+    sub_stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == user.id,
+            Subscription.status.in_(("active", "cancel_pending")),
+        )
+        .order_by(desc(Subscription.id))
+        .limit(1)
+    )
+    sub = (await db.execute(sub_stmt)).scalar_one_or_none()
+    if sub is None:
+        logger.info(
+            "billing.refund.eligibility_checked",
+            user_id=user.id,
+            eligible=False,
+            reason_code="no_active_payment",
+        )
+        return {
+            "eligible": False,
+            "payment_id": None,
+            "amount_krw": None,
+            "charged_at": None,
+            "days_since_charge": None,
+            "qa_count_during_period": None,
+            "reason_code": "no_active_payment",
+        }
+
+    # 2. 해당 구독의 가장 최근 success 결제
+    payment = await _find_latest_success_payment(user.id, sub.id, db)
+    if payment is None:
+        logger.info(
+            "billing.refund.eligibility_checked",
+            user_id=user.id,
+            eligible=False,
+            reason_code="no_active_payment",
+        )
+        return {
+            "eligible": False,
+            "payment_id": None,
+            "amount_krw": None,
+            "charged_at": None,
+            "days_since_charge": None,
+            "qa_count_during_period": None,
+            "reason_code": "no_active_payment",
+        }
+
+    # 3. 청약철회 조건 평가
+    eligible, qa_count, days_since, reason_code = (
+        await _evaluate_cooling_off_eligibility(payment, sub, db)
+    )
+
+    logger.info(
+        "billing.refund.eligibility_checked",
+        user_id=user.id,
+        eligible=eligible,
+        reason_code=("ok" if eligible else reason_code),
+    )
+    return {
+        "eligible": eligible,
+        "payment_id": payment.id,
+        "amount_krw": payment.amount_krw,
+        "charged_at": payment.charged_at.isoformat() if payment.charged_at else None,
+        "days_since_charge": days_since,
+        "qa_count_during_period": qa_count,
+        "reason_code": "ok" if eligible else (reason_code or "period_exceeded"),
+    }
+
+
+async def cancel_with_refund(user: User, db: AsyncSession) -> dict:
+    """청약철회 — 구독 즉시 해지 + 전액 환불 (Story 3.6 v1.1 AC2~6).
+
+    호출 동선은 마이페이지(Story 4.4) 구독 취소 다이얼로그의 "즉시 해지 + 전액 환불" 옵션.
+    백엔드는 클라이언트 사전 조회(AC1) 우회를 방어하기 위해 조건을 다시 검증한다.
+
+    Returns:
+        {
+          "status": "refunded",
+          "refund_kind": "cooling_off",
+          "amount_krw": int,
+          "refunded_at": ISO8601,
+          "subscription_status": "canceled",
+        }
+
+    Raises:
+        NoActiveSubscription, NoRefundablePayment,
+        RefundNotEligible, RefundAlreadyProcessed, RefundAlreadyRequested,
+        PaymentNotRefundable, RefundProviderUnavailable.
+    """
+    from sqlalchemy import desc
+
+    # 1. 활성/대기 구독 조회
+    sub_stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == user.id,
+            Subscription.status.in_(("active", "cancel_pending")),
+        )
+        .order_by(desc(Subscription.id))
+        .limit(1)
+    )
+    sub = (await db.execute(sub_stmt)).scalar_one_or_none()
+    if sub is None:
+        raise NoActiveSubscription()
+
+    # 2. 가장 최근 success payment
+    payment_candidate = await _find_latest_success_payment(user.id, sub.id, db)
+    if payment_candidate is None:
+        raise NoRefundablePayment()
+
+    # 3. row-level lock — 동시 호출 직렬화
+    pay_lock_stmt = (
+        select(Payment)
+        .where(Payment.id == payment_candidate.id, Payment.user_id == user.id)
+        .with_for_update()
+    )
+    payment = (await db.execute(pay_lock_stmt)).scalar_one_or_none()
+    if payment is None:
+        raise NoRefundablePayment()
+
+    # 4. payment.status 분기 (이중 진입 차단)
     if payment.status == "refunded":
+        logger.info(
+            "billing.refund.duplicate",
+            payment_id=payment.id,
+            user_id=user.id,
+            existing_status="refunded",
+        )
         raise RefundAlreadyProcessed()
     if payment.status == "refund_pending":
+        logger.info(
+            "billing.refund.duplicate",
+            payment_id=payment.id,
+            user_id=user.id,
+            existing_status="refund_pending",
+        )
         raise RefundAlreadyRequested()
     if payment.status != "success":
         raise PaymentNotRefundable()
 
-    eligible, qa_count, days_since, reason_code = await _evaluate_auto_eligibility(
-        payment, db
+    # 5. 청약철회 조건 서버 재검증 (클라이언트 우회 방어)
+    eligible, qa_count, days_since, reason_code = (
+        await _evaluate_cooling_off_eligibility(payment, sub, db)
     )
-
-    if eligible:
-        return await _execute_auto_refund(
-            payment, reason or "user_request", qa_count, days_since, db
+    if not eligible:
+        logger.info(
+            "billing.refund.not_eligible",
+            user_id=user.id,
+            payment_id=payment.id,
+            reason_code=reason_code,
         )
-    return await _enqueue_manual_review(
-        payment, reason, qa_count, days_since, reason_code, db
+        raise RefundNotEligible(reason_code or "period_exceeded")
+
+    # 6. 환불 실행
+    return await _execute_cooling_off_refund(payment, qa_count, days_since, db)
+
+
+async def _find_latest_success_payment(
+    user_id: int, subscription_id: int, db: AsyncSession
+) -> Payment | None:
+    """주어진 구독의 가장 최근 success payment를 반환한다 (read-only)."""
+    from sqlalchemy import desc
+
+    stmt = (
+        select(Payment)
+        .where(
+            Payment.user_id == user_id,
+            Payment.subscription_id == subscription_id,
+            Payment.status == "success",
+        )
+        .order_by(desc(Payment.charged_at))
+        .limit(1)
     )
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def _evaluate_auto_eligibility(
-    payment: Payment, db: AsyncSession
+async def _evaluate_cooling_off_eligibility(
+    payment: Payment, subscription: Subscription, db: AsyncSession
 ) -> tuple[bool, int, int, str | None]:
-    """자동 환불 조건 검증 — 7일 이내 + qa_logs 0건.
+    """청약철회 조건 검증 — 7일 이내 + qa_logs 0건.
 
     Returns:
         (eligible, qa_count, days_since, reason_code)
-        reason_code: None(eligible) | "period_exceeded" | "qa_count_exceeded" | "both" | "no_subscription"
+        reason_code ∈ {None(eligible), "period_exceeded", "qa_count_exceeded", "both"}.
     """
     from sqlalchemy import func as sa_func
 
@@ -1296,26 +1452,16 @@ async def _evaluate_auto_eligibility(
     now = datetime.now(UTC)
     days_since = (now - payment.charged_at).days if payment.charged_at else 999
 
-    if payment.subscription_id is None:
-        return False, 0, days_since, "no_subscription"
-
-    sub_result = await db.execute(
-        select(Subscription).where(Subscription.id == payment.subscription_id)
-    )
-    sub = sub_result.scalar_one_or_none()
-    if sub is None:
-        return False, 0, days_since, "no_subscription"
-
     qa_result = await db.execute(
         select(sa_func.count(QALog.id)).where(
             QALog.user_id == payment.user_id,
-            QALog.created_at >= sub.started_at,
-            QALog.created_at <= sub.current_period_end,
+            QALog.created_at >= subscription.started_at,
+            QALog.created_at <= subscription.current_period_end,
         )
     )
     qa_count = int(qa_result.scalar() or 0)
 
-    period_ok = days_since <= _AUTO_REFUND_DAYS_LIMIT
+    period_ok = days_since <= _COOLING_OFF_DAYS_LIMIT
     qa_ok = qa_count == 0
 
     if period_ok and qa_ok:
@@ -1327,39 +1473,41 @@ async def _evaluate_auto_eligibility(
     return False, qa_count, days_since, "qa_count_exceeded"
 
 
-async def _execute_auto_refund(
+async def _execute_cooling_off_refund(
     payment: Payment,
-    reason: str,
     qa_count: int,
     days_since: int,
     db: AsyncSession,
 ) -> dict:
-    """자동 환불 실행 — PG 호출 + DB 전이 + 알림 fire-and-forget."""
+    """청약철회 환불 실행 — PG 전액 호출 + DB 강제 전이 + 알림 fire-and-forget."""
     # refund_pending로 전이 + commit (lock release; 동시 진입 차단은 status로 보장)
     payment.status = "refund_pending"
     await db.commit()
 
     pg = get_pg_provider()
-    truncated_reason = (reason or "user_request")[:_TOSS_CANCEL_REASON_MAX]
+    truncated_reason = _COOLING_OFF_REASON[:_TOSS_CANCEL_REASON_MAX]
 
     try:
         result = await pg.refund(
-            payment.provider_order_id, payment.amount_krw, truncated_reason
+            payment.provider_order_id,
+            payment.amount_krw,
+            truncated_reason,
         )
     except Exception:
         # transport 장애 — 원복(흔적 미생성) + 502
         payment.status = "success"
         await db.commit()
         logger.warning(
-            "billing.refund.auto_failed",
+            "billing.refund.cooling_off_failed",
             payment_id=payment.id,
             user_id=payment.user_id,
             failure_kind="transport",
+            pg_error_code=None,
         )
         raise RefundProviderUnavailable("transport_failure") from None
 
     if not result["success"]:
-        # 4xx — 흔적 보존(refund_denied) + 원복 + 502
+        # 4xx — refund_denied 이벤트 보존 + status 원복 + 502
         payment.status = "success"
         raw_response = result.get("raw_response") or {}
         db.add(
@@ -1370,9 +1518,11 @@ async def _execute_auto_refund(
             )
         )
         await db.commit()
-        pg_error_code = raw_response.get("code") if isinstance(raw_response, dict) else None
+        pg_error_code = (
+            raw_response.get("code") if isinstance(raw_response, dict) else None
+        )
         logger.warning(
-            "billing.refund.auto_failed",
+            "billing.refund.cooling_off_failed",
             payment_id=payment.id,
             user_id=payment.user_id,
             failure_kind="api_4xx",
@@ -1383,11 +1533,18 @@ async def _execute_auto_refund(
     # 성공: payment + payment_events + subscription + user 강제 전이
     now = datetime.now(UTC)
     payment.status = "refunded"
+    raw_response = result.get("raw_response") or {}
     db.add(
         PaymentEvent(
             payment_id=payment.id,
             event_type="refund_success",
-            raw_response_json=result.get("raw_response"),
+            # `payment_events.refund_kind` 컬럼은 Story 9.1 v1.1에서 신설 예정.
+            # 그 전까지는 raw_response_json에 분류 메타를 함께 보관한다.
+            raw_response_json={
+                "refund_kind": "cooling_off",
+                "refund_amount_krw": payment.amount_krw,
+                "pg": raw_response,
+            },
         )
     )
 
@@ -1400,15 +1557,15 @@ async def _execute_auto_refund(
     sub.status = "canceled"
     sub.next_charge_at = None
     sub.canceled_at = now
-    sub.cancel_reason = "auto_refund"
+    sub.cancel_reason = "cooling_off_refund"
 
     await db.execute(
         sa_update(User)
         .where(User.id == payment.user_id)
         .values(subscription_status="free")
     )
-    # PG 환불은 이미 성공 — 최종 DB 전이(payment/sub/user)는 한 트랜잭션으로 묶어 원자성 유지.
-    # 만약 commit이 실패하면 payment.status='refund_pending'으로 남고 PG는 이미 환불된 상태이므로
+    # PG 환불은 이미 성공 — 최종 DB 전이는 한 트랜잭션으로 묶어 원자성 유지.
+    # commit 실패 시 payment.status='refund_pending'으로 남고 PG는 이미 환불된 상태이므로
     # 운영자 reconcile이 가능하도록 식별자를 강하게 남기고 예외는 숨기지 않는다.
     try:
         await db.commit()
@@ -1420,14 +1577,14 @@ async def _execute_auto_refund(
             subscription_id=payment.subscription_id,
             provider_order_id=payment.provider_order_id,
             amount_krw=payment.amount_krw,
-            raw_response=result.get("raw_response"),
+            raw_response=raw_response,
             error=str(commit_exc),
             error_type=commit_exc.__class__.__name__,
         )
         raise
 
     logger.info(
-        "billing.refund.auto_succeeded",
+        "billing.refund.cooling_off_succeeded",
         payment_id=payment.id,
         user_id=payment.user_id,
         subscription_id=sub.id,
@@ -1440,83 +1597,46 @@ async def _execute_auto_refund(
         await _notify_refund(
             user_id=payment.user_id,
             amount_krw=payment.amount_krw,
+            refund_amount_krw=payment.amount_krw,
             refunded_at=now,
             payment_id=payment.id,
+            refund_reason="cooling_off",
+            idempotency_key=f"refund:{payment.id}:cooling_off",
         )
     except Exception:
         pass
 
     return {
         "status": "refunded",
+        "refund_kind": "cooling_off",
         "amount_krw": payment.amount_krw,
         "refunded_at": now.isoformat(),
+        "subscription_status": "canceled",
     }
 
 
-async def _enqueue_manual_review(
-    payment: Payment,
-    reason: str | None,
-    qa_count: int,
-    days_since: int,
-    reason_code: str | None,
-    db: AsyncSession,
-) -> dict:
-    """수동 검토 큐 INSERT — Epic 9 A-503에서 처리."""
-    from api.src.models.manual_refund_queue import ManualRefundQueue
-
-    payment.status = "refund_pending"
-
-    queue = ManualRefundQueue(
-        payment_id=payment.id,
-        user_id=payment.user_id,
-        reason=reason,
-        qa_count_during_period=qa_count,
-        days_since_charge=days_since,
-        status="pending",
-    )
-    db.add(queue)
-    await db.flush()
-
-    db.add(
-        PaymentEvent(
-            payment_id=payment.id,
-            event_type="refund_requested",
-            raw_response_json={
-                "reason": reason,
-                "qa_count_during_period": qa_count,
-                "days_since_charge": days_since,
-                "auto_eligible": False,
-                "reason_code": reason_code,
-            },
-        )
-    )
-    await db.commit()
-
-    logger.info(
-        "billing.refund.queued_for_review",
-        payment_id=payment.id,
-        user_id=payment.user_id,
-        queue_id=queue.id,
-        qa_count_during_period=qa_count,
-        days_since_charge=days_since,
-        reason_code=reason_code,
-        auto_eligible=False,
-    )
-
-    return {
-        "status": "queued_for_review",
-        "queue_id": queue.id,
-        "reason_code": reason_code,
-    }
+_REFUND_REASON_LABELS = {
+    "cooling_off": "즉시 해지 및 전액 환불",
+    "manual_full": "전액 환불",
+    "manual_partial": "부분 환불",
+}
 
 
 async def _notify_refund(
     user_id: int,
     amount_krw: int,
+    refund_amount_krw: int,
     refunded_at: datetime,
     payment_id: int,
+    refund_reason: str,
+    idempotency_key: str,
 ) -> None:
-    """환불 성공 알림 fire-and-forget — _notify_subscription_event 패턴."""
+    """환불 성공 알림 fire-and-forget — _notify_subscription_event 패턴.
+
+    Story 3.6 v1.1 청약철회 + Story 9.1 v1.1 운영 환불(부분/전액) 공용.
+    refund_reason ∈ {"cooling_off", "manual_full", "manual_partial"} →
+    `refund_reason_label` 한국어로 매핑되어 알림톡 본문에 노출된다.
+    """
     try:
         from api.src.models.base import async_session_factory
 
@@ -1532,16 +1652,20 @@ async def _notify_refund(
             get_notification_service,
         )
 
+        label = _REFUND_REASON_LABELS.get(refund_reason, refund_reason)
+
         svc = get_notification_service()
         await svc.send(
             user_id=user_id,
             phone=user.phone or "",
             template_code="billing.refund_success",
             variables={
-                "amount_krw": str(amount_krw),
+                "refund_reason_label": label,
+                "amount_krw": f"{amount_krw:,}",
+                "refund_amount_krw": f"{refund_amount_krw:,}",
                 "effective_at": refunded_at.strftime("%Y년 %m월 %d일"),
             },
-            idempotency_key=f"refund:{payment_id}:auto_success",
+            idempotency_key=idempotency_key,
         )
     except Exception:
         logger.warning(
@@ -1586,7 +1710,11 @@ class ResumeNotApplicable(Exception):
 
 
 class PaymentNotFound(Exception):
-    """결제 미존재 또는 타인 결제(404 enumeration 차단)."""
+    """결제 미존재 또는 타인 결제(404 enumeration 차단).
+
+    Story 9.1 v1.1 관리자 환불 다이얼로그에서 재사용 가능. v1.1 사용자 동선은
+    구독 → 결제를 서비스가 직접 조회하므로 직접 raise하지 않는다.
+    """
 
 
 class PaymentNotRefundable(Exception):
@@ -1599,6 +1727,26 @@ class RefundAlreadyProcessed(Exception):
 
 class RefundAlreadyRequested(Exception):
     """이미 환불 요청 중(refund_pending)인 결제."""
+
+
+class NoActiveSubscription(Exception):
+    """청약철회 대상 활성/대기 구독이 없음 (Story 3.6 v1.1)."""
+
+
+class NoRefundablePayment(Exception):
+    """청약철회 대상 success payment가 없음 (Story 3.6 v1.1)."""
+
+
+class RefundNotEligible(Exception):
+    """청약철회 조건 미충족 — 7일 초과 또는 질문 1건 이상 (Story 3.6 v1.1).
+
+    클라이언트 사전 조회(AC1)를 우회한 직접 호출 방어용. 라우터에서 422로 매핑.
+    reason_code ∈ {"period_exceeded", "qa_count_exceeded", "both"}.
+    """
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
 
 
 class RefundProviderUnavailable(Exception):

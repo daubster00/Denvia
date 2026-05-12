@@ -1,7 +1,10 @@
-"""빌링 라우터 — Story 3.1: GET /plans. Story 3.2: POST /billing-key, POST /subscriptions."""
+"""빌링 라우터 — Story 3.1: GET /plans. Story 3.2: POST /billing-key, POST /subscriptions.
+
+Story 3.6 v1.1 (2026-05-12): 자가 환불 폼 폐지. 청약철회 단일 경로만 노출 —
+GET /subscriptions/me/refund-eligibility + POST /subscriptions/me/cancel-with-refund.
+"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import get_current_user
@@ -13,31 +16,35 @@ from api.src.schemas.billing import (
     BillingPlansResponse,
     CancelSubscriptionRequest,
     CancelSubscriptionResponse,
+    CancelWithRefundRequest,
+    CancelWithRefundResponse,
     CurrentSubscriptionResponse,
     IssueBillingKeyRequest,
     IssueBillingKeyResponse,
-    RefundRequest,
-    RefundResponse,
+    RefundEligibilityResponse,
     ResumeSubscriptionResponse,
     StartSubscriptionResponse,
 )
 from api.src.services.billing_service import (
     BillingCardDeclined,
     BillingKeyRequired,
-    PaymentNotFound,
+    NoActiveSubscription,
+    NoRefundablePayment,
     PaymentNotRefundable,
     RefundAlreadyProcessed,
     RefundAlreadyRequested,
+    RefundNotEligible,
     RefundProviderUnavailable,
     ResumeNotApplicable,
     SubscriptionAlreadyActive,
     SubscriptionAlreadyCanceled,
     SubscriptionNotFound,
     cancel_subscription,
+    cancel_with_refund,
+    check_refund_eligibility,
     get_billing_plans,
     get_current_subscription,
     issue_billing_key,
-    request_refund,
     resume_subscription,
     start_subscription,
 )
@@ -222,41 +229,68 @@ async def get_current_subscription_endpoint(
     return CurrentSubscriptionResponse(**result)
 
 
-# ── Story 3.6 ────────────────────────────────────────────────────────────────
+# ── Story 3.6 v1.1 — 청약철회 (Cooling-off Refund) ─────────────────────────────
+# v1.1 정책 변경(2026-05-12, ADR-0001 편차 #5)으로 자가 환불 폼 폐지.
+# 사용자 환불 경로는 본 라우터 2개 엔드포인트로 단일화:
+#   · GET  /subscriptions/me/refund-eligibility  (read-only 사전 조회)
+#   · POST /subscriptions/me/cancel-with-refund  (즉시 해지 + 전액 환불 실행)
+# 운영 환불(관리자 부분/전액)은 Story 9.1 v1.1 admin 라우터 책임.
+
+
+@router.get(
+    "/subscriptions/me/refund-eligibility",
+    response_model=RefundEligibilityResponse,
+)
+async def get_refund_eligibility_endpoint(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> RefundEligibilityResponse:
+    """청약철회 가능 여부 조회 (Story 3.6 v1.1 AC1) — read-only, side effect 없음."""
+    result = await check_refund_eligibility(user, db)
+    return RefundEligibilityResponse(**result)
 
 
 @router.post(
-    "/payments/{payment_id}/refund",
-    responses={
-        200: {"description": "자동 환불 완료", "model": RefundResponse},
-        202: {"description": "수동 검토 큐 INSERT", "model": RefundResponse},
-    },
+    "/subscriptions/me/cancel-with-refund",
+    response_model=CancelWithRefundResponse,
 )
 @limit_billing
-async def refund_payment_endpoint(
+async def cancel_with_refund_endpoint(
     request: Request,
-    payment_id: int,
-    body: RefundRequest,
+    body: CancelWithRefundRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
-):
-    """결제 환불 요청 — 자동(7일·qa=0) vs 수동 검토 분기."""
+) -> CancelWithRefundResponse:
+    """청약철회 — 구독 즉시 해지 + 전액 환불 (Story 3.6 v1.1 AC2~6).
+
+    7일 이내 + 해당 구독 기간 동안 질문 0건 조건을 서버가 재검증한다.
+    조건 미충족은 422 REFUND_NOT_ELIGIBLE (클라이언트 사전 조회 우회 방어).
+    """
     try:
-        result = await request_refund(user, payment_id, body.reason, db)
-    except PaymentNotFound:
+        result = await cancel_with_refund(user, db)
+    except NoActiveSubscription:
         raise HTTPException(
-            status_code=404,
+            status_code=422,
             detail={
-                "code": "PAYMENT_NOT_FOUND",
-                "message": "결제 내역을 찾을 수 없습니다.",
+                "code": "NO_ACTIVE_SUBSCRIPTION",
+                "message": "활성 구독이 없습니다.",
             },
         )
-    except PaymentNotRefundable:
+    except NoRefundablePayment:
         raise HTTPException(
-            status_code=409,
+            status_code=422,
             detail={
-                "code": "PAYMENT_NOT_REFUNDABLE",
-                "message": "환불할 수 없는 결제입니다.",
+                "code": "NO_REFUNDABLE_PAYMENT",
+                "message": "환불 대상 결제를 찾을 수 없습니다.",
+            },
+        )
+    except RefundNotEligible as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "REFUND_NOT_ELIGIBLE",
+                "message": "청약철회 조건을 충족하지 않습니다.",
+                "reason_code": exc.reason_code,
             },
         )
     except RefundAlreadyProcessed:
@@ -272,7 +306,15 @@ async def refund_payment_endpoint(
             status_code=409,
             detail={
                 "code": "REFUND_ALREADY_REQUESTED",
-                "message": "환불이 이미 요청되었습니다.",
+                "message": "환불이 진행 중입니다.",
+            },
+        )
+    except PaymentNotRefundable:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "PAYMENT_NOT_REFUNDABLE",
+                "message": "환불할 수 없는 결제입니다.",
             },
         )
     except RefundProviderUnavailable:
@@ -284,6 +326,4 @@ async def refund_payment_endpoint(
             },
         )
 
-    if result["status"] == "queued_for_review":
-        return JSONResponse(status_code=202, content=result)
-    return result
+    return CancelWithRefundResponse(**result)

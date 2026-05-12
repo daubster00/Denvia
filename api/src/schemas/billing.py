@@ -113,36 +113,58 @@ class CurrentSubscriptionResponse(BaseModel):
     cancel_reason: str | None
 
 
-# ── Story 3.6 ────────────────────────────────────────────────────────────────
+# ── Story 3.6 v1.1 — 청약철회 (Cooling-off Refund) ─────────────────────────────
+# v1.1 정책 변경(2026-05-12, ADR-0001 편차 #5)으로 자가 환불 요청 폼·수동 검토 큐 폐기.
+# 청약철회 = 7일 이내 + 질문 0건 충족 시 즉시 해지 + 전액 환불.
 
 
-class RefundRequest(BaseModel):
-    """POST /api/v1/billing/payments/{payment_id}/refund 요청."""
+RefundEligibilityReasonCode = Literal[
+    "ok",
+    "period_exceeded",
+    "qa_count_exceeded",
+    "both",
+    "no_active_payment",
+]
 
-    reason: str | None = None
 
-    @field_validator("reason")
+class RefundEligibilityResponse(BaseModel):
+    """GET /api/v1/billing/subscriptions/me/refund-eligibility 응답.
+
+    마이페이지 구독 취소 다이얼로그가 "즉시 해지 + 전액 환불" 옵션 노출 여부를
+    결정하기 위한 read-only 조회 결과.
+    """
+
+    eligible: bool
+    payment_id: int | None = None
+    amount_krw: int | None = None
+    charged_at: str | None = None  # ISO 8601
+    days_since_charge: int | None = None
+    qa_count_during_period: int | None = None
+    reason_code: RefundEligibilityReasonCode
+
+
+class CancelWithRefundRequest(BaseModel):
+    """POST /api/v1/billing/subscriptions/me/cancel-with-refund 요청.
+
+    body는 확인 토큰만. 사유는 받지 않으며(청약철회는 사유 불요), confirmation=False는
+    422로 거부한다.
+    """
+
+    confirmation: bool
+
+    @field_validator("confirmation")
     @classmethod
-    def _strip_and_validate(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        v = v.strip()
-        if len(v) == 0:
-            return None
-        if len(v) > 500:
-            raise ValueError("환불 사유는 500자 이내로 입력해주세요")
+    def _require_confirmation(cls, v: bool) -> bool:
+        if v is not True:
+            raise ValueError("청약철회를 진행하려면 confirmation=true 가 필요합니다")
         return v
 
 
-class RefundResponse(BaseModel):
-    """POST /api/v1/billing/payments/{payment_id}/refund 응답.
+class CancelWithRefundResponse(BaseModel):
+    """POST /api/v1/billing/subscriptions/me/cancel-with-refund 응답."""
 
-    status='refunded' 시 amount_krw + refunded_at 채움.
-    status='queued_for_review' 시 queue_id + reason_code 채움.
-    """
-
-    status: Literal["refunded", "queued_for_review"]
-    amount_krw: int | None = None
-    refunded_at: str | None = None
-    queue_id: int | None = None
-    reason_code: Literal["qa_count_exceeded", "period_exceeded", "both", "no_subscription"] | None = None
+    status: Literal["refunded"]
+    refund_kind: Literal["cooling_off"]
+    amount_krw: int
+    refunded_at: str  # ISO 8601
+    subscription_status: Literal["canceled"]
