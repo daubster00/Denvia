@@ -36,7 +36,7 @@ from api.src.schemas.admin.support import (
     InquiryUpdateRequest,
     SupportCountsResponse,
 )
-from api.src.services import admin_refund_service, admin_support_service
+from api.src.services import admin_support_service
 from api.src.utils.jwt import (
     JWTDecodeError,
     SessionExpired,
@@ -159,7 +159,9 @@ async def get_counts(
 ) -> SupportCountsResponse:
     """탭 카운트 — open inquiries + pending refunds 동시 반환."""
     open_inquiries = await admin_support_service.count_open_inquiries(db)
-    pending_refunds = await admin_refund_service.count_pending(db)
+    # v1.1 환불 정책은 관리자 즉시 실행 단일 경로 — 승인 대기 큐 개념 없음.
+    # `pending_refunds` 필드는 FE 호환을 위해 유지하되 항상 0을 반환한다.
+    pending_refunds = 0
     response.headers["Cache-Control"] = "no-store"
     return SupportCountsResponse(
         open_inquiries=open_inquiries,
@@ -206,7 +208,9 @@ async def patch_inquiry(
 
     audit_logs INSERT 는 미들웨어가 응답 직후 자동 처리.
     """
-    detail = await admin_support_service.update_inquiry(request, db, inquiry_id, payload)
+    detail = await admin_support_service.update_inquiry(
+        request, db, inquiry_id, payload, admin_id=admin.id
+    )
     if detail is None:
         raise HTTPException(
             status_code=404,

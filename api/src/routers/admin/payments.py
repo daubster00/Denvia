@@ -12,13 +12,11 @@ FastAPI는 prefix가 같아도 경로가 충돌하지 않으면 다중 라우터
 
 가드:
 - require_admin (denvia_admin_session 쿠키 전용).
-- rate limit 키는 관리자 user_id 기반 (IP 폴백) — admin_refund_service 패턴 답습.
+- rate limit 키는 관리자 user_id 기반 (IP 폴백).
 - 환불 실행은 응답 후 fire-and-forget으로 알림톡 + Redis admin:events publish.
 - audit_logs는 AuditMiddleware가 응답 직후 자동 INSERT (서비스가 request.state에 audit_* 설정).
 
-기존 `admin/refunds.py`(manual_refund_queue 기반 구식 흐름)와는 흐름이 완전히 다르므로 새 파일로 분리.
-v1.1 새 흐름과 기존 구식 흐름의 import 경로를 명확히 분리해 향후 구식 경로 정리 부담을 줄이는
-의도는 `schemas/admin/payment_refunds.py`와 동일하다.
+v1.0 자가 환불 폼(`manual_refund_queue` 기반)은 Story 3.6 v1.1 Phase 4에서 삭제됨.
 """
 
 from __future__ import annotations

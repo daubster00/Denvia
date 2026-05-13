@@ -32,7 +32,6 @@ from api.src.routers.admin import support as admin_support
 from api.src.routers.admin import content as admin_content
 from api.src.routers.admin import finance as admin_finance
 from api.src.routers.admin import payments as admin_payments
-from api.src.routers.admin import refunds as admin_refunds
 from api.src.routers.admin import killswitch as admin_killswitch
 from api.src.routers.admin import seo as admin_seo
 from api.src.routers import billing as billing_router
@@ -155,7 +154,6 @@ app.include_router(admin_support.router, prefix="/api/v1")
 app.include_router(admin_content.router, prefix="/api/v1")
 app.include_router(admin_finance.router, prefix="/api/v1")
 app.include_router(admin_payments.router, prefix="/api/v1")
-app.include_router(admin_refunds.router, prefix="/api/v1")
 app.include_router(admin_killswitch.router, prefix="/api/v1")
 app.include_router(admin_seo.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")

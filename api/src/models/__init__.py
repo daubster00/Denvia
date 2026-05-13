@@ -18,7 +18,6 @@ from api.src.models.subscription import Subscription  # noqa: F401
 from api.src.models.billing_key import BillingKey  # noqa: F401
 from api.src.models.payment import Payment  # noqa: F401
 from api.src.models.payment_event import PaymentEvent  # noqa: F401
-from api.src.models.manual_refund_queue import ManualRefundQueue  # noqa: F401
 from api.src.models.refund import Refund  # noqa: F401
 from api.src.models.notice import Notice  # noqa: F401
 from api.src.models.popup import Popup  # noqa: F401

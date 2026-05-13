@@ -16,7 +16,6 @@ from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.billing_key import BillingKey
-from api.src.models.manual_refund_queue import ManualRefundQueue
 from api.src.models.payment import Payment
 from api.src.models.payment_event import PaymentEvent
 from api.src.models.user import User
@@ -226,27 +225,16 @@ def _extract_refund_reason_from_event(raw: Any) -> str | None:
 async def get_payment_event(
     session: AsyncSession, *, event_id: int
 ) -> PaymentEventDetailResponse | None:
-    """단건 조회 — list와 동일 JOIN + raw_response_json + 수동 환불 큐 매칭."""
+    """단건 조회 — list와 동일 JOIN + raw_response_json + 환불 사유 폴백."""
     stmt = _build_base_select().where(PaymentEvent.id == event_id).limit(1)
     row = (await session.execute(stmt)).first()
     if row is None:
         return None
     item = _row_to_item(row)
 
-    queue_stmt = (
-        select(ManualRefundQueue.id, ManualRefundQueue.status, ManualRefundQueue.reason)
-        .where(ManualRefundQueue.payment_id == row.payment_id)
-        .order_by(desc(ManualRefundQueue.id))
-        .limit(1)
-    )
-    queue_row = (await session.execute(queue_stmt)).first()
-
-    refund_reason = queue_row.reason if queue_row else None
+    # 환불 사유: 현재 이벤트의 raw_response_json에서 추출 → 같은 결제의 다른 환불 이벤트로 폴백.
+    refund_reason = _extract_refund_reason_from_event(row.raw_response_json)
     if not refund_reason:
-        # 1차 폴백: 지금 보고 있는 이벤트의 raw_response_json에서 직접 추출.
-        refund_reason = _extract_refund_reason_from_event(row.raw_response_json)
-    if not refund_reason:
-        # 2차 폴백: 같은 결제의 다른 환불 이벤트(refund_requested/success/denied)에서 추출.
         reason_stmt = (
             select(PaymentEvent.raw_response_json)
             .where(
@@ -267,8 +255,6 @@ async def get_payment_event(
     return PaymentEventDetailResponse(
         **item.model_dump(),
         raw_response_json=row.raw_response_json,
-        manual_refund_queue_id=queue_row.id if queue_row else None,
-        manual_refund_queue_status=queue_row.status if queue_row else None,
         refund_reason=refund_reason,
     )
 

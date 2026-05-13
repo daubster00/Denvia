@@ -98,10 +98,6 @@ class TestSupportCounts:
                 "api.src.routers.admin.support.admin_support_service.count_open_inquiries",
                 new=AsyncMock(return_value=12),
             ),
-            patch(
-                "api.src.routers.admin.support.admin_refund_service.count_pending",
-                new=AsyncMock(return_value=3),
-            ),
         ):
             app.dependency_overrides[get_session] = gen
             try:
@@ -117,7 +113,8 @@ class TestSupportCounts:
         assert res.status_code == 200
         body = res.json()
         assert body["open_inquiries"] == 12
-        assert body["pending_refunds"] == 3
+        # v1.1 환불 정책 — 관리자 즉시 실행 단일 경로, 승인 대기 큐 개념 없음 → 항상 0.
+        assert body["pending_refunds"] == 0
         assert res.headers.get("Cache-Control") == "no-store"
 
 

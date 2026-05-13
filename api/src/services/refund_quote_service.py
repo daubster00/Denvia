@@ -15,8 +15,7 @@ ADR-0001 편차 #5 환불 정책 v1.1. `GET /api/v1/admin/payments/{payment_id}/
   `subscription.current_period_end`(미래로 갱신됨)를 쓰지만, 본 함수는 admin이 임의의
   과거 payment를 지목할 수 있어 결제 시점 박제값이 정확하다 (Story 4.4 코드리뷰 후속에서
   payments.subscription_period_* 컬럼이 추가된 동일한 이유).
-- admin_refund_service._fetch_reason_code는 payment_events에 캐싱된 reason_code를
-  읽는 함수일 뿐 판정 로직이 아니다. 본 응답은 `is_within_cooling_off` 불리언과 두 근거값만
+- 본 응답은 `is_within_cooling_off` 불리언과 두 근거값(결제일·환불 사유 누락 여부 등)만
   반환하므로 reason_code 매핑은 불필요 — 프론트가 두 값으로 라벨링한다.
 - 동일 결제 내 환불 충돌은 DB UNIQUE(payment_id, refund_sequence) + CHECK가 차단한다.
   본 서비스는 표시용 계산만 제공하며 입력 검증은 책임지지 않는다.

@@ -5,8 +5,8 @@ ADR-0001 편차 #5 환불 정책 v1.1. 관리자가 결제 건당 환불 금액�
 서비스 본체. read-only 계산은 `refund_quote_service`가, 실제 INSERT/PG 호출은 본 모듈이
 담당한다.
 
-기존 `admin_refund_service.approve`(Story 9.3 — manual_refund_queue 기반 구식 흐름)와
-다음 점에서 다르다:
+v1.0 자가 환불 폼(Story 9.3 — `manual_refund_queue` 승인 큐 기반, Phase 4에서 삭제됨)과
+대비되는 v1.1 운영 환불 흐름의 특징:
 1. 큐 row가 없다 — payment_id로 직접 진입.
 2. 다회 부분환불을 지원한다 — `refunds` 테이블에 시계열 row INSERT, `refund_sequence`로 순번 보존.
 3. 환불 완료 후 잔액(payment.amount_krw − SUM(cancel_amount))이 **0이 될 때만**
@@ -68,7 +68,7 @@ from api.src.utils.mask import mask_email
 logger = structlog.get_logger(__name__)
 
 _KST = ZoneInfo("Asia/Seoul")
-# 토스 페이먼츠 cancelReason 한도. admin_refund_service와 동일 상수.
+# 토스 페이먼츠 cancelReason 한도.
 _TOSS_CANCEL_REASON_MAX = 200
 _INBOX_TITLE_FULL = "환불 처리 완료 안내"
 _INBOX_TITLE_PARTIAL = "부분 환불 처리 완료 안내"
@@ -545,7 +545,7 @@ async def notify_refund_succeeded(
 
 
 async def publish_admin_event(payload: dict) -> None:
-    """fire-and-forget Redis admin:events publish (admin_refund_service와 동일 채널)."""
+    """fire-and-forget Redis admin:events 채널 publish."""
     try:
         from api.src.deps.redis import get_redis_client
 
