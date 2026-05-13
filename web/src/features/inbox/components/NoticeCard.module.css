@@ -54,6 +54,7 @@
   margin-top: 4px;
   border-radius: 9999px;
   flex-shrink: 0;
+  font-size: 18px;
 }
 
 .iconNotice {

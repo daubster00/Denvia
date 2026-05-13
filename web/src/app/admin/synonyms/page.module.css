@@ -1,0 +1,170 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1300px;
+  padding: 32px;
+  margin-left: 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.heading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px 0;
+}
+
+.subheading {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.search {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.search:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.primaryBtn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #4f46e5;
+  font-size: 14px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: #4338ca;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.createBox {
+  padding: 20px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: #f5f7ff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.boxTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 220px 1fr 160px;
+  gap: 16px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.actionsHeader {
+  text-align: right;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.statusText {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+}
+
+.errorText {
+  font-size: 14px;
+  color: #dc2626;
+  margin: 0;
+  padding: 16px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.pageBtn {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.pageBtn:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 16px;
+  }
+
+  .tableHeader {
+    display: none;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+}

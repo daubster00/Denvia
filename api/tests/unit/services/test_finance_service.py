@@ -15,6 +15,7 @@ import pytest
 
 from api.src.services.finance_service import (
     _excel_safe_cell,
+    _extract_refund_reason_from_event,
     _kst_window,
     _row_to_item,
 )
@@ -99,3 +100,66 @@ class TestRowToItem:
     def test_short_local_email_not_masked(self) -> None:
         item = _row_to_item(self._row(email="a@b.co"))
         assert item.user_email_masked == "a@b.co"
+
+
+class TestExtractRefundReason:
+    def test_returns_reason_text(self) -> None:
+        assert (
+            _extract_refund_reason_from_event(
+                {"reason": "구독 갱신 실수입니다", "qa_count_during_period": 0}
+            )
+            == "구독 갱신 실수입니다"
+        )
+
+    def test_none_raw_returns_none(self) -> None:
+        assert _extract_refund_reason_from_event(None) is None
+
+    def test_non_dict_returns_none(self) -> None:
+        assert _extract_refund_reason_from_event("oops") is None
+
+    def test_missing_reason_key_returns_none(self) -> None:
+        assert _extract_refund_reason_from_event({"qa_count_during_period": 0}) is None
+
+    def test_blank_reason_returns_none(self) -> None:
+        assert _extract_refund_reason_from_event({"reason": "   "}) is None
+
+    def test_non_string_reason_returns_none(self) -> None:
+        assert _extract_refund_reason_from_event({"reason": 123}) is None
+
+    def test_picks_toss_cancel_reason_when_top_level_missing(self) -> None:
+        raw = {
+            "status": "CANCELED",
+            "cancels": [
+                {
+                    "cancelReason": "너무 가난해요. 환불 해주세요",
+                    "canceledAt": "2026-05-12T08:58:52+09:00",
+                    "cancelAmount": 9900,
+                }
+            ],
+        }
+        assert (
+            _extract_refund_reason_from_event(raw) == "너무 가난해요. 환불 해주세요"
+        )
+
+    def test_picks_most_recent_cancel_reason(self) -> None:
+        raw = {
+            "cancels": [
+                {"cancelReason": "옛날 취소", "canceledAt": "2026-05-01T00:00:00+09:00"},
+                {"cancelReason": "최근 취소", "canceledAt": "2026-05-12T08:58:52+09:00"},
+            ]
+        }
+        assert _extract_refund_reason_from_event(raw) == "최근 취소"
+
+    def test_top_level_reason_wins_over_cancels(self) -> None:
+        raw = {
+            "reason": "관리자 메모",
+            "cancels": [{"cancelReason": "토스 응답 사유"}],
+        }
+        assert _extract_refund_reason_from_event(raw) == "관리자 메모"
+
+    def test_empty_cancels_returns_none(self) -> None:
+        assert _extract_refund_reason_from_event({"cancels": []}) is None
+
+    def test_cancels_with_no_valid_reason_returns_none(self) -> None:
+        raw = {"cancels": [{"cancelReason": "  "}, {"cancelAmount": 9900}]}
+        assert _extract_refund_reason_from_event(raw) is None

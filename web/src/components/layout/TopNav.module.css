@@ -46,19 +46,23 @@
   width: 28px;
   height: 28px;
   border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
   color: #fff;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .planBadgeFree {
-  background: #9ca3af;
+  background: #e5e7eb;
 }
 
 .planBadgePro {
-  background: var(--color-primary, #7c3aed);
+  background: #f3e8ff;
+}
+
+.planBadgeIcon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .inboxIconWrap {

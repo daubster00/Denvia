@@ -14,8 +14,23 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type InquiryStatus = "open" | "in_progress" | "resolved";
+export type InquiryType =
+  | "billing"
+  | "account"
+  | "usage"
+  | "bug"
+  | "suggestion"
+  | "other";
 export type UserSegment = "doctor" | "hygienist" | "student_other";
 export type UserSubscriptionStatus = "free" | "pro" | "blocked";
+
+export interface InquiryAttachmentItem {
+  id: number;
+  file_url: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+}
 
 export interface InquiryListItem {
   id: number;
@@ -23,6 +38,7 @@ export interface InquiryListItem {
   user_email: string;
   subject: string;
   body_preview: string;
+  inquiry_type: InquiryType;
   segment: UserSegment | null;
   status: InquiryStatus;
   created_at: string;
@@ -57,6 +73,7 @@ export interface InquiryDetailResponse {
   user_phone: string | null;
   subject: string;
   body: string;
+  inquiry_type: InquiryType;
   status: InquiryStatus;
   created_at: string;
   resolved_at: string | null;
@@ -65,6 +82,7 @@ export interface InquiryDetailResponse {
   user_created_at: string;
   recent_qa: RecentQAExcerpt[];
   replies: InquiryReplyItem[];
+  attachments: InquiryAttachmentItem[];
 }
 
 export interface FetchInquiriesParams {

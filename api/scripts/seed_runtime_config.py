@@ -30,9 +30,16 @@ DEFAULTS = {
     # Story 2.3 — 무료 quota + 의도적 지연 + 구독 버튼 토글
     "runtime:free_daily_quota": "10",
     "runtime:free_delay_enabled": "true",
-    "runtime:free_delay": "3",
+    "runtime:free_delay": "1",
     "runtime:pro_internal_cap": "500",
     "runtime:show_subscribe_button": "true",
+    # Story 4.2 — 야간 광고 차단 토글 (협의서 #C-02, NFR-C5)
+    # runtime:night_block_active는 Beat가 매일 SET하므로 시드 불필요
+    "runtime:night_ad_block_enabled": "true",
+    "runtime:night_block_start_hour": "21",
+    "runtime:night_block_end_hour": "8",
+    # 관리자 설정 — RAG 본 체인 채팅 모델. ADR-0002 §결정 2 인수자 기본값 유지.
+    "runtime:chat_model": "o4-mini",
 }
 
 

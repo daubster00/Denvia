@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import CHAR, BigInteger, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -26,3 +26,8 @@ class KillswitchState(Base):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Story 9.2 — 0028 마이그레이션으로 추가.
+    deactivated_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    year_month: Mapped[str | None] = mapped_column(CHAR(7), nullable=True)

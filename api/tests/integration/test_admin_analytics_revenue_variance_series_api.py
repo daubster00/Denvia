@@ -68,6 +68,9 @@ def _series_payload(months: int = 12, to: str = "2026-05"):
             {
                 "year_month": f"{cur_y:04d}-{cur_m:02d}",
                 "revenue_krw": 0,
+                "gross_revenue_krw": 0,
+                "refund_krw": 0,
+                "net_revenue_krw": 0,
                 "token_cost_krw": 0,
                 "variance_krw": 0,
             }

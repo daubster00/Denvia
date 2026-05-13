@@ -47,8 +47,13 @@ export interface PaymentEventListResponse {
   error_code_summary: ErrorCodeSummary | null;
 }
 
+export type ManualRefundQueueStatus = "pending" | "approved" | "denied";
+
 export interface PaymentEventDetail extends PaymentEventItem {
   raw_response_json: Record<string, unknown> | null;
+  manual_refund_queue_id: number | null;
+  manual_refund_queue_status: ManualRefundQueueStatus | null;
+  refund_reason: string | null;
 }
 
 export interface FetchPaymentEventsParams {

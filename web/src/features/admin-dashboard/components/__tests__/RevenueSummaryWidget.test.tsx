@@ -38,6 +38,9 @@ beforeEach(() => {
 const baseData = {
   year_month: "2026-05",
   revenue_krw: 1_485_000,
+  gross_revenue_krw: 1_485_000,
+  refund_krw: 0,
+  net_revenue_krw: 1_485_000,
   token_cost_usd: "12.345600",
   token_cost_krw: 17_284,
   usd_to_krw: 1400,
@@ -61,16 +64,38 @@ describe("RevenueSummaryWidget", () => {
     expect(screen.getByText(/로딩 중/)).toBeTruthy();
   });
 
-  it("데이터 4개 행 렌더 (매출/토큰비용/차액/에러)", async () => {
+  it("데이터 6개 행 렌더 (총매출/환불/순매출/토큰비용/차액/에러)", async () => {
     const { fetchRevenueVariance } = await import("../../api/analytics");
     (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       baseData,
     );
     renderWithQuery(<RevenueSummaryWidget />);
-    await screen.findByText("1,485,000원");
+    await screen.findByText("당월 총매출");
+    // 환불 0 기준: 총매출 == 순매출 이므로 1,485,000원이 두 번 등장
+    const grossCells = await screen.findAllByText("1,485,000원");
+    expect(grossCells.length).toBe(2);
+    expect(screen.getByText("0원")).toBeTruthy(); // 환불액
     expect(screen.getByText("17,284원")).toBeTruthy();
     expect(screen.getByText("1,467,716원")).toBeTruthy();
     expect(screen.getByText("15건")).toBeTruthy(); // 3+12
+    expect(screen.getByText("순매출")).toBeTruthy();
+    expect(screen.getByText("환불액")).toBeTruthy();
+  });
+
+  it("환불 발생 시 환불액에 `−` 부호 + 순매출 차감", async () => {
+    const { fetchRevenueVariance } = await import("../../api/analytics");
+    (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...baseData,
+      gross_revenue_krw: 30_000,
+      refund_krw: 10_000,
+      net_revenue_krw: 20_000,
+      revenue_krw: 30_000,
+      variance_krw: 20_000 - 17_284,
+    });
+    renderWithQuery(<RevenueSummaryWidget />);
+    await screen.findByText("−10,000원");
+    expect(screen.getByText("20,000원")).toBeTruthy();
+    expect(screen.getByText("30,000원")).toBeTruthy();
   });
 
   it("음수 차액 시 부호 `−` + varianceNegative 클래스", async () => {
@@ -78,6 +103,8 @@ describe("RevenueSummaryWidget", () => {
     (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ...baseData,
       revenue_krw: 5_000,
+      gross_revenue_krw: 5_000,
+      net_revenue_krw: 5_000,
       token_cost_krw: 10_000,
       variance_krw: -5_000,
     });
@@ -113,7 +140,7 @@ describe("RevenueSummaryWidget", () => {
       baseData,
     );
     renderWithQuery(<RevenueSummaryWidget />);
-    await screen.findByText("1,485,000원");
+    await screen.findAllByText("1,485,000원");
     const link = screen.getByRole("link", {
       name: /재무 요약 상세 페이지로 이동/,
     });

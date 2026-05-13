@@ -16,9 +16,11 @@
 - PUT    /admin/inbox/preview-config     쪽지함 미리보기 동시 노출 최대 개수 저장
 - GET    /admin/runtime-config           서비스 전체 토글 4종 조회
 - PUT    /admin/runtime-config           서비스 전체 토글 4종 일괄 저장
+- GET    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 조회 + 허용 목록
+- PUT    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 변경 (화이트리스트)
 """
 
-from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,7 @@ from api.src.deps.auth import require_admin
 from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_INBOX_PREVIEW_CONFIG_UPDATE,
+    AUDIT_MODEL_PARAMS_EDIT,
     AUDIT_NOTICE_CREATE,
     AUDIT_NOTICE_DELETE,
     AUDIT_POPUP_CREATE,
@@ -55,6 +58,8 @@ from api.src.schemas.admin.popup import (
     PopupUpdateRequest,
 )
 from api.src.schemas.admin.runtime_config import (
+    ChatModelConfigResponse,
+    ChatModelConfigUpdateRequest,
     RuntimeConfigResponse,
     RuntimeConfigUpdateRequest,
 )
@@ -182,6 +187,52 @@ async def update_runtime_config(
 ) -> RuntimeConfigResponse:
     """서비스 전체 토글 4종 일괄 저장 — diff_json은 audit middleware가 INSERT."""
     return await runtime_config_service.update_runtime_config(request, body, redis_runtime)
+
+
+# ── 관리자 설정 페이지 — RAG 본 체인 채팅 모델 선택 ─────────────────────────────
+
+
+@router.get("/runtime-config/chat-model", response_model=ChatModelConfigResponse)
+async def get_chat_model_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> ChatModelConfigResponse:
+    """현재 선택된 채팅 모델 + 허용 모델 목록 조회 (드롭다운 옵션 채움용)."""
+    response.headers["Cache-Control"] = "no-store"
+    current = await runtime_config_service.get_chat_model(redis_runtime)
+    return ChatModelConfigResponse(
+        chat_model=current,
+        allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
+        default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
+    )
+
+
+@router.put("/runtime-config/chat-model", response_model=ChatModelConfigResponse)
+@audit_action(AUDIT_MODEL_PARAMS_EDIT)
+async def update_chat_model_config(
+    request: Request,
+    body: ChatModelConfigUpdateRequest,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> ChatModelConfigResponse:
+    """채팅 모델 변경 — 화이트리스트 위반 시 400."""
+    before = await runtime_config_service.get_chat_model(redis_runtime)
+    try:
+        after = await runtime_config_service.set_chat_model(redis_runtime, body.chat_model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    request.state.audit_target_type = "runtime_config"
+    request.state.audit_diff = {
+        "before": {"chat_model": before},
+        "after": {"chat_model": after},
+    }
+    return ChatModelConfigResponse(
+        chat_model=after,
+        allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
+        default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
+    )
 
 
 # ── Story 7.1 — 공지(쪽지) admin CRUD ─────────────────────────────────────────

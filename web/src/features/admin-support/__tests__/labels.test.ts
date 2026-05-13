@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   formatInquiryStatus,
+  formatInquiryType,
   formatRefundReason,
   formatSegment,
+  INQUIRY_TYPE_LABELS,
   REFUND_QUEUE_STATUS_LABELS,
   REFUND_REASON_CODE_LABELS,
 } from "../labels";
@@ -12,6 +14,23 @@ describe("labels (Story 9.3)", () => {
     expect(formatInquiryStatus("open")).toBe("신규");
     expect(formatInquiryStatus("in_progress")).toBe("처리중");
     expect(formatInquiryStatus("resolved")).toBe("완료");
+  });
+
+  it("formats inquiry type to Korean labels", () => {
+    expect(formatInquiryType("billing")).toBe("결제·환불");
+    expect(formatInquiryType("account")).toBe("계정");
+    expect(formatInquiryType("usage")).toBe("기능 사용법");
+    expect(formatInquiryType("bug")).toBe("오류·버그");
+    expect(formatInquiryType("suggestion")).toBe("건의사항");
+    expect(formatInquiryType("other")).toBe("기타");
+    expect(Object.keys(INQUIRY_TYPE_LABELS).sort()).toEqual([
+      "account",
+      "billing",
+      "bug",
+      "other",
+      "suggestion",
+      "usage",
+    ]);
   });
 
   it("formats segment to Korean labels", () => {

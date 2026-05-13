@@ -7,6 +7,7 @@ import type {
 } from "@/features/admin-support/api/inquiries";
 import {
   formatInquiryStatus,
+  formatInquiryType,
   formatSegment,
 } from "@/features/admin-support/labels";
 import styles from "./InquiryListTable.module.css";
@@ -113,6 +114,7 @@ export function InquiryListTable({
         <thead className={styles.thead}>
           <tr>
             <th scope="col">제목</th>
+            <th scope="col">유형</th>
             <th scope="col">사용자</th>
             <th scope="col">가입유형</th>
             <th scope="col">상태</th>
@@ -137,6 +139,7 @@ export function InquiryListTable({
                   <div className={styles.preview}>{item.body_preview}</div>
                 ) : null}
               </td>
+              <td>{formatInquiryType(item.inquiry_type)}</td>
               <td>{item.user_email}</td>
               <td>{formatSegment(item.segment)}</td>
               <td>

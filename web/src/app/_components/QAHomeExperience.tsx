@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useCallback, type RefObject } from "react";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
 import { Footer } from "@/components/layout/Footer";
-import { AdvisoryChip } from "@/components/brand/AdvisoryChip";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatShell } from "@/features/qa/components/ChatShell";
 import { useQAStore } from "@/stores/qa-store";
@@ -77,7 +77,6 @@ export function AuthenticatedQAExperience() {
               onSubmit={handleSubmit}
               loading={isStreaming}
             />
-            <AdvisoryChip />
           </HeroSection>
           <Footer />
         </>
@@ -109,13 +108,27 @@ export function HeroSection({ children }: { children: React.ReactNode }) {
 export function HeroCopy() {
   return (
     <div className={styles.heroCopy}>
+      <DentalMark />
       <h1 className={styles.heroTitle}>
-        치과 임상 질문,{" "}
-        <span className={styles.heroTitleAccent}>AI가 참고 답변을 드립니다</span>
+        치과 보험청구{" "}
+        <span className={styles.heroTitleAccent}>Denvia AI에게 질문하세요.</span>
       </h1>
       <p className={styles.heroSubtitle}>
-        치과 전문가를 위한 임상 Q&A 서비스. 최신 문헌을 기반으로 빠르고 신뢰할 수 있는 참고 답변을 제공합니다.
+        데스크 행정업무 및 치과 보험청구에 관한 정보를 제공하는 치과전용 AI입니다.
       </p>
     </div>
+  );
+}
+
+function DentalMark() {
+  return (
+    <Image
+      src="/logo_symbol.png"
+      alt="Denvia AI"
+      className={styles.dentalMark}
+      width={200}
+      height={178}
+      priority
+    />
   );
 }

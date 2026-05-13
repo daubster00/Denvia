@@ -123,7 +123,8 @@ class TestQAKillswitchBlock:
                 app.dependency_overrides.clear()
 
             assert res.status_code == 503, f"sub_status={sub_status} expected 503"
-            assert res.json()["code"] == "SERVICE_KILL_SWITCH"
+            # Story 9.2 AC-7: 503 코드를 spec 일관성을 위해 KILLSWITCH_ACTIVE로 통일.
+            assert res.json()["code"] == "KILLSWITCH_ACTIVE"
 
     async def test_킬스위치_없을_때_정상_진행(self):
         """활성 킬스위치 없음 → 정상적으로 preflight로 넘어감."""

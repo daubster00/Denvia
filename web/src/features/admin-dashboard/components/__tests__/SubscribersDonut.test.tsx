@@ -21,8 +21,8 @@ function makeData(
     pro_count: 10,
     blocked_count: 2,
     withdrawn_count: 5,
-    pending_cancellation_count: null,
-    upcoming_renewals: [],
+    pending_cancellation_count: 0,
+    pending_cancellations: [],
     ...partial,
   };
 }

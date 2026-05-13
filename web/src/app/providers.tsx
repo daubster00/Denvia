@@ -3,7 +3,6 @@
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider, Global } from "@wanteddev/wds";
-import "@wanteddev/wds/global.css";
 import { SessionBootstrap } from "@/features/auth/SessionBootstrap";
 import { LoginPopupMount } from "@/features/auth/LoginPopupMount";
 import { OAuthErrorBanner } from "@/features/auth/OAuthErrorBanner";

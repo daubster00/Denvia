@@ -1,22 +1,17 @@
 "use client";
 
-/** 고객문의 제출 mutation — Story 4.5. */
+/** 고객문의 제출 mutation — 0030 1:1 문의 게시판화. */
 
 import { useMutation } from "@tanstack/react-query";
 
-import { postInquiry } from "../api";
-
-interface SubmitArgs {
-  subject: string;
-  body: string;
-}
-
-interface SubmitResult {
-  inquiry_id: number;
-}
+import {
+  type InquirySubmitArgs,
+  type InquirySubmitResponse,
+  postInquiry,
+} from "../api";
 
 export function useSubmitInquiry() {
-  return useMutation<SubmitResult, Error, SubmitArgs>({
-    mutationFn: ({ subject, body }) => postInquiry(subject, body),
+  return useMutation<InquirySubmitResponse, Error, InquirySubmitArgs>({
+    mutationFn: (args) => postInquiry(args),
   });
 }

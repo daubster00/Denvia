@@ -47,13 +47,14 @@ async def qa_stream(
 
     AC-7 grep 결과: manual_total 분기가 Story 2.2/2.3에 미존재 → 본 스토리에서 신규 추가.
     """
-    # Story 5.2: 수동 비상 정지 (전체 차단) — admin/pro 관계없이 모든 사용자 차단
+    # Story 5.2 + Story 9.2: 수동 비상 정지 (전체 차단) — admin/pro 관계없이 모든 사용자 차단
+    # 에러 코드는 spec(AC-7) 일관성을 위해 KILLSWITCH_ACTIVE 사용 (이전: SERVICE_KILL_SWITCH).
     if await is_any_total_block_active(db):
         raise HTTPException(
             status_code=503,
             detail={
-                "code": "SERVICE_KILL_SWITCH",
-                "message": "비상 정지가 활성화되어 일시적으로 질의가 중단되었습니다.",
+                "code": "KILLSWITCH_ACTIVE",
+                "message": "서비스가 일시 중단되었습니다. 재개 시 알림톡으로 안내드립니다.",
             },
         )
 

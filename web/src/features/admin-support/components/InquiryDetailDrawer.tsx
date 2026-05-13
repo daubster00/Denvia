@@ -11,6 +11,7 @@ import type {
 import { InquiryUpdateError } from "@/features/admin-support/api/inquiries";
 import {
   formatInquiryStatus,
+  formatInquiryType,
   formatSegment,
 } from "@/features/admin-support/labels";
 import { useUpdateInquiry } from "@/features/admin-support/hooks/useUpdateInquiry";
@@ -241,6 +242,10 @@ export function InquiryDetailDrawer({
               <h3 className={styles.subjectTitle}>{detail.subject}</h3>
               <dl className={styles.metaList}>
                 <div className={styles.metaRow}>
+                  <dt>유형</dt>
+                  <dd>{formatInquiryType(detail.inquiry_type)}</dd>
+                </div>
+                <div className={styles.metaRow}>
                   <dt>상태</dt>
                   <dd>
                     <span className={badgeClassFor(detail.status)}>
@@ -285,6 +290,36 @@ export function InquiryDetailDrawer({
               <h4 className={styles.sectionLabel}>문의 내용</h4>
               <pre className={styles.bodyText}>{detail.body}</pre>
             </section>
+
+            {detail.attachments.length > 0 ? (
+              <section className={styles.section}>
+                <h4 className={styles.sectionLabel}>
+                  첨부 이미지 ({detail.attachments.length}장)
+                </h4>
+                <ul className={styles.attachmentGrid}>
+                  {detail.attachments.map((att) => (
+                    <li key={att.id} className={styles.attachmentItem}>
+                      <a
+                        href={att.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.attachmentLink}
+                      >
+                        <img
+                          src={att.file_url}
+                          alt={att.file_name}
+                          className={styles.attachmentThumb}
+                          loading="lazy"
+                        />
+                        <span className={styles.attachmentName}>
+                          {att.file_name}
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
             {detail.replies.length > 0 ? (
               <section className={styles.section}>

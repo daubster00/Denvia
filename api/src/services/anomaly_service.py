@@ -18,7 +18,7 @@ from typing import Any
 
 import structlog
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.anomaly_event import AnomalyEvent
@@ -58,7 +58,11 @@ async def list_anomaly_events(
 
     기본 정렬 created_at DESC, status_in 미지정 시 'new' 단독.
     """
-    base_q = select(AnomalyEvent)
+    base_q = (
+        select(AnomalyEvent)
+        .outerjoin(User, AnomalyEvent.target_user_id == User.id)
+        .where(or_(AnomalyEvent.target_user_id.is_(None), User.role != "admin"))
+    )
 
     if status_in is None or len(status_in) == 0:
         base_q = base_q.where(AnomalyEvent.status == "new")

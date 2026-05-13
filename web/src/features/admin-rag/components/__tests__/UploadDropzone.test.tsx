@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { UploadDropzone } from "../UploadDropzone";
 
 vi.mock("../../api/knowledge", () => ({
@@ -73,6 +73,40 @@ describe("UploadDropzone", () => {
 
     // 서버 호출 됨 (파일 크기·확장자 통과)
     expect(uploadKnowledge).toHaveBeenCalled();
+  });
+
+  it("여러 파일 선택 시 모두 순차 업로드 + 마지막 응답으로 onSuccess 1회 호출", async () => {
+    const { uploadKnowledge } = await import("../../api/knowledge");
+    (uploadKnowledge as ReturnType<typeof vi.fn>).mockImplementation(
+      (file: File) =>
+        Promise.resolve({
+          upload_id: file.name === "a.txt" ? 1 : 2,
+          filename: file.name,
+          size_bytes: file.size,
+          chunk_count: 1,
+          category_count: 1,
+          hierarchy_preview: [],
+        }),
+    );
+
+    render(<UploadDropzone onSuccess={onSuccess} onHighlightDuplicate={onHighlightDuplicate} />);
+    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+
+    const f1 = makeFile("a.txt", 100, "text/plain");
+    const f2 = makeFile("b.txt", 200, "text/plain");
+
+    Object.defineProperty(input, "files", { value: [f1, f2], configurable: true });
+    fireEvent.change(input);
+
+    await waitFor(() => {
+      expect((uploadKnowledge as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+    });
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledTimes(1);
+    });
+    const lastResp = onSuccess.mock.calls[0][0];
+    expect(lastResp.filename).toBe("b.txt");
   });
 
   it("Enter/Space 키보드 트리거 → input click", () => {

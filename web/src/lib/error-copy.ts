@@ -25,6 +25,17 @@ export const errorCopy: Record<string, string> = {
     "소셜 가입 세션이 만료되었습니다. 다시 시도해주세요",
   OAUTH_PROVIDER_UNKNOWN: "지원하지 않는 소셜 로그인입니다",
   SMS_TOKEN_INVALID: "휴대폰 인증이 필요합니다",
+
+  // Story 9.2 — kill-switch
+  // qa.py 503 응답의 표준 코드. 기존 SERVICE_KILL_SWITCH는 backwards-compat로 1주 유지.
+  KILLSWITCH_ACTIVE:
+    "서비스가 일시 중단되었습니다. 재개 시 알림톡으로 안내드립니다",
+  SERVICE_KILL_SWITCH:
+    "서비스가 일시 중단되었습니다. 재개 시 알림톡으로 안내드립니다",
+  KILLSWITCH_ALREADY_ACTIVE:
+    "이미 수동 비상 정지가 활성화되어 있습니다",
+  KILLSWITCH_NOT_ACTIVE:
+    "활성화된 수동 비상 정지가 없습니다",
 };
 
 export function getErrorMessage(code: string): string {

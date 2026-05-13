@@ -53,8 +53,8 @@ describe("SubscribersPage", () => {
       pro_count: 12,
       blocked_count: 1,
       withdrawn_count: 7,
-      pending_cancellation_count: null,
-      upcoming_renewals: [],
+      pending_cancellation_count: 0,
+      pending_cancellations: [],
     });
 
     renderWithQuery(<SubscribersPage />);
@@ -63,7 +63,7 @@ describe("SubscribersPage", () => {
     expect(screen.getByText(/2026-04-29 15:30 KST/)).toBeTruthy();
   });
 
-  it("HOLD-PG 자리 — 'PG 연동 후 표시됩니다' 메시지 노출", async () => {
+  it("해지 예약 없음 → 비어있음 안내 노출", async () => {
     const { fetchSubscribers } = await import(
       "@/features/admin-dashboard/api/analytics"
     );
@@ -73,15 +73,55 @@ describe("SubscribersPage", () => {
       pro_count: 1,
       blocked_count: 0,
       withdrawn_count: 0,
-      pending_cancellation_count: null,
-      upcoming_renewals: [],
+      pending_cancellation_count: 0,
+      pending_cancellations: [],
     });
 
     renderWithQuery(<SubscribersPage />);
     await screen.findByText("5명");
     expect(
-      screen.getByText(/유료 종결 예정 리스트는 PG 연동 후 표시됩니다/),
+      screen.getByText(/현재 해지 예약된 구독이 없습니다/),
     ).toBeTruthy();
+    expect(screen.getByText(/총 0건/)).toBeTruthy();
+  });
+
+  it("해지 예약 목록 — 행 + 종료 예정일 + D-카운트", async () => {
+    const { fetchSubscribers } = await import(
+      "@/features/admin-dashboard/api/analytics"
+    );
+    // 충분히 미래로 잡아 D-카운트가 양수가 되게 함 (테스트 안정성)
+    const future = new Date(Date.now() + 1000 * 60 * 60 * 24 * 10).toISOString();
+    (fetchSubscribers as ReturnType<typeof vi.fn>).mockResolvedValue({
+      as_of: "2026-04-29T15:30:00+09:00",
+      free_count: 10,
+      pro_count: 3,
+      blocked_count: 0,
+      withdrawn_count: 0,
+      pending_cancellation_count: 2,
+      pending_cancellations: [
+        {
+          user_id: 1,
+          email_masked: "a****@x.com",
+          canceled_at: "2026-04-20T10:00:00+09:00",
+          current_period_end: future,
+        },
+        {
+          user_id: 2,
+          email_masked: "b****@y.com",
+          canceled_at: "2026-04-25T09:30:00+09:00",
+          current_period_end: future,
+        },
+      ],
+    });
+
+    renderWithQuery(<SubscribersPage />);
+    await screen.findByText("a****@x.com");
+    expect(screen.getByText("b****@y.com")).toBeTruthy();
+    expect(screen.getByText(/총 2건/)).toBeTruthy();
+    expect(screen.getByText("2026-04-20")).toBeTruthy();
+    // D-카운트는 "D-N" 또는 "오늘" 형식
+    const dCells = screen.getAllByText(/^D-\d+$|^오늘$/);
+    expect(dCells.length).toBeGreaterThanOrEqual(2);
   });
 
   it("4 KPI 합 = 전체 (시뮬레이션 응답 기준)", async () => {
@@ -94,8 +134,8 @@ describe("SubscribersPage", () => {
       pro_count: 5,
       blocked_count: 2,
       withdrawn_count: 3,
-      pending_cancellation_count: null,
-      upcoming_renewals: [],
+      pending_cancellation_count: 0,
+      pending_cancellations: [],
     });
 
     renderWithQuery(<SubscribersPage />);
@@ -103,7 +143,6 @@ describe("SubscribersPage", () => {
     expect(screen.getByText("5명")).toBeTruthy();
     expect(screen.getByText("2명")).toBeTruthy();
     expect(screen.getByText("3명")).toBeTruthy();
-    // 합 검증은 컴포넌트가 노출하지 않으므로, KPI 4개 모두 확인
   });
 
   it("API 실패 → role=alert", async () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { IconDislike, IconLike } from "@wanteddev/wds-icon";
 import { submitFeedback } from "@/features/qa/api/qa-feedback";
 import styles from "./AnswerFeedback.module.css";
 
@@ -58,7 +59,7 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
         onClick={() => mutation.mutate("good")}
         className={buttonClass(rating === "good")}
       >
-        👍
+        <IconLike aria-hidden="true" className={styles.icon} />
       </button>
       <button
         type="button"
@@ -68,7 +69,7 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
         onClick={() => mutation.mutate("bad")}
         className={buttonClass(rating === "bad")}
       >
-        👎
+        <IconDislike aria-hidden="true" className={styles.icon} />
       </button>
       {errorText && (
         <span role="status" aria-live="polite" className={styles.errorText}>

@@ -10,11 +10,8 @@ test.describe("F-000 메인 랜딩 페이지", () => {
   });
 
   test("서비스 소개 카피가 표시된다", async ({ page }) => {
-    await expect(page.getByText("치과 임상 질문")).toBeVisible();
-  });
-
-  test("Advisory 면책 고지가 표시된다 (NFR-C6)", async ({ page }) => {
-    await expect(page.getByText("본 답변은 참고용이며 의학적 판단은 전문가 책임")).toBeVisible();
+    await expect(page.getByText("치과 보험청구")).toBeVisible();
+    await expect(page.getByText("Denvia AI에게 질문하세요.")).toBeVisible();
   });
 
   test("우상단 로그인 버튼이 있다", async ({ page }) => {

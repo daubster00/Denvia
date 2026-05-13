@@ -54,6 +54,7 @@ export function formatAuditAction(action: string): string {
 // Story 6.2 — 감사 로그 diff 필드 한국어 라벨
 export const DIFF_FIELD_LABELS: Record<string, string> = {
   subscription_status: "구독 상태",
+  segment: "가입유형",
   is_blocked: "차단 여부",
   blocked_until: "차단 만료",
   daily_quota_override: "1일 한도",
@@ -69,6 +70,10 @@ export function formatDiffValue(field: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (field === "subscription_status" && typeof value === "string") {
     const known = SUBSCRIPTION_STATUS_LABELS[value as SubscriptionStatus];
+    return known ?? value;
+  }
+  if (field === "segment" && typeof value === "string") {
+    const known = SEGMENT_LABELS[value as Segment];
     return known ?? value;
   }
   if (typeof value === "boolean") return value ? "예" : "아니오";

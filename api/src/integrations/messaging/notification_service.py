@@ -25,6 +25,7 @@ from api.src.models.notification_queue import (
     STATUS_SENT,
     NotificationQueue,
 )
+from api.src.services.runtime_config_service import get_night_block_settings
 from api.src.utils.korean_time import is_night_block_time, next_8am_kst
 
 if TYPE_CHECKING:
@@ -58,10 +59,13 @@ class NotificationService:
         provider: MessagingProvider,
         session_factory: async_sessionmaker[AsyncSession],
         redis: aioredis.Redis,
+        *,
+        runtime_redis: aioredis.Redis,
     ) -> None:
         self._provider = provider
         self._session_factory = session_factory
-        self._redis = redis
+        self._redis = redis                    # DB 2: rate limit
+        self._runtime_redis = runtime_redis    # DB 3: runtime config
 
     async def send(
         self,
@@ -70,6 +74,7 @@ class NotificationService:
         template_code: str,
         variables: dict[str, str],
         idempotency_key: str,
+        urgent: bool = False,
     ) -> SendResult:
         """알림을 발송한다.
 
@@ -79,6 +84,7 @@ class NotificationService:
             template_code: TEMPLATE_CATALOG 키
             variables: 템플릿 변수
             idempotency_key: 중복 방지 키 (예: "payment_id:42:success")
+            urgent: True면 야간 차단 판정을 우회한다 (AC-4)
         """
         template = get_template(template_code)
 
@@ -107,25 +113,44 @@ class NotificationService:
             )
             return SendResult(status=STATUS_RATE_LIMITED, deferred_until=deferred_until)
 
-        # 3. 야간 차단 — NOTICE 카테고리는 21~08 KST 발송 불가 (AC-5)
-        if template.category == TemplateCategory.NOTICE and is_night_block_time():
-            deferred_until = next_8am_kst().replace(tzinfo=None)
-            await self._enqueue(
-                user_id=user_id,
-                template_code=template_code,
-                variables=variables,
-                idempotency_key=idempotency_key,
-                channel="alimtalk",
-                status=STATUS_DEFERRED,
-                deferred_until=deferred_until,
-            )
+        # 3. 야간 차단 — NOTICE 카테고리 + urgent=False인 경우만 적용 (AC-3·4·6)
+        if template.category == TemplateCategory.NOTICE and not urgent:
+            night_settings = await get_night_block_settings(self._runtime_redis)
+            if night_settings.enabled:
+                # active가 None이면 시각 기반 이중 안전망 폴백 (AC-3 2차)
+                is_night = (
+                    night_settings.active
+                    if night_settings.active is not None
+                    else is_night_block_time()
+                )
+                if is_night:
+                    deferred_until = next_8am_kst().astimezone(timezone.utc).replace(tzinfo=None)
+                    await self._enqueue(
+                        user_id=user_id,
+                        template_code=template_code,
+                        variables=variables,
+                        idempotency_key=idempotency_key,
+                        channel="alimtalk",
+                        status=STATUS_DEFERRED,
+                        deferred_until=deferred_until,
+                    )
+                    logger.info(
+                        "notification.night_deferred",
+                        user_id=user_id,
+                        template_code=template_code,
+                        deferred_until=str(deferred_until),
+                    )
+                    return SendResult(status=STATUS_DEFERRED, deferred_until=deferred_until)
+
+        # urgent=True로 NOTICE 야간을 우회한 경우만 별도 로깅 (AC-4)
+        if urgent and template.category == TemplateCategory.NOTICE and is_night_block_time():
             logger.info(
-                "notification.night_deferred",
+                "notification.night_block_bypassed",
                 user_id=user_id,
                 template_code=template_code,
-                deferred_until=str(deferred_until),
+                category=template.category.value,
+                reason="manual_urgent",
             )
-            return SendResult(status=STATUS_DEFERRED, deferred_until=deferred_until)
 
         # 4. 알림톡 발송 시도
         alimtalk_ok = await self._try_send_alimtalk(user_id, phone, template_code, variables)
@@ -338,11 +363,20 @@ def get_notification_service() -> NotificationService:
 
     from api.src.integrations.messaging.adapters import get_adapter
     from api.src.models.base import async_session_factory
-    from api.src.settings import REDIS_DB_RATE_LIMIT, settings
+    from api.src.settings import REDIS_DB_RATE_LIMIT, REDIS_DB_RUNTIME_CONFIG, settings
 
     provider = get_adapter()
-    redis_client = aioredis.from_url(
+    rate_limit_redis = aioredis.from_url(
         f"{settings.redis_url}/{REDIS_DB_RATE_LIMIT}",
         decode_responses=True,
     )
-    return NotificationService(provider, async_session_factory, redis_client)
+    runtime_redis = aioredis.from_url(
+        f"{settings.redis_url}/{REDIS_DB_RUNTIME_CONFIG}",
+        decode_responses=True,
+    )
+    return NotificationService(
+        provider,
+        async_session_factory,
+        rate_limit_redis,
+        runtime_redis=runtime_redis,
+    )

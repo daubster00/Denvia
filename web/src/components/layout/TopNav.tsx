@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -53,9 +54,11 @@ export function TopNav({ onResetChat }: TopNavProps) {
   }, [menuOpen]);
 
   const isPro = user?.subscription_status === "pro";
-  const planAbbr = isPro ? "Pr" : "Bs";
   const planLabel = isPro ? "Pro" : "Basic";
   const planClass = isPro ? styles.planBadgePro : styles.planBadgeFree;
+  const planIconSrc = isPro
+    ? "/symbol_no_background_color.png"
+    : "/symbol_no_background_gray.png";
 
   return (
     <header className={styles.header}>
@@ -107,7 +110,13 @@ export function TopNav({ onResetChat }: TopNavProps) {
                   className={`${styles.planBadge} ${planClass}`}
                   aria-label={`${planLabel} 플랜`}
                 >
-                  {planAbbr}
+                  <Image
+                    src={planIconSrc}
+                    alt=""
+                    width={20}
+                    height={20}
+                    className={styles.planBadgeIcon}
+                  />
                 </span>
                 <span className={styles.userEmail}>{user.email}</span>
                 <svg
@@ -137,7 +146,13 @@ export function TopNav({ onResetChat }: TopNavProps) {
                         className={`${styles.planBadge} ${planClass}`}
                         aria-hidden="true"
                       >
-                        {planAbbr}
+                        <Image
+                          src={planIconSrc}
+                          alt=""
+                          width={20}
+                          height={20}
+                          className={styles.planBadgeIcon}
+                        />
                       </span>
                       <span className={styles.menuPlanName}>{planLabel}</span>
                     </div>

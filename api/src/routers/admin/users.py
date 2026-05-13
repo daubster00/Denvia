@@ -15,21 +15,31 @@ from __future__ import annotations
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from slowapi.util import get_remote_address
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import require_admin
 from api.src.middleware.rate_limit import limiter
 from api.src.models.base import get_session
 from api.src.models.user import User
+from api.src.schemas.admin.user_activity import (
+    UserAnomalyEventListResponse,
+    UserInquiryListResponse,
+    UserQALogListResponse,
+)
 from api.src.schemas.admin.users import (
     UserDetailResponse,
     UserPermissionUpdateRequest,
     UserSearchItem,
     UserSearchListResponse,
 )
-from api.src.services import admin_user_service, user_service
+from api.src.services import (
+    admin_user_activity_service,
+    admin_user_service,
+    user_service,
+)
 from api.src.utils.jwt import (
     JWTDecodeError,
     SessionExpired,
@@ -39,6 +49,21 @@ from api.src.utils.jwt import (
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
+
+
+async def _require_user_exists(db: AsyncSession, user_id: int) -> None:
+    """대상 사용자 존재 검증 — 404 ADMIN_USER_NOT_FOUND."""
+    exists = (
+        await db.execute(select(User.id).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_USER_NOT_FOUND",
+                "message": "사용자를 찾을 수 없습니다.",
+            },
+        )
 
 
 def _admin_user_id_key(request: Request) -> str:
@@ -116,6 +141,89 @@ async def get_user(
     )
 
     return detail
+
+
+@router.get("/{user_id}/qa-logs", response_model=UserQALogListResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def list_user_qa_logs(
+    request: Request,
+    user_id: int,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> UserQALogListResponse:
+    """관리자용 사용자 질의 로그 — 사용자 활동 로그 페이지의 질의 탭."""
+    await _require_user_exists(db, user_id)
+    result = await admin_user_activity_service.list_user_qa_logs(
+        db, user_id=user_id, page=page, per_page=per_page
+    )
+    logger.info(
+        "admin.users.activity.qa_logs.viewed",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        page=page,
+        per_page=per_page,
+        total=result.total,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return result
+
+
+@router.get("/{user_id}/inquiries", response_model=UserInquiryListResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def list_user_inquiries(
+    request: Request,
+    user_id: int,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> UserInquiryListResponse:
+    """관리자용 사용자 문의 내역 — 사용자 활동 로그 페이지의 문의 탭."""
+    await _require_user_exists(db, user_id)
+    result = await admin_user_activity_service.list_user_inquiries(
+        db, user_id=user_id, page=page, per_page=per_page
+    )
+    logger.info(
+        "admin.users.activity.inquiries.viewed",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        page=page,
+        per_page=per_page,
+        total=result.total,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return result
+
+
+@router.get(
+    "/{user_id}/anomaly-events", response_model=UserAnomalyEventListResponse
+)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def list_user_anomaly_events(
+    request: Request,
+    user_id: int,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> UserAnomalyEventListResponse:
+    """관리자용 사용자 이상 이벤트 — 사용자 활동 로그 페이지의 이상 이벤트 탭."""
+    await _require_user_exists(db, user_id)
+    result = await admin_user_activity_service.list_user_anomaly_events(
+        db, user_id=user_id, page=page, per_page=per_page
+    )
+    logger.info(
+        "admin.users.activity.anomaly_events.viewed",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        page=page,
+        per_page=per_page,
+        total=result.total,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return result
 
 
 @router.patch("/{user_id}", response_model=UserSearchItem)

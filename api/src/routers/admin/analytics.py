@@ -9,7 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from redis.asyncio import Redis as AsyncRedis
@@ -90,10 +90,12 @@ async def user_tokens(
             func.coalesce(func.sum(QALog.cost_usd), Decimal("0")).label("cost"),
             func.count(QALog.id).label("q_cnt"),
         )
+        .join(User, User.id == QALog.user_id)
         .where(
             QALog.created_at >= start,
             QALog.created_at < end,
             QALog.user_id.is_not(None),
+            User.role != "admin",
         )
         .group_by(QALog.user_id)
     )
@@ -172,13 +174,13 @@ class SignupsResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class UpcomingRenewal(BaseModel):
-    """HOLD-PG 자리 — 본 스토리에서는 응답에 등장하지 않음."""
+class PendingCancellation(BaseModel):
+    """해지 예약 구독 — current_period_end 도래 시 종료 예정."""
 
     user_id: int
     email_masked: str
-    next_charge_at: datetime
-    amount_krw: int
+    canceled_at: datetime          # 사용자가 해지 신청한 시각
+    current_period_end: datetime   # 유료 종료 예정 시각
 
 
 class SubscribersResponse(BaseModel):
@@ -187,8 +189,8 @@ class SubscribersResponse(BaseModel):
     pro_count: int
     blocked_count: int
     withdrawn_count: int
-    pending_cancellation_count: int | None  # HOLD-PG: 항상 None
-    upcoming_renewals: list[UpcomingRenewal]  # HOLD-PG: 항상 []
+    pending_cancellation_count: int
+    pending_cancellations: list[PendingCancellation]
 
 
 @router.get("/signups", response_model=SignupsResponse, response_model_by_alias=True)
@@ -243,6 +245,7 @@ async def subscribers(
         pro=counts["pro_count"],
         blocked=counts["blocked_count"],
         withdrawn=counts["withdrawn_count"],
+        pending_cancellation=counts["pending_cancellation_count"],
     )
     return SubscribersResponse(as_of=now_kst, **counts)
 
@@ -660,11 +663,14 @@ class RevenueVarianceFilters(BaseModel):
 
 class RevenueVarianceResponse(BaseModel):
     year_month: str
-    revenue_krw: int
+    revenue_krw: int  # gross alias — 하위호환
+    gross_revenue_krw: int
+    refund_krw: int
+    net_revenue_krw: int
     token_cost_usd: str
     token_cost_krw: int
     usd_to_krw: int
-    variance_krw: int
+    variance_krw: int  # net_revenue_krw - token_cost_krw
     error_count: int
     anomaly_count: int
     applied_filters: RevenueVarianceFilters
@@ -672,9 +678,12 @@ class RevenueVarianceResponse(BaseModel):
 
 class RevenueSeriesItem(BaseModel):
     year_month: str
-    revenue_krw: int
+    revenue_krw: int  # gross alias — 하위호환
+    gross_revenue_krw: int
+    refund_krw: int
+    net_revenue_krw: int
     token_cost_krw: int
-    variance_krw: int
+    variance_krw: int  # net_revenue_krw - token_cost_krw
 
 
 class RevenueSeriesResponse(BaseModel):
@@ -776,11 +785,13 @@ async def revenue_variance_export(
     ws_sum.title = "Summary"
     ws_sum.append(["항목", "값"])
     ws_sum.append(["기간", f"{ym} (KST 1일 00:00 ~ 다음 달 1일 00:00)"])
-    ws_sum.append(["당월 매출 (KRW)", summary["revenue_krw"]])
+    ws_sum.append(["당월 총매출 (KRW)", summary["gross_revenue_krw"]])
+    ws_sum.append(["당월 환불액 (KRW)", summary["refund_krw"]])
+    ws_sum.append(["당월 순매출 (KRW)", summary["net_revenue_krw"]])
     ws_sum.append(["당월 토큰 비용 (USD)", summary["token_cost_usd"]])
     ws_sum.append(["적용 환율 (KRW/USD)", summary["usd_to_krw"]])
     ws_sum.append(["당월 토큰 비용 (KRW)", summary["token_cost_krw"]])
-    ws_sum.append(["차액 (KRW)", summary["variance_krw"]])
+    ws_sum.append(["차액 (KRW, 순매출−토큰비용)", summary["variance_krw"]])
     ws_sum.append(["결제 실패 건수", summary["error_count"]])
     ws_sum.append(["이상 이벤트 건수", summary["anomaly_count"]])
     ws_sum.append(["행 제한 (Detail)", EXPORT_DETAIL_LIMIT_REVENUE])
@@ -798,6 +809,8 @@ async def revenue_variance_export(
             "email_masked",
             "provider_order_id",
             "subscription_id",
+            "status",
+            "환불 여부",
         ]
     )
     for r in rows:
@@ -810,6 +823,8 @@ async def revenue_variance_export(
                 _excel_safe_cell(r["email_masked"]),
                 _excel_safe_cell(r["provider_order_id"]),
                 _excel_safe_cell(r["subscription_id"]),
+                _excel_safe_cell(r["status"]),
+                _excel_safe_cell(r["is_refunded"]),
             ]
         )
 

@@ -5,7 +5,6 @@
 import { useUsageSummary } from "../hooks/useUsageSummary";
 import { PlanCard } from "./PlanCard";
 import { SegmentCard } from "./SegmentCard";
-import { SubscriptionCard } from "./SubscriptionCard";
 import { UsageCard } from "./UsageCard";
 
 import styles from "./AccountSummary.module.css";
@@ -31,10 +30,6 @@ export function AccountSummary() {
     );
   }
 
-  // pro / admin은 SubscriptionCard 자체 분기로 처리(none → null 반환).
-  // free 사용자는 active/cancel_pending이 없으면 SubscriptionCard가 null.
-  const subscriptionEnabled = data.subscription_status !== "admin";
-
   return (
     <div className={styles.grid}>
       <PlanCard
@@ -48,7 +43,6 @@ export function AccountSummary() {
         dailyRemaining={data.daily_remaining}
         subscriptionStatus={data.subscription_status}
       />
-      <SubscriptionCard enabled={subscriptionEnabled} />
       <SegmentCard
         segment={data.segment}
         yearsOfExperience={data.years_of_experience}

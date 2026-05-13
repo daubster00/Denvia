@@ -60,6 +60,9 @@ def _summary(year_month: str = "2026-05"):
     return {
         "year_month": year_month,
         "revenue_krw": 1_485_000,
+        "gross_revenue_krw": 1_485_000,
+        "refund_krw": 0,
+        "net_revenue_krw": 1_485_000,
         "token_cost_usd": "12.345600",
         "token_cost_krw": 17_284,
         "usd_to_krw": 1400,
@@ -83,6 +86,8 @@ def _detail_row(payment_id: int = 1, **kwargs):
         "email_masked": "u**@example.com",
         "provider_order_id": f"sub-{payment_id}-2026-05-07",
         "subscription_id": 100 + payment_id,
+        "status": "success",
+        "is_refunded": "아니오",
     }
     base.update(kwargs)
     return base
@@ -155,12 +160,14 @@ class TestRevenueExportEndpoint:
         assert "Detail" in wb.sheetnames
         ws = wb["Summary"]
         keys = [row[0].value for row in ws.iter_rows(min_row=2)]
-        # 10 항목 이상 노출 (기간 + 매출 + 토큰비용 USD/KRW + 환율 + 차액 + 에러 + 이상 + 행제한 + 잘림)
-        assert "당월 매출 (KRW)" in keys
+        # 환불 분리 후: 기간 + 총매출/환불/순매출 + 토큰비용 USD/KRW + 환율 + 차액 + 에러 + 이상 + 행제한 + 잘림
+        assert "당월 총매출 (KRW)" in keys
+        assert "당월 환불액 (KRW)" in keys
+        assert "당월 순매출 (KRW)" in keys
         assert "당월 토큰 비용 (USD)" in keys
         assert "적용 환율 (KRW/USD)" in keys
         assert "당월 토큰 비용 (KRW)" in keys
-        assert "차액 (KRW)" in keys
+        assert "차액 (KRW, 순매출−토큰비용)" in keys
         assert "결제 실패 건수" in keys
         assert "이상 이벤트 건수" in keys
         assert "행 제한 (Detail)" in keys
@@ -187,6 +194,8 @@ class TestRevenueExportEndpoint:
             "email_masked",
             "provider_order_id",
             "subscription_id",
+            "status",
+            "환불 여부",
         )
 
     async def test_excel_safe_cell_applied(self):

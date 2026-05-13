@@ -40,7 +40,7 @@ test.describe("Story 2.7 — Chat-First 자동 전환", () => {
     const input = page.getByRole("textbox", { name: "질문 입력" });
     await expect(input).toBeVisible();
     // 히어로 카피가 보여야 한다.
-    await expect(page.getByText("AI가 참고 답변을 드립니다")).toBeVisible();
+    await expect(page.getByText("Denvia AI에게 질문하세요.")).toBeVisible();
     // hero 상태에서는 메시지 영역(role=log)이 마운트되지 않는다.
     await expect(page.getByRole("log", { name: "대화 내역" })).toHaveCount(0);
   });
@@ -82,7 +82,7 @@ test.describe("Story 2.7 — Chat-First 자동 전환", () => {
     await expect(page.getByText("임플란트 보험 적용 기준?")).toBeVisible();
     await expect(page.getByRole("textbox", { name: "질문 입력" })).toBeVisible();
     // 히어로 카피는 사라져야 한다.
-    await expect(page.getByText("AI가 참고 답변을 드립니다")).toHaveCount(0);
+    await expect(page.getByText("Denvia AI에게 질문하세요.")).toHaveCount(0);
   });
 
   test("AC-3: 환경변수 설정 시 우측 하단 고객문의 FAB 렌더 + aria-label 확인", async ({ page }) => {

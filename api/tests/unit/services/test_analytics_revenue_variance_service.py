@@ -101,6 +101,14 @@ def _make_scalar_result(value):
     return r
 
 
+def _make_row_result(**fields):
+    """get_revenue_variance_month rev_stmt — .one() 이 gross/refund 컬럼 row 반환."""
+    row = MagicMock(**fields)
+    r = MagicMock()
+    r.one = MagicMock(return_value=row)
+    return r
+
+
 def _make_rows_result(rows):
     r = MagicMock()
     r.all = MagicMock(return_value=rows)
@@ -118,10 +126,10 @@ async def test_revenue_month_uses_charge_success_event_and_dedupes_by_payment_id
 
     async def fake_execute(stmt):
         captured.append(stmt)
-        # 호출 순서: revenue / cost / error / anomaly
+        # 호출 순서: revenue(.one) / cost / error / anomaly
         idx = len(captured)
         if idx == 1:
-            return _make_scalar_result(9900)  # revenue_krw
+            return _make_row_result(gross=9900, refund=0)  # gross/refund row
         if idx == 2:
             return _make_scalar_result(Decimal("0"))  # token_cost_usd
         if idx == 3:
@@ -141,6 +149,9 @@ async def test_revenue_month_uses_charge_success_event_and_dedupes_by_payment_id
         )
 
     assert result["revenue_krw"] == 9900
+    assert result["gross_revenue_krw"] == 9900
+    assert result["refund_krw"] == 0
+    assert result["net_revenue_krw"] == 9900
 
     rev_sql = _stmt_to_sql(captured[0]).lower()
     assert "payment_events" in rev_sql
@@ -152,19 +163,20 @@ async def test_revenue_month_uses_charge_success_event_and_dedupes_by_payment_id
 
 
 @pytest.mark.asyncio
-async def test_revenue_month_includes_refunded_payments():
-    """refunded 결제도 매출에 포함됨을 확인 — Payment.status 와 무관하게 charge_success 기준."""
+async def test_revenue_month_includes_refunded_payments_as_gross_and_subtracts_for_net():
+    """charge_success 결제는 gross 에 포함되고, 그중 refunded 분은 refund 로 분리·차감되어 net 이 계산된다."""
 
     async def fake_execute(stmt):
-        # 시뮬레이션: charge_success 이벤트가 있는 payment_ids 하나만 환불(상태 refunded)된 케이스에서도
-        # SQL 결과 SUM 은 9900 으로 반환된다고 가정. 즉 service 가 status 필터를 두지 않음을 검증.
         from sqlalchemy.dialects import postgresql
 
         sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})).lower()
-        # revenue_krw 쿼리에 status 동등 필터가 없어야 환불 결제가 제외되지 않는다
+        # revenue 쿼리 — gross 는 status 동등 필터 없이 charge_success 기반,
+        # refund 는 case-when status='refunded' 로 분리되어야 함
         if "amount_krw" in sql and "sum" in sql:
-            assert "status = 'success'" not in sql, "revenue 집계는 status='success' 동등 필터를 두면 안 됨"
-            return _make_scalar_result(9900)
+            assert "where payments.status = 'success'" not in sql, "gross 는 status='success' 동등 필터를 두면 안 됨"
+            assert "'refunded'" in sql, "refund 분리를 위해 status='refunded' case-when 필요"
+            # 9900 결제 중 9900 이 환불된 시나리오 — net = 0
+            return _make_row_result(gross=9900, refund=9900)
         if "qa_logs" in sql or "cost_usd" in sql:
             return _make_scalar_result(Decimal("0"))
         return _make_scalar_result(0)
@@ -180,7 +192,10 @@ async def test_revenue_month_includes_refunded_payments():
         result = await analytics_service.get_revenue_variance_month(
             session, redis_runtime=redis_runtime, year_month="2026-05"
         )
-    assert result["revenue_krw"] == 9900
+    assert result["gross_revenue_krw"] == 9900
+    assert result["refund_krw"] == 9900
+    assert result["net_revenue_krw"] == 0
+    assert result["variance_krw"] == 0  # net 0 - token 0
 
 
 @pytest.mark.asyncio

@@ -32,12 +32,12 @@ describe("SegmentCard — Story 4.3 AC-5", () => {
     expect(link.getAttribute("href")).toBe("/signup/segment");
   });
 
-  it("카카오톡 채널 안내 카피 + 이메일 주소 0건 (project_email_zero_policy)", () => {
+  it("문의하기 안내 카피 + 이메일 주소 0건 (project_email_zero_policy)", () => {
     const { container } = render(
       <SegmentCard segment="doctor" yearsOfExperience={5} />
     );
     expect(
-      screen.getByText(/변경은 카카오톡 채널 고객문의로 요청해주세요/)
+      screen.getByText(/변경은 우측 하단 문의하기를 통해 요청해주세요/)
     ).toBeDefined();
     // mailto: 미사용 + 이메일 주소 패턴 미노출
     expect(container.innerHTML.includes("mailto:")).toBe(false);

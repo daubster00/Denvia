@@ -1,0 +1,78 @@
+/* Story 9.2 — 수동 비상 정지 해제 1단계 confirm.
+ * X·ESC·배경 클릭 닫기 허용 (위험도 낮음 — 정상 운영 복귀).
+ */
+
+.dimmer {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 23, 25, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.heading {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: #171719;
+}
+
+.description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #5a5c63;
+}
+
+.actionRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cancelBtn {
+  flex: 1;
+  padding: 12px 0;
+  background: #fff;
+  color: #5a5c63;
+  border: 1px solid #e1e2e4;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryBtn {
+  flex: 1;
+  padding: 12px 0;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.primaryBtn:disabled {
+  background: #bfdbfe;
+  cursor: not-allowed;
+}

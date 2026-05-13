@@ -1,0 +1,123 @@
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px 0;
+}
+
+.figureLink {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background-color: #f8fafc;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.figureLink:hover {
+  background-color: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.figureLink:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+.figureItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.figureLabel {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.figureValue {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.figureAlert {
+  color: #dc2626;
+}
+
+.recentBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recentTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin: 0;
+}
+
+.recentEmpty {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.recentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recentItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: #334155;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.recentType {
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentTarget {
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentTime {
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .figures {
+    grid-template-columns: 1fr;
+  }
+  .recentItem {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

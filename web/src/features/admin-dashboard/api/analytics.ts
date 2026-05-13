@@ -90,11 +90,11 @@ export async function fetchSignups(
   return res.json() as Promise<SignupsResponse>;
 }
 
-export interface UpcomingRenewal {
+export interface PendingCancellation {
   user_id: number;
   email_masked: string;
-  next_charge_at: string;
-  amount_krw: number;
+  canceled_at: string;          // ISO-8601
+  current_period_end: string;   // ISO-8601
 }
 
 export interface SubscribersResponse {
@@ -103,8 +103,8 @@ export interface SubscribersResponse {
   pro_count: number;
   blocked_count: number;
   withdrawn_count: number;
-  pending_cancellation_count: number | null;
-  upcoming_renewals: UpcomingRenewal[];
+  pending_cancellation_count: number;
+  pending_cancellations: PendingCancellation[];
 }
 
 export async function fetchSubscribers(): Promise<SubscribersResponse> {
@@ -291,10 +291,15 @@ export async function fetchSegmentsExport(
 
 export interface RevenueVarianceResponse {
   year_month: string;
+  /** @deprecated gross_revenue_krw 와 동일 (하위호환 alias) */
   revenue_krw: number;
+  gross_revenue_krw: number;
+  refund_krw: number;
+  net_revenue_krw: number;
   token_cost_usd: string;
   token_cost_krw: number;
   usd_to_krw: number;
+  /** net_revenue_krw - token_cost_krw */
   variance_krw: number;
   error_count: number;
   anomaly_count: number;
@@ -307,7 +312,11 @@ export interface RevenueVarianceResponse {
 
 export interface RevenueSeriesItem {
   year_month: string;
+  /** @deprecated gross_revenue_krw 와 동일 (하위호환 alias) */
   revenue_krw: number;
+  gross_revenue_krw: number;
+  refund_krw: number;
+  net_revenue_krw: number;
   token_cost_krw: number;
   variance_krw: number;
 }

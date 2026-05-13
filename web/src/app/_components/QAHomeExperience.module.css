@@ -38,6 +38,14 @@
   width: 100%;
 }
 
+.dentalMark {
+  width: 150px;
+  height: 134px;
+  object-fit: contain;
+  align-self: center;
+  margin-bottom: 12px;
+}
+
 .heroTitle {
   margin: 0;
   font-size: clamp(26px, 4vw, 40px);
@@ -46,6 +54,7 @@
   line-height: 1.25;
   letter-spacing: 0;
   text-align: center;
+  word-break: keep-all;
 }
 
 .heroTitleAccent {
@@ -60,6 +69,15 @@
   font-size: 16px;
   color: #70737c;
   line-height: 1.6;
-  max-width: 480px;
+  max-width: 560px;
   text-align: center;
+  word-break: keep-all;
+}
+
+@media (max-width: 767px) {
+  .dentalMark {
+    width: 144px;
+    height: 128px;
+    margin-bottom: 8px;
+  }
 }

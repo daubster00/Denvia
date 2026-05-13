@@ -132,7 +132,7 @@ export function BillingKeyForm({
             <p className={styles.successIcon}>👑</p>
             <h2 className={styles.title}>Pro 구독이 시작되었습니다!</h2>
             <p className={styles.description}>
-              이제 무제한으로 임상 Q&A를 이용하실 수 있습니다.
+              이제 무제한으로 Denvia AI에게 질문하실 수 있습니다.
             </p>
             <button type="button" className={styles.ctaBtn} onClick={handleDone}>
               시작하기

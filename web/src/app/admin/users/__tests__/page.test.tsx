@@ -3,6 +3,12 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdminUsersPage from "../page";
 
+const pushMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock, replace: vi.fn() }),
+}));
+
 vi.mock("@/features/admin-users/api/users", () => ({
   fetchUsers: vi.fn(),
   fetchUserDetail: vi.fn(),
@@ -80,10 +86,8 @@ describe("AdminUsersPage", () => {
     });
   });
 
-  it("opens drawer when row is clicked and fetches detail", async () => {
-    const { fetchUsers, fetchUserDetail } = await import(
-      "@/features/admin-users/api/users"
-    );
+  it("navigates to user detail page when row is clicked", async () => {
+    const { fetchUsers } = await import("@/features/admin-users/api/users");
     const item = {
       user_id: 7,
       email: "drawer@example.com",
@@ -107,19 +111,6 @@ describe("AdminUsersPage", () => {
       per_page: 20,
       total: 1,
     });
-    (fetchUserDetail as ReturnType<typeof vi.fn>).mockResolvedValue({
-      user: item,
-      subscription_summary: {
-        current_status: "pro",
-        billing_key_active: true,
-        card_last4: "4321",
-        card_company: "삼성카드",
-        subscription_started_at: null,
-        next_charge_at: null,
-      },
-      recent_qa: [],
-      recent_anomaly_events: [],
-    });
 
     renderWithQuery(<AdminUsersPage />);
     await waitFor(() => {
@@ -127,9 +118,6 @@ describe("AdminUsersPage", () => {
     });
     fireEvent.click(screen.getByTestId("user-row-7"));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("user-detail-drawer")).toBeTruthy();
-      expect(fetchUserDetail).toHaveBeenCalledWith(7);
-    });
+    expect(pushMock).toHaveBeenCalledWith("/admin/users/7");
   });
 });

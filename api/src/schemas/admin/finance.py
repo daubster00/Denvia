@@ -14,6 +14,7 @@ PaymentEventType = Literal[
     "refund_denied",
 ]
 PaymentStatus = Literal["pending", "success", "failed", "refunded", "refund_pending"]
+ManualRefundQueueStatus = Literal["pending", "approved", "denied"]
 
 
 class PaymentEventItem(BaseModel):
@@ -47,3 +48,6 @@ class PaymentEventListResponse(BaseModel):
 
 class PaymentEventDetailResponse(PaymentEventItem):
     raw_response_json: dict | None
+    manual_refund_queue_id: int | None = None
+    manual_refund_queue_status: ManualRefundQueueStatus | None = None
+    refund_reason: str | None = None

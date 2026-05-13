@@ -10,6 +10,7 @@ import {
   IconDocument,
   IconStorage,
   IconCode,
+  IconTag,
   IconCoins,
   IconBubble,
   IconSetting,
@@ -47,6 +48,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   { icon: IconStorage as IconComponent, label: "RAG 데이터", href: "/admin/rag" },
   { icon: IconCode as IconComponent, label: "프롬프트", href: "/admin/prompt" },
+  { icon: IconTag as IconComponent, label: "동의어 데이터", href: "/admin/synonyms" },
   {
     icon: IconCoins as IconComponent,
     label: "재무",
@@ -54,10 +56,19 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { label: "결제 기록", href: "/admin/finance/payments" },
       { label: "매출 대시보드", href: "/admin/finance/revenue" },
+      { label: "비상 정지", href: "/admin/finance/killswitch" },
     ],
   },
   { icon: IconBubble as IconComponent, label: "CS", href: "/admin/cs" },
-  { icon: IconSetting as IconComponent, label: "설정", href: "/admin/settings" },
+  {
+    icon: IconSetting as IconComponent,
+    label: "설정",
+    href: "/admin/settings",
+    children: [
+      { label: "예산 · AI 모델", href: "/admin/settings" },
+      { label: "SEO", href: "/admin/settings/seo" },
+    ],
+  },
 ];
 
 function cx(...classes: Array<string | false | null | undefined>): string {

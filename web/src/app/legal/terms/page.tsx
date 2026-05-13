@@ -26,9 +26,9 @@ export default function TermsPage() {
         </p>
 
         <p className={styles.paragraph}>
-          본 약관은 Denvia(이하 &ldquo;회사&rdquo;)가 제공하는 치과 분야 인공지능 상담 보조 서비스
-          &ldquo;Denvia&rdquo;(이하 &ldquo;서비스&rdquo;)의 이용과 관련하여 회사와 회원 간의 권리, 의무 및
-          책임사항을 규정합니다.
+          본 약관은 Denvia(이하 &ldquo;회사&rdquo;)가 제공하는 치과 보험청구 및 데스크 행정업무 정보
+          안내 AI 보조 서비스 &ldquo;Denvia&rdquo;(이하 &ldquo;서비스&rdquo;)의 이용과 관련하여
+          회사와 회원 간의 권리, 의무 및 책임사항을 규정합니다.
         </p>
 
         <section className={styles.section}>
@@ -42,8 +42,8 @@ export default function TermsPage() {
           <h2 className={styles.sectionTitle}>제2조 (용어의 정의)</h2>
           <ol className={styles.list}>
             <li>
-              <span className={styles.emphasis}>&ldquo;서비스&rdquo;</span>란 회사가 제공하는 치과 임상 정보·운영
-              정보에 대한 인공지능 기반 질의응답 보조 도구를 의미합니다.
+              <span className={styles.emphasis}>&ldquo;서비스&rdquo;</span>란 회사가 제공하는 치과
+              보험청구 및 데스크 행정업무 정보에 대한 인공지능 기반 질의응답 보조 도구를 의미합니다.
             </li>
             <li>
               <span className={styles.emphasis}>&ldquo;회원&rdquo;</span>이란 본 약관에 동의하고 회사와 서비스
@@ -102,7 +102,7 @@ export default function TermsPage() {
             <li>
               회사는 회원에게 다음과 같은 서비스를 제공합니다.
               <ul className={styles.list}>
-                <li>치과 임상 및 운영 정보에 대한 AI 질의응답</li>
+                <li>치과 보험청구 및 데스크 행정업무 정보에 대한 AI 질의응답</li>
                 <li>가입유형별 맞춤형 정보 제공</li>
                 <li>기타 회사가 추가로 개발하거나 제휴를 통해 제공하는 서비스</li>
               </ul>
@@ -122,7 +122,8 @@ export default function TermsPage() {
                 본 서비스의 AI 답변은 일반적인 정보 제공을 목적으로 하며, 의료 진단·처방·치료 권고에 해당하지
                 않습니다.
               </span>{" "}
-              임상 적용 여부는 자격 있는 치과 전문가의 직접 판단에 따라야 합니다.
+              실제 보험청구 제출·진료 결정은 자격 있는 치과 전문가의 직접 판단과 책임 하에
+              이루어져야 합니다.
             </li>
             <li>
               AI 답변은 학습 자료의 범위 및 모델의 특성상 부정확하거나 최신 정보가 아닐 수 있습니다. 회원은 답변
@@ -236,8 +237,25 @@ export default function TermsPage() {
           </ol>
         </section>
 
+        <section id="killswitch-extension" className={styles.section}>
+          <h2 className={styles.sectionTitle}>제14조 (서비스 비상 정지 시 유료 구독 자동 연장)</h2>
+          <ol className={styles.list}>
+            <li>
+              회사는 결제 시스템 장애·외부 API 장애·이상 트래픽 등 비상 상황에서 서비스를
+              일시 정지(이하 &ldquo;비상 정지&rdquo;)할 수 있습니다.
+            </li>
+            <li>
+              비상 정지로 인해 활성 유료 구독자가 서비스를 이용하지 못한 경우, 회사는 정지
+              시점부터 해제 시점까지의 기간만큼 해당 회원의 다음 결제일 및 구독 만료일을
+              자동으로 연장합니다(분 단위 정확).
+            </li>
+            <li>연장 결과는 알림톡(또는 SMS 폴백)으로 회원에게 통지됩니다.</li>
+            <li>비상 정지 기간 중 신규 결제 재시도는 자동 보류되며, 해제 후 자동 재개됩니다.</li>
+          </ol>
+        </section>
+
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>제14조 (분쟁 해결)</h2>
+          <h2 className={styles.sectionTitle}>제15조 (분쟁 해결)</h2>
           <ol className={styles.list}>
             <li>본 약관과 관련하여 회사와 회원 간에 발생한 분쟁에 대해서는 대한민국 법을 준거법으로 합니다.</li>
             <li>분쟁이 소송으로 진행될 경우 민사소송법상의 관할법원에 제소합니다.</li>

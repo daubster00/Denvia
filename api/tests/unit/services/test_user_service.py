@@ -592,3 +592,121 @@ class TestSpeedUpdatePermission:
         # Pydantic ge=0.0/le=30.0 — service에 들어오기 전에 422
         with pytest.raises(Exception):
             UserPermissionUpdateRequest(free_delay_override=30.5)
+
+
+# ── 가입유형(segment) 편집 — 관리자 전용 (SSOT 편차 #1) ──────────────────────
+
+
+@pytest.mark.asyncio
+class TestSegmentUpdate:
+    """관리자가 가입유형을 수정하는 경로의 diff/audit 동작 검증."""
+
+    async def _stub_serialize(
+        self, segment: str | None = "dentist"
+    ) -> UserSearchItem:
+        return UserSearchItem(
+            user_id=1,
+            email="user@example.com",
+            phone=None,
+            segment=segment,
+            years_of_experience=5,
+            subscription_status="free",
+            is_blocked=False,
+            block_until=None,
+            daily_quota_override=None,
+            free_delay_override=None,
+            created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            last_login_at=None,
+            withdrawn_at=None,
+            pro_since=None,
+            card_last4=None,
+            card_company=None,
+        )
+
+    async def test_segment_only_change_records_diff_and_permission_edit_action(
+        self,
+    ):
+        user = _make_user()
+        user.segment = "dentist"
+        db = _make_db()
+        request = _make_request_state()
+        payload = UserPermissionUpdateRequest(segment="dental_hygienist")
+
+        with patch.object(
+            user_service, "get_user_by_id", new=AsyncMock(return_value=user)
+        ):
+            with patch.object(
+                user_service,
+                "_serialize_response",
+                new=AsyncMock(
+                    return_value=await self._stub_serialize(
+                        segment="dental_hygienist"
+                    )
+                ),
+            ):
+                await user_service.update_permission(request, 1, payload, db)
+
+        assert user.segment == "dental_hygienist"
+        assert request.state.audit_action == AUDIT_USER_PERMISSION_EDIT
+        diff = request.state.audit_diff
+        assert diff["before"]["segment"] == "dentist"
+        assert diff["after"]["segment"] == "dental_hygienist"
+        # 다른 필드는 변경되지 않았으므로 diff에서 제외
+        assert "subscription_status" not in diff["before"]
+        assert "daily_quota_override" not in diff["before"]
+
+    async def test_segment_unchanged_value_is_no_op_in_diff(self):
+        # 같은 값으로 PATCH 보냈을 때 diff에는 포함되지 않아야 함
+        user = _make_user()
+        user.segment = "dentist"
+        user.daily_quota_override = None
+        db = _make_db()
+        request = _make_request_state()
+        payload = UserPermissionUpdateRequest(
+            segment="dentist", daily_quota_override=50
+        )
+
+        with patch.object(
+            user_service, "get_user_by_id", new=AsyncMock(return_value=user)
+        ):
+            with patch.object(
+                user_service,
+                "_serialize_response",
+                new=AsyncMock(return_value=await self._stub_serialize()),
+            ):
+                await user_service.update_permission(request, 1, payload, db)
+
+        diff = request.state.audit_diff
+        assert "segment" not in diff["before"]
+        assert "segment" not in diff["after"]
+        assert diff["before"]["daily_quota_override"] is None
+        assert diff["after"]["daily_quota_override"] == 50
+
+    async def test_segment_from_null_records_diff(self):
+        user = _make_user()
+        user.segment = None
+        db = _make_db()
+        request = _make_request_state()
+        payload = UserPermissionUpdateRequest(segment="student_other")
+
+        with patch.object(
+            user_service, "get_user_by_id", new=AsyncMock(return_value=user)
+        ):
+            with patch.object(
+                user_service,
+                "_serialize_response",
+                new=AsyncMock(
+                    return_value=await self._stub_serialize(segment="student_other")
+                ),
+            ):
+                await user_service.update_permission(request, 1, payload, db)
+
+        assert user.segment == "student_other"
+        diff = request.state.audit_diff
+        assert diff["before"]["segment"] is None
+        assert diff["after"]["segment"] == "student_other"
+
+    async def test_segment_invalid_value_rejected_at_schema(self):
+        # Pydantic Literal — 3종 외 값은 422
+        with pytest.raises(Exception):
+            UserPermissionUpdateRequest(segment="doctor")  # type: ignore[arg-type]

@@ -9,6 +9,17 @@ import { useAlertStore, type AlertAction } from "@/stores/alert-store";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// 타자기 효과: 글자가 차르륵 흘러나오는 속도(ms/char).
+// 너무 빠르면 한꺼번에 보이고, 너무 느리면 답답해진다.
+const TYPEWRITER_CHAR_INTERVAL_MS = 28;
+// 버퍼가 밀리면 한 틱에 여러 글자를 한꺼번에 흘려보내 따라잡는다.
+function typewriterDrainCount(remaining: number): number {
+  if (remaining > 200) return 8;
+  if (remaining > 100) return 4;
+  if (remaining > 40) return 2;
+  return 1;
+}
+
 // Story 2.6: 백엔드 ReframePayload 검증과 동등한 schema 가드
 function isValidReframePayload(
   raw: unknown,
@@ -53,6 +64,53 @@ export function useQAStream() {
       { id: userId, role: "user", content: questionText, status: "complete", timestamp: now },
       { id: assistantId, role: "assistant", content: "", status: "pending", timestamp: now },
     ]);
+
+    // 타자기 버퍼 — SSE 토큰이 들어오는 즉시 store에 찍지 않고 글자 단위 큐로 보낸다.
+    // 백엔드는 토큰을 묶어 보낼 때가 있어서 그대로 찍으면 "한꺼번에 팍" 보인다.
+    const charBuffer: string[] = [];
+    let typewriterTimer: ReturnType<typeof setInterval> | null = null;
+    let streamFinished = false;
+    let pendingFinalizeId: number | null = null;
+    let typewriterDone: () => void = () => {};
+    const typewriterPromise = new Promise<void>((resolve) => {
+      typewriterDone = resolve;
+    });
+
+    const startTypewriter = () => {
+      if (typewriterTimer !== null) return;
+      typewriterTimer = setInterval(() => {
+        const remaining = charBuffer.length;
+        if (remaining > 0) {
+          const n = typewriterDrainCount(remaining);
+          const chunk = charBuffer.splice(0, n).join("");
+          addToken(assistantId, chunk);
+          return;
+        }
+        if (streamFinished) {
+          if (typewriterTimer !== null) {
+            clearInterval(typewriterTimer);
+            typewriterTimer = null;
+          }
+          if (pendingFinalizeId !== null) {
+            finalize(assistantId, pendingFinalizeId);
+            queryClient.invalidateQueries({ queryKey: ["me", "quota"] });
+            pendingFinalizeId = null;
+          }
+          typewriterDone();
+        }
+      }, TYPEWRITER_CHAR_INTERVAL_MS);
+    };
+
+    const cleanupTypewriter = () => {
+      if (typewriterTimer !== null) {
+        clearInterval(typewriterTimer);
+        typewriterTimer = null;
+      }
+      charBuffer.length = 0;
+      typewriterDone();
+    };
+
+    controller.signal.addEventListener("abort", cleanupTypewriter);
 
     try {
       await fetchEventSource(`${API_BASE}/api/v1/qa/stream`, {
@@ -115,11 +173,18 @@ export function useQAStream() {
         },
         onmessage(ev) {
           const data = JSON.parse(ev.data);
-          if (ev.event === "token") addToken(assistantId, data.delta);
+          if (ev.event === "token") {
+            // 글자 단위로 큐에 쌓고 타자기를 가동한다 (스프레드 = Unicode safe split).
+            const delta = data.delta as string;
+            for (const ch of [...delta]) charBuffer.push(ch);
+            startTypewriter();
+          }
           else if (ev.event === "rule_matched") markRuleMatched(assistantId, data.procedure_count);
           else if (ev.event === "reframe") {
             // Story 2.6: snake_case → camelCase 매핑 + 백엔드와 동등한 schema 가드
             if (isValidReframePayload(data)) {
+              // reframe은 content를 통째로 교체하므로 버퍼에 남은 글자는 의미 없다.
+              charBuffer.length = 0;
               markReframe(assistantId, {
                 followUpQuestion: data.follow_up_question.trim().replace(/\s+/g, " "),
                 options: data.options.map((o: string) => o.trim()),
@@ -129,17 +194,26 @@ export function useQAStream() {
             }
           }
           else if (ev.event === "done") {
-            finalize(assistantId, data.qa_log_id);
-            // Story 2.3: done 이벤트 시 quota 카운터 즉시 갱신 (AC-8)
-            queryClient.invalidateQueries({ queryKey: ["me", "quota"] });
+            // 타자기 버퍼가 비워진 다음 finalize 한다.
+            streamFinished = true;
+            pendingFinalizeId = data.qa_log_id;
+            startTypewriter();
           }
-          else if (ev.event === "error") setError(assistantId, data.message);
+          else if (ev.event === "error") {
+            cleanupTypewriter();
+            setError(assistantId, data.message);
+          }
         },
         onerror(err) {
           throw err;
         },
       });
+      // SSE는 끝났지만 타자기 버퍼가 남아있을 수 있다 — 다 흘러나올 때까지 대기.
+      if (typewriterTimer !== null) {
+        await typewriterPromise;
+      }
     } catch (err) {
+      cleanupTypewriter();
       if ((err as Error).name !== "AbortError") {
         setError(assistantId, "답변 생성에 실패했습니다. 다시 시도해주세요.");
       }

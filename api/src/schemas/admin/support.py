@@ -21,8 +21,19 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 InquiryStatus = Literal["open", "in_progress", "resolved"]
+InquiryType = Literal["billing", "account", "usage", "bug", "suggestion", "other"]
 UserSegment = Literal["doctor", "hygienist", "student_other"]
 UserSubscriptionStatus = Literal["free", "pro", "blocked"]
+
+
+class InquiryAttachmentItem(BaseModel):
+    """관리자 상세에서 노출되는 첨부 이미지."""
+
+    id: int
+    file_url: str
+    file_name: str
+    mime_type: str
+    size_bytes: int
 
 
 class InquiryListItem(BaseModel):
@@ -33,6 +44,7 @@ class InquiryListItem(BaseModel):
     user_email: str
     subject: str
     body_preview: str = Field(default="", description="body[:80] 한글 안전 truncation")
+    inquiry_type: InquiryType = "other"
     segment: UserSegment | None = None
     status: InquiryStatus
     created_at: datetime
@@ -75,6 +87,7 @@ class InquiryDetailResponse(BaseModel):
     user_phone: str | None = None
     subject: str
     body: str = Field(description="원본은 html.escape() 적용된 plain text")
+    inquiry_type: InquiryType = "other"
     status: InquiryStatus
     created_at: datetime
     resolved_at: datetime | None = None
@@ -84,6 +97,8 @@ class InquiryDetailResponse(BaseModel):
     user_created_at: datetime
     recent_qa: list[RecentQAExcerpt] = Field(default_factory=list)
     replies: list[InquiryReplyItem] = Field(default_factory=list)
+    # 0030 확장 — 사용자가 작성 시 첨부한 이미지
+    attachments: list[InquiryAttachmentItem] = Field(default_factory=list)
 
 
 class InquiryUpdateRequest(BaseModel):
@@ -141,8 +156,10 @@ class SupportCountsResponse(BaseModel):
 
 __all__ = [
     "InquiryStatus",
+    "InquiryType",
     "UserSegment",
     "UserSubscriptionStatus",
+    "InquiryAttachmentItem",
     "InquiryListItem",
     "InquiryListResponse",
     "RecentQAExcerpt",

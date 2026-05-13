@@ -6,6 +6,8 @@ QA flow는 ``api.src.services.qa_service`` 의 ``_resolve_*`` helper로 동일 �
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from fastapi import Request
 from redis.asyncio import Redis as AsyncRedis
 
@@ -22,15 +24,27 @@ KEY_FREE_DELAY_ENABLED = "runtime:free_delay_enabled"
 KEY_FREE_DELAY = "runtime:free_delay"
 # Story 7.1 — 쪽지함 미리보기 동시 노출 최대 개수 (관리자 CS 페이지에서 편집).
 KEY_INBOX_PREVIEW_MAX_COUNT = "runtime:inbox_preview_max_count"
+# 관리자 설정 — RAG 본 체인에서 사용할 채팅 모델 (기본 o4-mini, 화이트리스트 강제).
+KEY_CHAT_MODEL = "runtime:chat_model"
 
 # QA flow 기본값과 일치 (qa_service.DEFAULT_FREE_DAILY_QUOTA / DEFAULT_FREE_DELAY_SECONDS).
 DEFAULT_SHOW_SUBSCRIBE = True
 DEFAULT_FREE_DAILY_QUOTA = 10
 DEFAULT_FREE_DELAY_ENABLED = True
-DEFAULT_FREE_DELAY_SECONDS = 3
+DEFAULT_FREE_DELAY_SECONDS = 1
 DEFAULT_INBOX_PREVIEW_MAX_COUNT = 1
 INBOX_PREVIEW_MAX_COUNT_MIN = 1
 INBOX_PREVIEW_MAX_COUNT_MAX = 5
+
+# ADR-0002 §결정 2: RAG 인수자 튜닝값 o4-mini 가 기본값. 관리자가 명시적으로 바꿀 때만 override.
+DEFAULT_CHAT_MODEL = "o4-mini"
+# 허용 모델 화이트리스트 — 알 수 없는 값이 들어오면 reject(400). 응답 속도/품질/비용 특성은 admin UI에서 안내.
+ALLOWED_CHAT_MODELS: tuple[str, ...] = (
+    "o4-mini",       # 추론 모델, 첫 토큰까지 지연 큼(스트리밍 효과 미미)
+    "gpt-4o-mini",   # 가장 빠른 첫 토큰, 가장 저렴, 일반 대화 우수
+    "gpt-4o",        # 빠르고 똑똑, 가격 중상
+    "gpt-4-turbo",   # 매우 똑똑, 첫 토큰 약간 느림
+)
 
 
 def _to_bool(raw: str | None, default: bool) -> bool:
@@ -97,6 +111,31 @@ def _clamp_preview_max_count(raw: int) -> int:
     )
 
 
+async def get_chat_model(redis_runtime: AsyncRedis) -> str:
+    """RAG 본 체인에서 사용할 채팅 모델명 조회.
+
+    Redis 미설정 또는 화이트리스트 위반 시 ``DEFAULT_CHAT_MODEL``(o4-mini)로 폴백.
+    fail-safe: 손상된 값이 들어가 있어도 서비스는 인수자 기본값으로 계속 응답.
+    """
+    raw = await redis_runtime.get(KEY_CHAT_MODEL)
+    if raw is None:
+        return DEFAULT_CHAT_MODEL
+    value = str(raw)
+    if value not in ALLOWED_CHAT_MODELS:
+        return DEFAULT_CHAT_MODEL
+    return value
+
+
+async def set_chat_model(redis_runtime: AsyncRedis, value: str) -> str:
+    """채팅 모델명 저장. 화이트리스트 위반 시 ``ValueError`` raise (라우터에서 400 변환)."""
+    if value not in ALLOWED_CHAT_MODELS:
+        raise ValueError(
+            f"지원하지 않는 모델입니다: {value}. 허용 모델: {', '.join(ALLOWED_CHAT_MODELS)}"
+        )
+    await redis_runtime.set(KEY_CHAT_MODEL, value)
+    return value
+
+
 async def get_inbox_preview_max_count(redis_runtime: AsyncRedis) -> int:
     raw = await redis_runtime.get(KEY_INBOX_PREVIEW_MAX_COUNT)
     return _clamp_preview_max_count(_to_int(raw, DEFAULT_INBOX_PREVIEW_MAX_COUNT))
@@ -133,3 +172,43 @@ async def get_usd_to_krw(redis_runtime: AsyncRedis) -> int:
     if not (USD_TO_KRW_MIN <= v <= USD_TO_KRW_MAX):
         return DEFAULT_USD_TO_KRW
     return v
+
+
+# =============================================================================
+# Story 4.2 — 야간 광고 차단 토글 (F-502, NFR-C5, 협의서 #C-02)
+# 관리자 편집 경로(A-305)는 Epic 7 책임 — 본 모듈은 읽기 전용.
+# =============================================================================
+
+KEY_NIGHT_AD_BLOCK_ENABLED = "runtime:night_ad_block_enabled"
+KEY_NIGHT_BLOCK_ACTIVE = "runtime:night_block_active"
+KEY_NIGHT_BLOCK_START_HOUR = "runtime:night_block_start_hour"
+KEY_NIGHT_BLOCK_END_HOUR = "runtime:night_block_end_hour"
+
+DEFAULT_NIGHT_AD_BLOCK_ENABLED = True
+DEFAULT_NIGHT_BLOCK_START_HOUR = 21
+DEFAULT_NIGHT_BLOCK_END_HOUR = 8
+
+
+@dataclass(frozen=True)
+class NightBlockSettings:
+    enabled: bool          # 마스터 토글 (관리자 ON/OFF)
+    active: bool | None    # Beat가 SET한 현재 상태; None이면 호출자가 시각 기반 폴백
+
+
+async def get_night_block_settings(redis_runtime: AsyncRedis) -> NightBlockSettings:
+    """야간 광고 차단 설정을 조회한다.
+
+    Redis 호출 실패 시 enabled=True(fail-closed) + active=None 반환.
+    fail-closed인 이유: 광고성 발송이 야간에 일어나는 것은 정보통신망법 위반 리스크(NFR-C5).
+    """
+    try:
+        enabled_raw = await redis_runtime.get(KEY_NIGHT_AD_BLOCK_ENABLED)
+        active_raw = await redis_runtime.get(KEY_NIGHT_BLOCK_ACTIVE)
+    except Exception:
+        return NightBlockSettings(enabled=True, active=None)
+    enabled = _to_bool(enabled_raw, DEFAULT_NIGHT_AD_BLOCK_ENABLED)
+    if active_raw is None:
+        active = None
+    else:
+        active = str(active_raw).lower() in ("1", "true", "on", "yes")
+    return NightBlockSettings(enabled=enabled, active=active)

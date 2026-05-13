@@ -31,7 +31,7 @@ export function RagStatusWidget() {
   return (
     <DashboardWidget
       title="RAG 인덱스 상태"
-      caption="치과 지식 인덱스 변경/재빌드 현황을 확인합니다."
+      caption="치과 보험청구·행정 지식 인덱스 변경/재빌드 현황을 확인합니다."
       detailHref="/admin/rag/data"
       detailLabel="RAG 데이터로 이동"
     >

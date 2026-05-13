@@ -104,10 +104,23 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         title="환불 처리 완료",
         body=(
             "환불이 완료되었습니다.\n"
-            "환불 금액: {amount_krw}원\n"
-            "처리일: {effective_at}"
+            "처리 유형: {refund_reason_label}\n"
+            "결제 원금: {amount_krw}원\n"
+            "환불 금액: {refund_amount_krw}원\n"
+            "처리일: {effective_at}\n\n"
+            "영업일 3~4일 내 결제 카드로 입금됩니다.\n"
+            "문의는 Denvia 1:1 문의 게시판을 이용해주세요."
         ),
-        variables=["amount_krw", "effective_at"],
+        # Story 3.6 v1.1 + Story 9.1 v1.1 공용 단일 템플릿.
+        # `refund_reason_label`은 표시용 한국어. 코드 측 enum `refund_reason`
+        # (`cooling_off` | `manual_full` | `manual_partial`)에서 매핑되어 입력된다.
+        # docs/ALIMTALK_TEMPLATES.md §7 참조.
+        variables=[
+            "refund_reason_label",
+            "amount_krw",
+            "refund_amount_krw",
+            "effective_at",
+        ],
         category=TemplateCategory.BILLING,
     ),
     "billing.refund_denied": TemplateDefinition(
@@ -146,6 +159,16 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "다음 결제일: {next_charge_at}"
         ),
         variables=["next_charge_at"],
+        category=TemplateCategory.SUBSCRIPTION,
+    ),
+    "subscription.extended_due_to_killswitch": TemplateDefinition(
+        title="[Denvia] 구독 기간 자동 연장 안내",
+        body=(
+            "서비스 일시 중단으로 회원님의 구독 기간이 {duration_hours}시간만큼 자동 연장되었습니다.\n"
+            "변경된 만료일: {extended_to}\n"
+            "이용에 불편을 드려 죄송합니다."
+        ),
+        variables=["duration_hours", "extended_to"],
         category=TemplateCategory.SUBSCRIPTION,
     ),
     # ── 고객문의 (support) — Story 9.3 ───────────────────────────────────────
@@ -209,6 +232,18 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "다음 달 1일 자동 해제 또는 예산 상향 시 즉시 재개됩니다."
         ),
         variables=["limit_usd"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    # ── 관리자 고객문의 신규 접수 (Story 9.3 후속) ───────────────────────────
+    "admin.support_inquiry_created": TemplateDefinition(
+        title="[Denvia] 새 1:1 문의 접수",
+        body=(
+            "새 1:1 문의가 접수되었습니다.\n"
+            "작성자: {user_name}\n"
+            "문의 제목: {inquiry_subject}\n"
+            "관리자 페이지에서 답변을 처리해주세요."
+        ),
+        variables=["user_name", "inquiry_subject"],
         category=TemplateCategory.SYSTEM,
     ),
 }

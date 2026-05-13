@@ -23,6 +23,7 @@ from api.src.routers.admin import events as admin_events
 from api.src.routers.admin import audit_logs as admin_audit_logs
 from api.src.routers.admin import prompts as admin_prompts
 from api.src.routers.admin import rag as admin_rag
+from api.src.routers.admin import synonyms as admin_synonyms
 from api.src.routers.admin import budget as admin_budget
 from api.src.routers.admin import analytics as admin_analytics
 from api.src.routers.admin import users as admin_users
@@ -31,6 +32,8 @@ from api.src.routers.admin import support as admin_support
 from api.src.routers.admin import content as admin_content
 from api.src.routers.admin import finance as admin_finance
 from api.src.routers.admin import refunds as admin_refunds
+from api.src.routers.admin import killswitch as admin_killswitch
+from api.src.routers.admin import seo as admin_seo
 from api.src.routers import billing as billing_router
 from api.src.routers import support as support_router
 from api.src.settings import settings
@@ -142,6 +145,7 @@ app.include_router(admin_events.router, prefix="/api/v1")
 app.include_router(admin_audit_logs.router, prefix="/api/v1")
 app.include_router(admin_rag.router, prefix="/api/v1")
 app.include_router(admin_prompts.router, prefix="/api/v1")
+app.include_router(admin_synonyms.router, prefix="/api/v1")
 app.include_router(admin_budget.router, prefix="/api/v1")
 app.include_router(admin_analytics.router, prefix="/api/v1")
 app.include_router(admin_users.router, prefix="/api/v1")
@@ -150,6 +154,8 @@ app.include_router(admin_support.router, prefix="/api/v1")
 app.include_router(admin_content.router, prefix="/api/v1")
 app.include_router(admin_finance.router, prefix="/api/v1")
 app.include_router(admin_refunds.router, prefix="/api/v1")
+app.include_router(admin_killswitch.router, prefix="/api/v1")
+app.include_router(admin_seo.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")
 app.include_router(support_router.router)
 
@@ -161,4 +167,24 @@ app.mount(
     "/static/popup-images",
     StaticFiles(directory=str(POPUP_IMAGE_DIR)),
     name="popup-images",
+)
+
+# 정적 자산 — SEO 설정 자산(파비콘/OG 이미지). 첫 업로드 시 자동 생성됨.
+from api.src.services.seo_service import SEO_ASSET_DIR  # noqa: E402
+
+SEO_ASSET_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/static/seo-assets",
+    StaticFiles(directory=str(SEO_ASSET_DIR)),
+    name="seo-assets",
+)
+
+# 정적 자산 — 1:1 문의 첨부 이미지 (0030). 첫 업로드 시 자동 생성됨.
+from api.src.services.support_service import INQUIRY_IMAGE_DIR  # noqa: E402
+
+INQUIRY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/static/inquiry-images",
+    StaticFiles(directory=str(INQUIRY_IMAGE_DIR)),
+    name="inquiry-images",
 )

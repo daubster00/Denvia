@@ -73,3 +73,26 @@ async def _finalize_async() -> dict:
 
     async with async_session_factory() as db:
         return await svc_finalize(db)
+
+
+# ── Story 9.2 — kill-switch 정지 기간 자동 구독 연장 ─────────────────────────
+
+
+@celery_app.task(
+    name="billing.extend_subscriptions_for_killswitch_duration",
+    bind=True,
+    max_retries=0,
+)
+def extend_subscriptions_for_killswitch_duration(
+    self, killswitch_state_id: int
+) -> dict:
+    """수동 비상 정지 해제 시 자동 enqueue — 정지 기간만큼 활성 구독 만료일 연장."""
+    return asyncio.run(_extend_subscriptions_async(killswitch_state_id))
+
+
+async def _extend_subscriptions_async(killswitch_state_id: int) -> dict:
+    from api.src.models.base import async_session_factory
+    from api.src.services.billing_service import extend_active_subscriptions
+
+    async with async_session_factory() as db:
+        return await extend_active_subscriptions(killswitch_state_id, db)

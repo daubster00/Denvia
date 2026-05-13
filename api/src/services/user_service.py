@@ -206,6 +206,7 @@ async def update_permission(
 
     # before snapshot — 변경 가능 컬럼만
     before_status = user.subscription_status
+    before_segment = user.segment
     before_quota = user.daily_quota_override
     before_speed = user.free_delay_override
     before_blocked_until = user.blocked_until
@@ -237,6 +238,10 @@ async def update_permission(
     elif payload.daily_quota_override is not None:
         user.daily_quota_override = payload.daily_quota_override
 
+    # 4-b) segment (가입유형) — 관리자만 변경 가능 (SSOT 편차 #1)
+    if payload.segment is not None:
+        user.segment = payload.segment
+
     # 5) pro_granted_by_admin 단독 변경 (subscription_status='pro' 분기에서 이미 설정한 경우 idempotent)
     if (
         payload.pro_granted_by_admin is not None
@@ -257,6 +262,7 @@ async def update_permission(
 
     # after snapshot
     after_status = user.subscription_status
+    after_segment = user.segment
     after_quota = user.daily_quota_override
     after_speed = user.free_delay_override
     after_blocked_until = user.blocked_until
@@ -270,6 +276,10 @@ async def update_permission(
     if _diff_value(before_status, after_status):
         before_diff["subscription_status"] = before_status
         after_diff["subscription_status"] = after_status
+
+    if _diff_value(before_segment, after_segment):
+        before_diff["segment"] = before_segment
+        after_diff["segment"] = after_segment
 
     if _diff_value(before_quota, after_quota):
         before_diff["daily_quota_override"] = before_quota

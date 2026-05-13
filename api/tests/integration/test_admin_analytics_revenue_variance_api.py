@@ -60,6 +60,9 @@ def _service_payload(year_month: str = "2026-05", **overrides):
     base = {
         "year_month": year_month,
         "revenue_krw": 1_485_000,
+        "gross_revenue_krw": 1_485_000,
+        "refund_krw": 0,
+        "net_revenue_krw": 1_485_000,
         "token_cost_usd": "12.345600",
         "token_cost_krw": 17_284,
         "usd_to_krw": 1400,
@@ -73,6 +76,13 @@ def _service_payload(year_month: str = "2026-05", **overrides):
         },
     }
     base.update(overrides)
+    # revenue_krw 만 override 한 테스트는 gross/net 도 함께 동기화 (환불 0 가정)
+    if "revenue_krw" in overrides:
+        base.setdefault("gross_revenue_krw", overrides["revenue_krw"])
+        if "gross_revenue_krw" not in overrides:
+            base["gross_revenue_krw"] = overrides["revenue_krw"]
+        if "net_revenue_krw" not in overrides and "refund_krw" not in overrides:
+            base["net_revenue_krw"] = overrides["revenue_krw"]
     return base
 
 
@@ -220,10 +230,13 @@ class TestRevenueVarianceEndpoint:
         ):
             res = await self._call()
         body = res.json()
-        # AR27 flat — top-level 8 keys + applied_filters
+        # AR27 flat — top-level keys + applied_filters (refund 분리 후 11 + applied_filters)
         for k in (
             "year_month",
             "revenue_krw",
+            "gross_revenue_krw",
+            "refund_krw",
+            "net_revenue_krw",
             "token_cost_usd",
             "token_cost_krw",
             "usd_to_krw",

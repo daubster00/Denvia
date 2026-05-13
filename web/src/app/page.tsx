@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { TopNav } from "@/components/layout/TopNav";
 import { Footer } from "@/components/layout/Footer";
-import { AdvisoryChip } from "@/components/brand/AdvisoryChip";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { useSessionStore } from "@/stores/session-store";
 import { fetchMe } from "@/features/auth/api";
@@ -56,7 +55,6 @@ function UnauthenticatedHome({ isLoading }: { isLoading: boolean }) {
         ) : (
           <ChatInput variant="hero" />
         )}
-        <AdvisoryChip />
       </HeroSection>
       <Footer />
     </>

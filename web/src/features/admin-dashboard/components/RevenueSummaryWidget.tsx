@@ -34,9 +34,26 @@ export function RevenueSummaryWidget() {
       {data && !error && (
         <dl className={styles.figures}>
           <div className={styles.figureItem}>
-            <dt className={styles.figureLabel}>당월 매출</dt>
+            <dt className={styles.figureLabel}>당월 총매출</dt>
             <dd className={styles.figureValue}>
-              {data.revenue_krw.toLocaleString("ko-KR")}원
+              {data.gross_revenue_krw.toLocaleString("ko-KR")}원
+            </dd>
+          </div>
+          <div className={styles.figureItem}>
+            <dt className={styles.figureLabel}>환불액</dt>
+            <dd
+              className={`${styles.figureValue} ${
+                data.refund_krw > 0 ? styles.varianceNegative : ""
+              }`}
+            >
+              {data.refund_krw > 0 ? "−" : ""}
+              {data.refund_krw.toLocaleString("ko-KR")}원
+            </dd>
+          </div>
+          <div className={styles.figureItem}>
+            <dt className={styles.figureLabel}>순매출</dt>
+            <dd className={styles.figureValue}>
+              {data.net_revenue_krw.toLocaleString("ko-KR")}원
             </dd>
           </div>
           <div className={styles.figureItem}>

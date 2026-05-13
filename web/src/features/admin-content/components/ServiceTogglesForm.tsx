@@ -17,7 +17,7 @@ const EMPTY_FORM: RuntimeConfigFormInput = {
   show_subscribe_button: true,
   free_daily_quota: 10,
   free_delay_enabled: true,
-  free_delay_seconds: 3,
+  free_delay_seconds: 1,
 };
 
 export function ServiceTogglesForm() {

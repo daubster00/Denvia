@@ -1,0 +1,163 @@
+/* Story 9.2 — 수동 비상 정지 발동 2단계 확인 다이얼로그.
+ * X 닫기 버튼 없음 / ESC 차단 / focus trap (UX-DR27 의도적 마찰).
+ */
+
+.dimmer {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 23, 25, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 16px;
+  border-left: 4px solid #b91c1c;
+  padding: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.descriptionStrong {
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.textareaError {
+  border-color: #dc2626;
+}
+
+.fieldHint {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.fieldError {
+  margin: 0;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.acknowledgeRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f1;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.acknowledgeCheckbox {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: #b91c1c;
+}
+
+.acknowledgeText {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.actionRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cancelBtn {
+  flex: 1;
+  padding: 12px 0;
+  background: #fff;
+  color: #5a5c63;
+  border: 1px solid #e1e2e4;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dangerBtn {
+  flex: 1;
+  padding: 12px 0;
+  background: #b91c1c;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dangerBtn:hover:not(:disabled) {
+  background: #991b1b;
+}
+
+.dangerBtn:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
+}

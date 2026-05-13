@@ -224,6 +224,60 @@ class TestSingleEvent:
         assert res.status_code == 404
         assert res.json()["code"] == "EVENT_NOT_FOUND"
 
+    async def test_single_event_includes_manual_refund_queue_fields(self):
+        item = _make_item(event_id=77)
+        detail = PaymentEventDetailResponse(
+            **item.model_dump(),
+            raw_response_json=None,
+            manual_refund_queue_id=123,
+            manual_refund_queue_status="approved",
+        )
+        with patch(
+            "api.src.routers.admin.finance.finance_service.get_payment_event",
+            new=AsyncMock(return_value=detail),
+        ):
+            res = await self._call(77)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["manual_refund_queue_id"] == 123
+        assert body["manual_refund_queue_status"] == "approved"
+
+    async def test_single_event_queue_fields_default_null(self):
+        item = _make_item(event_id=78)
+        detail = PaymentEventDetailResponse(
+            **item.model_dump(),
+            raw_response_json=None,
+        )
+        with patch(
+            "api.src.routers.admin.finance.finance_service.get_payment_event",
+            new=AsyncMock(return_value=detail),
+        ):
+            res = await self._call(78)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["manual_refund_queue_id"] is None
+        assert body["manual_refund_queue_status"] is None
+
+    async def test_single_event_returns_refund_reason_for_auto_refund(self):
+        # 자동 환불(수동 큐 미경유) — refund_reason은 payment_events 폴백에서 채워진다.
+        item = _make_item(event_id=79, event_type="refund_requested", status="refunded")
+        detail = PaymentEventDetailResponse(
+            **item.model_dump(),
+            raw_response_json={"reason": "구독 갱신을 실수로 진행했습니다"},
+            manual_refund_queue_id=None,
+            manual_refund_queue_status=None,
+            refund_reason="구독 갱신을 실수로 진행했습니다",
+        )
+        with patch(
+            "api.src.routers.admin.finance.finance_service.get_payment_event",
+            new=AsyncMock(return_value=detail),
+        ):
+            res = await self._call(79)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["refund_reason"] == "구독 갱신을 실수로 진행했습니다"
+        assert body["manual_refund_queue_id"] is None
+
 
 @pytest.mark.asyncio
 class TestExport:

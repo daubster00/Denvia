@@ -4,6 +4,8 @@
 
 import { useState } from "react";
 
+import { IconInbox } from "@wanteddev/wds-icon";
+
 import { useInbox } from "../hooks/useInbox";
 import { useMarkRead } from "../hooks/useMarkRead";
 import type { InboxFilter, InboxItem } from "../types";
@@ -48,7 +50,12 @@ export function InboxList({ filter }: InboxListProps) {
   }
 
   if (data.total === 0) {
-    return <div className={styles.state}>📭 아직 받은 쪽지가 없어요.</div>;
+    return (
+      <div className={styles.state}>
+        <IconInbox className={styles.emptyIcon} aria-hidden="true" />
+        아직 받은 쪽지가 없어요.
+      </div>
+    );
   }
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));

@@ -65,28 +65,15 @@
   cursor: pointer;
 }
 
-.idRow {
-  display: flex;
+.idDisplay {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.idInput {
   height: 32px;
-  width: 140px;
   padding: 0 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
+  background: #f9fafb;
   font-size: 13px;
-}
-
-.clearButton {
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #ffffff;
-  font-size: 12px;
-  color: #374151;
-  cursor: pointer;
+  font-weight: 600;
+  color: #111827;
 }

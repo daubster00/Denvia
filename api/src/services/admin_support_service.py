@@ -22,10 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.src.middleware.audit_actions import AUDIT_SUPPORT_REPLY
 from api.src.models.customer_inquiry import CustomerInquiry
 from api.src.models.inbox_message import InboxMessage
+from api.src.models.inquiry_attachment import InquiryAttachment
 from api.src.models.inquiry_reply import InquiryReply
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.schemas.admin.support import (
+    InquiryAttachmentItem,
     InquiryDetailResponse,
     InquiryListItem,
     InquiryListResponse,
@@ -95,6 +97,7 @@ async def list_inquiries(
         User.segment,
         CustomerInquiry.subject,
         CustomerInquiry.body,
+        CustomerInquiry.inquiry_type,
         CustomerInquiry.status,
         CustomerInquiry.created_at,
         CustomerInquiry.resolved_at,
@@ -158,6 +161,7 @@ async def list_inquiries(
             user_email=row.email,
             subject=row.subject,
             body_preview=(row.body or "")[:80],
+            inquiry_type=row.inquiry_type,
             segment=row.segment if row.segment in ("doctor", "hygienist", "student_other") else None,
             status=row.status,
             created_at=row.created_at,
@@ -217,6 +221,29 @@ async def _fetch_replies(db: AsyncSession, inquiry_id: int) -> list[InquiryReply
     ]
 
 
+async def _fetch_attachments(
+    db: AsyncSession, inquiry_id: int
+) -> list[InquiryAttachmentItem]:
+    """문의 첨부 이미지 — id ASC."""
+    rows = (
+        await db.execute(
+            select(InquiryAttachment)
+            .where(InquiryAttachment.inquiry_id == inquiry_id)
+            .order_by(InquiryAttachment.id.asc())
+        )
+    ).scalars().all()
+    return [
+        InquiryAttachmentItem(
+            id=r.id,
+            file_url=r.file_url,
+            file_name=r.file_name,
+            mime_type=r.mime_type,
+            size_bytes=r.size_bytes,
+        )
+        for r in rows
+    ]
+
+
 async def get_inquiry(db: AsyncSession, inquiry_id: int) -> InquiryDetailResponse | None:
     """단건 상세 — 사용자 메타 + recent_qa(3건) + replies 이력 함께 조회."""
     result = await db.execute(
@@ -230,6 +257,7 @@ async def get_inquiry(db: AsyncSession, inquiry_id: int) -> InquiryDetailRespons
             User.created_at.label("user_created_at"),
             CustomerInquiry.subject,
             CustomerInquiry.body,
+            CustomerInquiry.inquiry_type,
             CustomerInquiry.status,
             CustomerInquiry.created_at,
             CustomerInquiry.resolved_at,
@@ -243,6 +271,7 @@ async def get_inquiry(db: AsyncSession, inquiry_id: int) -> InquiryDetailRespons
 
     recent_qa = await _fetch_recent_qa(db, row.user_id)
     replies = await _fetch_replies(db, inquiry_id)
+    attachments = await _fetch_attachments(db, inquiry_id)
 
     sub_status = row.subscription_status if row.subscription_status in ("free", "pro", "blocked") else "free"
     seg = row.segment if row.segment in ("doctor", "hygienist", "student_other") else None
@@ -254,6 +283,7 @@ async def get_inquiry(db: AsyncSession, inquiry_id: int) -> InquiryDetailRespons
         user_phone=row.phone,
         subject=row.subject,
         body=row.body,
+        inquiry_type=row.inquiry_type,
         status=row.status,
         created_at=row.created_at,
         resolved_at=row.resolved_at,
@@ -262,6 +292,7 @@ async def get_inquiry(db: AsyncSession, inquiry_id: int) -> InquiryDetailRespons
         user_created_at=row.user_created_at,
         recent_qa=recent_qa,
         replies=replies,
+        attachments=attachments,
     )
 
 

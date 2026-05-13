@@ -1,0 +1,403 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  max-width: 56rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.caption {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.statusMessage {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.errorBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+.retryBtn {
+  padding: 0.4rem 0.85rem;
+  background: #ffffff;
+  border: 1px solid #fca5a5;
+  border-radius: 0.5rem;
+  color: #b91c1c;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background: #fff5f5;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.cardTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.cardCaption {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: -0.5rem 0 0;
+  line-height: 1.55;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fieldLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.fieldHint {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  color: #111827;
+  background: #ffffff;
+  font-family: inherit;
+}
+
+.textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.charCount {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.assetRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.assetPreviewBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 8rem;
+  height: 8rem;
+  border: 1px dashed #d1d5db;
+  border-radius: 0.75rem;
+  background: #f9fafb;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.assetPreviewBoxOg {
+  width: 16rem;
+  height: 8.4rem;
+}
+
+.assetPreviewImg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.assetPreviewEmpty {
+  font-size: 0.8125rem;
+  color: #9ca3af;
+  text-align: center;
+  padding: 0 0.5rem;
+  line-height: 1.4;
+}
+
+.assetControls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 16rem;
+}
+
+.assetUrlInput {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #111827;
+  background: #ffffff;
+  font-family: inherit;
+}
+
+.assetUrlInput:focus {
+  outline: none;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.uploadRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.uploadButton {
+  padding: 0.5rem 0.95rem;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.uploadButton:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.uploadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.uploadHint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.actionsRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.saveBtn {
+  padding: 0.6rem 1.5rem;
+  background: #7c3aed;
+  color: #ffffff;
+  border: 1px solid #7c3aed;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: #6d28d9;
+  border-color: #6d28d9;
+}
+
+.saveBtn:disabled {
+  background: #c4b5fd;
+  border-color: #c4b5fd;
+  cursor: not-allowed;
+}
+
+.resetBtn {
+  padding: 0.6rem 1.25rem;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resetBtn:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.resetBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorText {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+}
+
+.successText {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #047857;
+  font-weight: 600;
+}
+
+.previewCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.25rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.previewLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.searchPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+}
+
+.searchPreviewUrl {
+  font-size: 0.75rem;
+  color: #5f6368;
+}
+
+.searchPreviewTitle {
+  font-size: 1.0625rem;
+  color: #1a0dab;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+.searchPreviewDesc {
+  font-size: 0.8125rem;
+  color: #4d5156;
+  line-height: 1.45;
+}
+
+.ogPreview {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  max-width: 30rem;
+}
+
+.ogPreviewImageBox {
+  width: 100%;
+  height: 14rem;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ogPreviewImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ogPreviewImageEmpty {
+  font-size: 0.8125rem;
+  color: #9ca3af;
+}
+
+.ogPreviewBody {
+  padding: 0.85rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+.ogPreviewDomain {
+  font-size: 0.6875rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ogPreviewTitle {
+  font-size: 0.9375rem;
+  color: #111827;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ogPreviewDesc {
+  font-size: 0.8125rem;
+  color: #4b5563;
+  line-height: 1.45;
+}

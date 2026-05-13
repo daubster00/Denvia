@@ -10,7 +10,7 @@ const freePlan: PlanItem = {
   name: "Basic",
   price_krw: 0,
   period: null,
-  features: ["하루 3회 Q&A", "기본 치과 지식 답변"],
+  features: ["하루 3회 Q&A", "기본 보험청구·행정 답변"],
   cta_label: "현재 이용 중",
   is_recommended: false,
 };
@@ -20,7 +20,7 @@ const proPlan: PlanItem = {
   name: "Pro",
   price_krw: 9900,
   period: "/ 월",
-  features: ["무제한 Q&A", "심화 임상 답변", "응답 속도 우선"],
+  features: ["무제한 Q&A", "심화 보험청구·행정 답변", "응답 속도 우선"],
   cta_label: "Pro 시작하기",
   is_recommended: true,
 };

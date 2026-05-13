@@ -96,6 +96,12 @@
   overflow: auto;
 }
 
+.adminMain > * {
+  max-width: 1300px;
+  margin-left: 0;
+  margin-right: auto;
+}
+
 @media (max-width: 767px) {
   .mobileWarning {
     display: block;

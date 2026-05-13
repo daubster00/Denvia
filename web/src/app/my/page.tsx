@@ -18,6 +18,7 @@ import { TopNav } from "@/components/layout/TopNav";
 import { Footer } from "@/components/layout/Footer";
 import { AccountSummary } from "@/features/account/components/AccountSummary";
 import { PaymentHistoryTable } from "@/features/billing/components/PaymentHistoryTable";
+import { useUsageSummary } from "@/features/account/hooks/useUsageSummary";
 import { fetchMe } from "@/features/auth/api";
 import { ConfirmWithdrawPopup } from "@/features/auth/ConfirmWithdrawPopup";
 import { useSessionStore } from "@/stores/session-store";
@@ -39,6 +40,8 @@ export default function MyPage() {
     refetchOnWindowFocus: false,
   });
 
+  const { data: usage } = useUsageSummary();
+
   useEffect(() => {
     if (!isLoading && isError && user == null) {
       openPopup("email");
@@ -50,20 +53,32 @@ export default function MyPage() {
     return null;
   }
 
+  // A-303: 관리자가 구독버튼 노출을 OFF한 경우, 무료 유저에게는 결제 내역 자체를 숨김.
+  // pro/admin은 항상 결제 내역 노출 (해지/환불 진입 필요).
+  const hidePaymentHistory =
+    usage?.subscription_status === "free" && usage?.show_subscribe_button === false;
+
   return (
     <>
       <TopNav />
       <main className={styles.container}>
-        <h1 className={styles.heading}>마이페이지</h1>
+        <header className={styles.header}>
+          <h1 className={styles.heading}>마이페이지</h1>
+          <p className={styles.lead}>
+            계정 정보 및 이용 현황, 결제 내역을 확인하고 관리할 수 있습니다.
+          </p>
+        </header>
         <AccountSummary />
-        <section
-          id="payment-history"
-          className={styles.paymentHistorySection}
-          aria-label="결제 내역"
-        >
-          <h2 className={styles.sectionHeading}>결제 내역</h2>
-          <PaymentHistoryTable />
-        </section>
+        {!hidePaymentHistory && (
+          <section
+            id="payment-history"
+            className={styles.paymentHistorySection}
+            aria-label="결제 내역"
+          >
+            <h2 className={styles.sectionHeading}>결제 내역</h2>
+            <PaymentHistoryTable />
+          </section>
+        )}
         {/* TODO(Story 1.7 → Epic 4 My Page): 정식 메뉴에 통합 후 본 임시 진입점 제거. */}
         <section className={styles.withdrawSection} aria-label="계정 탈퇴">
           <button

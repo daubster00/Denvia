@@ -10,4 +10,4 @@ RUN corepack enable
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "pnpm config set store-dir /pnpm/store && pnpm install --frozen-lockfile && pnpm --dir /workspace/web exec next dev --webpack --hostname 0.0.0.0 --port 3000"]
+CMD ["sh", "-c", "pnpm config set store-dir /pnpm/store && pnpm install --frozen-lockfile && pnpm --dir /workspace/web exec next dev --hostname 0.0.0.0 --port 3000"]

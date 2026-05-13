@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type {
   RefundQueueItem,
   RefundQueueStatus,
@@ -14,12 +15,28 @@ import styles from "./RefundsTabPanel.module.css";
 const PER_PAGE = 50;
 const STATUS_OPTIONS: RefundQueueStatus[] = ["pending", "approved", "denied"];
 
+function parseStatus(raw: string | null): RefundQueueStatus {
+  if (raw === "approved" || raw === "denied" || raw === "pending") {
+    return raw;
+  }
+  return "pending";
+}
+
 export function RefundsTabPanel() {
-  const [status, setStatus] = useState<RefundQueueStatus>("pending");
+  const searchParams = useSearchParams();
+  const initialStatus = parseStatus(searchParams.get("status"));
+  const initialQueueIdRaw = searchParams.get("queue_id");
+  const initialQueueId =
+    initialQueueIdRaw && /^\d+$/.test(initialQueueIdRaw)
+      ? Number(initialQueueIdRaw)
+      : null;
+
+  const [status, setStatus] = useState<RefundQueueStatus>(initialStatus);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<RefundQueueItem | null>(null);
+  const pendingQueueIdRef = useRef<number | null>(initialQueueId);
 
   const list = useRefundQueue({
     status,
@@ -28,6 +45,18 @@ export function RefundsTabPanel() {
     page,
     per_page: PER_PAGE,
   });
+
+  useEffect(() => {
+    const target = pendingQueueIdRef.current;
+    if (target === null || !list.data) return;
+    const hit = list.data.items.find((it) => it.queue_id === target);
+    if (hit) {
+      setSelected(hit);
+      pendingQueueIdRef.current = null;
+    } else if (!list.isFetching) {
+      pendingQueueIdRef.current = null;
+    }
+  }, [list.data, list.isFetching]);
 
   function resetFilters() {
     setStatus("pending");

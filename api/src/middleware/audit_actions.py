@@ -27,9 +27,16 @@ AUDIT_RAG_KNOWLEDGE_DELETE = "rag.knowledge_delete"     # A-402 삭제
 AUDIT_RAG_REBUILD = "rag.rebuild"                       # A-403
 AUDIT_PROMPT_EDIT = "prompt.edit"                       # A-404
 AUDIT_MODEL_PARAMS_EDIT = "rag.model_params.update"     # A-404 모델 파라미터
-AUDIT_KILLSWITCH_TOGGLE = "killswitch.toggle"           # A-502
+AUDIT_SYNONYM_EDIT = "rag.synonym.edit"                 # Story 8.5 — 동의어 그룹 추가/수정/삭제/일괄 가져오기 단일 액션
+AUDIT_SYNONYM_EXPORT = "rag.synonym.export"             # Story 8.5 — CSV 내보내기 (선택적 감사)
+AUDIT_KILLSWITCH_TOGGLE = "killswitch.toggle"           # A-502 (legacy, 호환성 유지)
+AUDIT_KILLSWITCH_MANUAL_TOTAL_ACTIVATE = "killswitch.manual_total.activate"   # Story 9.2 — 수동 비상 정지 발동
+AUDIT_KILLSWITCH_MANUAL_TOTAL_DEACTIVATE = "killswitch.manual_total.deactivate"  # Story 9.2 — 수동 비상 정지 해제
 AUDIT_ANOMALY_REVIEW = "anomaly.review"                 # Story 6.5 — 이상 이벤트 검토 처리
 AUDIT_RUNTIME_CONFIG_UPDATE = "runtime_config.update"   # A-303/A-305 (Story 7.3/7.4 부분) — 서비스 전체 토글 편집
+AUDIT_BUDGET_LIMIT_UPDATE = "budget.monthly_limit.update"  # 관리자 설정 — 당월 KST 예산 한도 조정
+AUDIT_SEO_CONFIG_UPDATE = "seo_config.update"           # 관리자 설정 → SEO — 사이트 이름/설명/키워드/OG/파비콘 편집
+AUDIT_SEO_ASSET_UPLOAD = "seo_config.asset_upload"      # 관리자 설정 → SEO — 파비콘/OG 이미지 업로드
 
 
 def audit_action(action: str):

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { IconDownload } from "@wanteddev/wds-icon";
@@ -68,16 +67,16 @@ export default function RevenueDashboardPage() {
   const series = seriesQuery.data;
 
   const isEmpty =
-    data && data.revenue_krw === 0 && data.token_cost_krw === 0;
+    data &&
+    data.gross_revenue_krw === 0 &&
+    data.refund_krw === 0 &&
+    data.token_cost_krw === 0;
   const errorTotal = data ? data.error_count + data.anomaly_count : 0;
 
   return (
     <section className={styles.page} aria-labelledby="revenue-title">
       <header className={styles.header}>
         <div className={styles.titleGroup}>
-          <Link href="/admin/finance" className={styles.backLink}>
-            ← 재무로 돌아가기
-          </Link>
           <h1 id="revenue-title" className={styles.title}>
             매출 대시보드
           </h1>
@@ -151,8 +150,37 @@ export default function RevenueDashboardPage() {
         <>
           <div className={styles.kpiRow}>
             <KPICard
-              label="당월 매출"
-              value={`${data.revenue_krw.toLocaleString("ko-KR")}원`}
+              label="당월 총매출"
+              value={`${data.gross_revenue_krw.toLocaleString("ko-KR")}원`}
+              trend={{
+                direction: "flat",
+                text: "환불 차감 전 결제 금액",
+              }}
+            />
+            <KPICard
+              label="당월 환불액"
+              value={`${data.refund_krw > 0 ? "−" : ""}${data.refund_krw.toLocaleString("ko-KR")}원`}
+              trend={
+                data.refund_krw > 0
+                  ? {
+                      direction: "down",
+                      text: "총매출에서 차감",
+                      tone: "warning",
+                    }
+                  : {
+                      direction: "flat",
+                      text: "환불 없음",
+                      tone: "success",
+                    }
+              }
+            />
+            <KPICard
+              label="당월 순매출"
+              value={`${data.net_revenue_krw.toLocaleString("ko-KR")}원`}
+              trend={{
+                direction: "flat",
+                text: "총매출 − 환불액",
+              }}
             />
             <KPICard
               label="당월 토큰 비용"
@@ -163,7 +191,7 @@ export default function RevenueDashboardPage() {
               }}
             />
             <KPICard
-              label="차액"
+              label="차액 (순매출 − 토큰비용)"
               value={`${data.variance_krw < 0 ? "−" : ""}${Math.abs(data.variance_krw).toLocaleString("ko-KR")}원`}
               trend={
                 data.variance_krw < 0
@@ -200,12 +228,28 @@ export default function RevenueDashboardPage() {
                 variant="bar"
                 data={series.items.map((item) => ({
                   name: item.year_month,
-                  revenue_krw: item.revenue_krw,
+                  gross_revenue_krw: item.gross_revenue_krw,
+                  refund_krw: item.refund_krw,
+                  net_revenue_krw: item.net_revenue_krw,
                   token_cost_krw: item.token_cost_krw,
                   variance_krw: item.variance_krw,
                 }))}
                 series={[
-                  { key: "revenue_krw", label: "매출 (₩)", tone: "brand" },
+                  {
+                    key: "gross_revenue_krw",
+                    label: "총매출 (₩)",
+                    tone: "brand",
+                  },
+                  {
+                    key: "refund_krw",
+                    label: "환불 (₩)",
+                    tone: "error",
+                  },
+                  {
+                    key: "net_revenue_krw",
+                    label: "순매출 (₩)",
+                    tone: "neutral",
+                  },
                   {
                     key: "token_cost_krw",
                     label: "토큰 비용 (₩)",
@@ -213,7 +257,7 @@ export default function RevenueDashboardPage() {
                   },
                   { key: "variance_krw", label: "차액 (₩)", tone: "success" },
                 ]}
-                ariaLabel={`매출·토큰비용·차액 12개월 추이 — 당월 매출 ${data.revenue_krw.toLocaleString("ko-KR")}원, 토큰비용 ${data.token_cost_krw.toLocaleString("ko-KR")}원, 차액 ${data.variance_krw.toLocaleString("ko-KR")}원`}
+                ariaLabel={`총매출·환불·순매출·토큰비용·차액 12개월 추이 — 당월 총매출 ${data.gross_revenue_krw.toLocaleString("ko-KR")}원, 환불 ${data.refund_krw.toLocaleString("ko-KR")}원, 순매출 ${data.net_revenue_krw.toLocaleString("ko-KR")}원, 토큰비용 ${data.token_cost_krw.toLocaleString("ko-KR")}원, 차액 ${data.variance_krw.toLocaleString("ko-KR")}원`}
               />
             </section>
           )}

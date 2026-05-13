@@ -24,7 +24,7 @@ from typing import Literal
 from typing import Any
 
 from redis.asyncio import Redis as AsyncRedis
-from sqlalchemy import and_, select, func, or_
+from sqlalchemy import and_, case, select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.anomaly_event import AnomalyEvent
@@ -32,9 +32,11 @@ from api.src.models.payment import Payment
 from api.src.models.payment_event import PaymentEvent
 from api.src.models.qa_feedback import QAFeedback
 from api.src.models.qa_log import QALog
+from api.src.models.subscription import Subscription
 from api.src.models.user import User
 from api.src.services import runtime_config_service
 from api.src.services.budget_service import KST
+from api.src.utils.mask import mask_email
 
 Unit = Literal["day", "week", "month", "year"]
 
@@ -148,13 +150,14 @@ async def get_signups_buckets(
     if not bucket_starts:
         return [], from_, to
 
-    daily_signups = await _daily_counts_kst(session, User.created_at)
-    daily_withdrawals = await _daily_counts_kst(session, User.withdrawn_at)
+    daily_signups = await _daily_counts_kst(session, User.created_at, extra_where=User.role != "admin")
+    daily_withdrawals = await _daily_counts_kst(session, User.withdrawn_at, extra_where=User.role != "admin")
     # 차단 사용자 (현재 시점). 시간 흐름 추적이 어려우므로 마지막 버킷에만 반영.
     blocked_now: int = (await session.execute(
         select(func.count(User.id)).where(
             User.subscription_status == "blocked",
             User.withdrawn_at.is_(None),
+            User.role != "admin",
         )
     )).scalar_one()
 
@@ -197,16 +200,20 @@ async def get_signups_buckets(
     return buckets, from_, to
 
 
+PENDING_CANCELLATIONS_LIST_LIMIT = 100
+
+
 async def get_subscriber_counts(
     session: AsyncSession,
-) -> dict[str, int | None | list]:
-    """현재 시점 free/pro/blocked/withdrawn 카운트.
+) -> dict[str, Any]:
+    """현재 시점 free/pro/blocked/withdrawn 카운트 + 해지 예약 목록.
 
-    HOLD-PG 자리: pending_cancellation_count=None, upcoming_renewals=[].
+    pending_cancellations: status='cancel_pending' 구독을 current_period_end ASC로 정렬.
+    pending_cancellation_count: 전체 cancel_pending 건수 (목록 limit과 무관).
     """
     rows = (await session.execute(
         select(User.subscription_status, func.count(User.id))
-        .where(User.withdrawn_at.is_(None))
+        .where(User.withdrawn_at.is_(None), User.role != "admin")
         .group_by(User.subscription_status)
     )).all()
     counts = {status: 0 for status in ("free", "pro", "blocked")}
@@ -215,16 +222,43 @@ async def get_subscriber_counts(
             counts[status] = int(n)
 
     withdrawn_count = (await session.execute(
-        select(func.count(User.id)).where(User.withdrawn_at.is_not(None))
+        select(func.count(User.id)).where(User.withdrawn_at.is_not(None), User.role != "admin")
     )).scalar_one()
+
+    pending_total = (await session.execute(
+        select(func.count(Subscription.id)).where(Subscription.status == "cancel_pending")
+    )).scalar_one()
+
+    pending_rows = (await session.execute(
+        select(
+            Subscription.user_id,
+            User.email,
+            Subscription.canceled_at,
+            Subscription.current_period_end,
+        )
+        .join(User, User.id == Subscription.user_id)
+        .where(Subscription.status == "cancel_pending")
+        .order_by(Subscription.current_period_end.asc())
+        .limit(PENDING_CANCELLATIONS_LIST_LIMIT)
+    )).all()
+
+    pending_cancellations = [
+        {
+            "user_id": int(user_id),
+            "email_masked": mask_email(email),
+            "canceled_at": canceled_at,
+            "current_period_end": current_period_end,
+        }
+        for user_id, email, canceled_at, current_period_end in pending_rows
+    ]
 
     return {
         "free_count": counts["free"],
         "pro_count": counts["pro"],
         "blocked_count": counts["blocked"],
         "withdrawn_count": int(withdrawn_count),
-        "pending_cancellation_count": None,
-        "upcoming_renewals": [],
+        "pending_cancellation_count": int(pending_total),
+        "pending_cancellations": pending_cancellations,
     }
 
 
@@ -281,7 +315,9 @@ async def get_feedback_summary(
     rows = (await session.execute(
         select(QAFeedback.rating, func.count(QAFeedback.id))
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
+        .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
+        .where(or_(QALog.user_id.is_(None), User.role != "admin"))
         .group_by(QAFeedback.rating)
     )).all()
     counts: dict[str, int] = {"good": 0, "bad": 0}
@@ -325,7 +361,9 @@ async def get_feedback_series(
             func.count(QAFeedback.id).label("cnt"),
         )
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
+        .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
+        .where(or_(QALog.user_id.is_(None), User.role != "admin"))
         .group_by("bucket", QAFeedback.rating)
         .order_by("bucket")
     )).all()
@@ -367,7 +405,9 @@ async def get_feedback_items_total(
     total = (await session.execute(
         select(func.count(QAFeedback.id))
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
+        .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
+        .where(or_(QALog.user_id.is_(None), User.role != "admin"))
     )).scalar_one()
     return int(total)
 
@@ -397,6 +437,7 @@ async def get_feedback_items(
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
         .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
+        .where(or_(QALog.user_id.is_(None), User.role != "admin"))
         .order_by(QAFeedback.created_at.desc())
         .limit(per_page)
         .offset((page - 1) * per_page)
@@ -444,6 +485,7 @@ async def get_feedback_export_rows(
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
         .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
+        .where(or_(QALog.user_id.is_(None), User.role != "admin"))
         .order_by(QAFeedback.created_at.desc())
         .limit(max_rows + 1)
     )).all()
@@ -530,7 +572,7 @@ async def get_segment_stats(
     by_experience: doctor/hygienist만, years 5 버킷.
     total: 필터 적용 후 모든 사용자(NULL segment 포함).
     """
-    base_conds = []
+    base_conds = [User.role != "admin"]
     if not include_withdrawn:
         base_conds.append(User.withdrawn_at.is_(None))
     if not include_blocked:
@@ -612,7 +654,7 @@ async def get_segment_export_rows(
     limit: int = EXPORT_DETAIL_LIMIT,
 ) -> tuple[list[dict], bool]:
     """Detail 시트용 user-row 직렬화 + truncated 플래그 (limit+1 fetch)."""
-    conds = []
+    conds = [User.role != "admin"]
     if not include_withdrawn:
         conds.append(User.withdrawn_at.is_(None))
     if not include_blocked:
@@ -679,14 +721,17 @@ async def get_revenue_variance_month(
     redis_runtime: AsyncRedis,
     year_month: str,
 ) -> dict[str, Any]:
-    """단월 매출·토큰비용·차액·에러·이상 카운트.
+    """단월 매출·환불·순매출·토큰비용·차액·에러·이상 카운트.
 
-    - revenue_krw: payment_events.event_type='charge_success' 가 발생한 payments.amount_krw SUM
-      (gross revenue 기준 — 환불되어 status='refunded'로 전이된 결제도 그 달 매출에 포함된다.
-       동일 payment_id에 charge_success 이벤트가 중복돼도 payment_id 단위로 dedupe.)
+    - revenue_krw / gross_revenue_krw: payment_events.event_type='charge_success' 가
+      발생한 payments.amount_krw SUM (gross 기준, payment_id 단위 dedupe).
+      revenue_krw 는 하위호환 alias.
+    - refund_krw: 위 gross 대상 결제 중 payment.status='refunded' 인 결제의
+      amount_krw SUM. 결제와 같은 달로 차감되어 "원 결제 월"의 순매출이 줄어든다.
+    - net_revenue_krw: gross_revenue_krw − refund_krw.
     - token_cost_usd: qa_logs.cost_usd SUM (NULL 자동 제외)
     - token_cost_krw: round(token_cost_usd × usd_to_krw)
-    - variance_krw: revenue_krw − token_cost_krw  (음수 가능)
+    - variance_krw: net_revenue_krw − token_cost_krw  (음수 가능)
     - error_count: payment_events.event_type='charge_failed' COUNT
     - anomaly_count: anomaly_events COUNT
     """
@@ -703,25 +748,42 @@ async def get_revenue_variance_month(
         .scalar_subquery()
     )
     rev_stmt = select(
-        func.coalesce(func.sum(Payment.amount_krw), 0)
+        func.coalesce(func.sum(Payment.amount_krw), 0).label("gross"),
+        func.coalesce(
+            func.sum(
+                case((Payment.status == "refunded", Payment.amount_krw), else_=0)
+            ),
+            0,
+        ).label("refund"),
     ).where(Payment.id.in_(charge_success_payment_ids))
-    cost_stmt = select(
-        func.coalesce(func.sum(QALog.cost_usd), Decimal("0"))
-    ).where(
-        QALog.created_at >= start,
-        QALog.created_at < end_excl,
+    cost_stmt = (
+        select(func.coalesce(func.sum(QALog.cost_usd), Decimal("0")))
+        .outerjoin(User, User.id == QALog.user_id)
+        .where(
+            QALog.created_at >= start,
+            QALog.created_at < end_excl,
+            or_(QALog.user_id.is_(None), User.role != "admin"),
+        )
     )
     err_stmt = select(func.count(PaymentEvent.id)).where(
         PaymentEvent.event_type == "charge_failed",
         PaymentEvent.created_at >= start,
         PaymentEvent.created_at < end_excl,
     )
-    anomaly_stmt = select(func.count(AnomalyEvent.id)).where(
-        AnomalyEvent.created_at >= start,
-        AnomalyEvent.created_at < end_excl,
+    anomaly_stmt = (
+        select(func.count(AnomalyEvent.id))
+        .outerjoin(User, AnomalyEvent.target_user_id == User.id)
+        .where(
+            AnomalyEvent.created_at >= start,
+            AnomalyEvent.created_at < end_excl,
+            or_(AnomalyEvent.target_user_id.is_(None), User.role != "admin"),
+        )
     )
 
-    revenue_krw = int((await session.execute(rev_stmt)).scalar_one() or 0)
+    rev_row = (await session.execute(rev_stmt)).one()
+    gross_revenue_krw = int(rev_row.gross or 0)
+    refund_krw = int(rev_row.refund or 0)
+    net_revenue_krw = gross_revenue_krw - refund_krw
     token_cost_usd_raw = (await session.execute(cost_stmt)).scalar_one()
     token_cost_usd: Decimal = (
         token_cost_usd_raw if isinstance(token_cost_usd_raw, Decimal) else Decimal(token_cost_usd_raw or 0)
@@ -733,11 +795,14 @@ async def get_revenue_variance_month(
     token_cost_krw = int(
         (token_cost_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
     )
-    variance_krw = revenue_krw - token_cost_krw
+    variance_krw = net_revenue_krw - token_cost_krw
 
     return {
         "year_month": year_month,
-        "revenue_krw": revenue_krw,
+        "revenue_krw": gross_revenue_krw,
+        "gross_revenue_krw": gross_revenue_krw,
+        "refund_krw": refund_krw,
+        "net_revenue_krw": net_revenue_krw,
         "token_cost_usd": str(token_cost_usd.quantize(Decimal("0.000001"))),
         "token_cost_krw": token_cost_krw,
         "usd_to_krw": usd_to_krw,
@@ -792,6 +857,12 @@ async def get_revenue_variance_series(
                 "month", func.timezone("Asia/Seoul", first_charge_success.c.first_at)
             ).label("bucket"),
             func.coalesce(func.sum(Payment.amount_krw), 0).label("rev"),
+            func.coalesce(
+                func.sum(
+                    case((Payment.status == "refunded", Payment.amount_krw), else_=0)
+                ),
+                0,
+            ).label("refund"),
         )
         .join(Payment, Payment.id == first_charge_success.c.pid)
         .group_by("bucket")
@@ -803,9 +874,11 @@ async def get_revenue_variance_series(
             ).label("bucket"),
             func.coalesce(func.sum(QALog.cost_usd), Decimal("0")).label("cost"),
         )
+        .outerjoin(User, User.id == QALog.user_id)
         .where(
             QALog.created_at >= from_start,
             QALog.created_at < to_end_excl,
+            or_(QALog.user_id.is_(None), User.role != "admin"),
         )
         .group_by("bucket")
     )
@@ -821,6 +894,7 @@ async def get_revenue_variance_series(
         return dt.strftime("%Y-%m")
 
     rev_map: dict[str, int] = {_to_ym(r.bucket): int(r.rev or 0) for r in rev_rows}
+    refund_map: dict[str, int] = {_to_ym(r.bucket): int(r.refund or 0) for r in rev_rows}
     cost_map: dict[str, Decimal] = {
         _to_ym(r.bucket): (r.cost if isinstance(r.cost, Decimal) else Decimal(r.cost or 0))
         for r in cost_rows
@@ -830,15 +904,20 @@ async def get_revenue_variance_series(
     cur = from_start
     for _ in range(months):
         ym = cur.strftime("%Y-%m")
-        rev_v = rev_map.get(ym, 0)
+        gross_v = rev_map.get(ym, 0)
+        refund_v = refund_map.get(ym, 0)
+        net_v = gross_v - refund_v
         cost_v = cost_map.get(ym, Decimal("0"))
         cost_krw = int((cost_v * Decimal(usd_to_krw)).quantize(Decimal("1")))
         items.append(
             {
                 "year_month": ym,
-                "revenue_krw": rev_v,
+                "revenue_krw": gross_v,
+                "gross_revenue_krw": gross_v,
+                "refund_krw": refund_v,
+                "net_revenue_krw": net_v,
                 "token_cost_krw": cost_krw,
-                "variance_krw": rev_v - cost_krw,
+                "variance_krw": net_v - cost_krw,
             }
         )
         cur = _shift_month(cur, 1)
@@ -887,6 +966,7 @@ async def get_revenue_variance_export_rows(
             Payment.user_id,
             Payment.provider_order_id,
             Payment.subscription_id,
+            Payment.status,
             User.email,
         )
         .join(User, User.id == Payment.user_id)
@@ -914,6 +994,8 @@ async def get_revenue_variance_export_rows(
                 "email_masked": _mask_email(r.email),
                 "provider_order_id": r.provider_order_id,
                 "subscription_id": r.subscription_id if r.subscription_id is not None else "",
+                "status": r.status,
+                "is_refunded": "예" if r.status == "refunded" else "아니오",
             }
         )
     return rows, truncated

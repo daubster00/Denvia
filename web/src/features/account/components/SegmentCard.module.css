@@ -1,17 +1,44 @@
 .card {
   background: var(--color-surface, #ffffff);
   border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 28px 30px;
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  min-height: 180px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.04);
+}
+
+.iconBox {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f3e8ff 0%, #f7f2ff 100%);
+  color: #7c3aed;
+  flex: 0 0 auto;
+}
+
+.icon {
+  width: 28px;
+  height: 28px;
+}
+
+.content {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  flex: 1 1 auto;
 }
 
 .title {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-muted, #6b7280);
+  font-weight: 600;
+  color: #4b5563;
   margin: 0;
 }
 
@@ -23,7 +50,8 @@
 }
 
 .fieldRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px 1fr;
   align-items: baseline;
   gap: 12px;
 }
@@ -32,13 +60,12 @@
   font-size: 13px;
   color: var(--color-text-muted, #6b7280);
   margin: 0;
-  min-width: 56px;
 }
 
 .fieldValue {
   font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text, #111827);
+  font-weight: 700;
+  color: #0f172a;
   margin: 0;
 }
 
@@ -67,13 +94,15 @@
 
 .caption {
   font-size: 12px;
-  color: var(--color-text-muted, #6b7280);
-  margin: 0;
+  color: #778194;
+  margin: 6px 0 0;
   line-height: 1.5;
 }
 
-.kakaoLink {
-  color: var(--color-link, #4f46e5);
-  text-decoration: underline;
-  font-weight: 500;
+@media (max-width: 767px) {
+  .card {
+    padding: 22px;
+    min-height: auto;
+    align-items: flex-start;
+  }
 }

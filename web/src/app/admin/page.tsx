@@ -8,7 +8,10 @@ import { KPICard } from "@/features/admin-dashboard/components/KPICard";
 import { BudgetSummaryWidget } from "@/features/admin-dashboard/components/BudgetSummaryWidget";
 import { TokenTopUsersWidget } from "@/features/admin-dashboard/components/TokenTopUsersWidget";
 import { RagStatusWidget } from "@/features/admin-dashboard/components/RagStatusWidget";
-import { ComingSoonWidget } from "@/features/admin-dashboard/components/ComingSoonWidget";
+import {
+  AnomalyCSSummaryWidget,
+  ANOMALY_CS_SUMMARY_KEY,
+} from "@/features/admin-dashboard/components/AnomalyCSSummaryWidget";
 import {
   SignupsSummaryWidget,
   SIGNUPS_SUMMARY_KEY,
@@ -71,6 +74,7 @@ export default function AdminDashboardPage() {
     qc.invalidateQueries({ queryKey: FEEDBACK_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: SEGMENTS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: REVENUE_SUMMARY_KEY });
+    qc.invalidateQueries({ queryKey: ANOMALY_CS_SUMMARY_KEY });
   }
 
   const budget = budgetQuery.data;
@@ -162,11 +166,7 @@ export default function AdminDashboardPage() {
         <FeedbackSummaryWidget />
         <SegmentsSummaryWidget />
         <RevenueSummaryWidget />
-        <ComingSoonWidget
-          title="이상탐지/CS"
-          description="최근 이상 이벤트와 처리 대기 건을 표시합니다."
-          storyRef="Epic 6/9에서 최근 이벤트와 처리 대기 건수 연결"
-        />
+        <AnomalyCSSummaryWidget />
       </div>
     </div>
   );

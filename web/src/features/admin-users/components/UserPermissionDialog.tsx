@@ -3,12 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   UserPermissionUpdateError,
+  type Segment,
   type SubscriptionStatus,
   type UserPermissionUpdatePayload,
   type UserSearchItem,
 } from "@/features/admin-users/api/users";
 import { useUpdatePermission } from "@/features/admin-users/hooks/useUpdatePermission";
-import { formatSubscriptionStatus } from "@/features/admin-users/labels";
+import {
+  SEGMENT_LABELS,
+  formatSubscriptionStatus,
+} from "@/features/admin-users/labels";
 import styles from "./UserPermissionDialog.module.css";
 
 interface Props {
@@ -41,6 +45,7 @@ export function UserPermissionDialog({ open, user, onClose, onSuccess }: Props) 
 
   const initial = user;
   const [status, setStatus] = useState<SubscriptionStatus | "">("");
+  const [segment, setSegment] = useState<Segment | "">("");
   const [proConfirmChecked, setProConfirmChecked] = useState(false);
   const [quotaUseDefault, setQuotaUseDefault] = useState(true);
   const [quotaValue, setQuotaValue] = useState<string>("");
@@ -60,6 +65,7 @@ export function UserPermissionDialog({ open, user, onClose, onSuccess }: Props) 
   useEffect(() => {
     if (!open || !initial) return;
     setStatus(initial.subscription_status);
+    setSegment(initial.segment ?? "");
     setProConfirmChecked(false);
     setQuotaUseDefault(initial.daily_quota_override === null);
     setQuotaValue(
@@ -180,6 +186,11 @@ export function UserPermissionDialog({ open, user, onClose, onSuccess }: Props) 
       } else if (status === "free") {
         payload.subscription_status = "free";
       }
+    }
+
+    // segment 변경 — 초기값과 다르고 값이 선택된 경우에만 전송
+    if (segment !== "" && segment !== initial.segment) {
+      payload.segment = segment;
     }
 
     // quota 변경
@@ -356,6 +367,22 @@ export function UserPermissionDialog({ open, user, onClose, onSuccess }: Props) 
             />
             <span>차단 (blocked)</span>
           </label>
+        </fieldset>
+
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.legend}>가입유형</legend>
+          {(Object.keys(SEGMENT_LABELS) as Segment[]).map((value) => (
+            <label key={value} className={styles.radioRow}>
+              <input
+                type="radio"
+                name="segment"
+                checked={segment === value}
+                onChange={() => setSegment(value)}
+                data-testid={`segment-radio-${value}`}
+              />
+              <span>{SEGMENT_LABELS[value]}</span>
+            </label>
+          ))}
         </fieldset>
 
         <fieldset className={styles.fieldset}>

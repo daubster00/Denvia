@@ -275,6 +275,75 @@ describe("UserPermissionDialog", () => {
     expect(calledPayload).not.toHaveProperty("subscription_status");
   });
 
+  // ── 가입유형(segment) 변경 ──────────────────────────────────────────────────
+
+  it("renders segment radios with initial user segment preselected", () => {
+    render(
+      withQuery(
+        <UserPermissionDialog open user={makeUser()} onClose={() => {}} />,
+      ),
+    );
+    const dentistRadio = screen.getByTestId(
+      "segment-radio-dentist",
+    ) as HTMLInputElement;
+    const hygienistRadio = screen.getByTestId(
+      "segment-radio-dental_hygienist",
+    ) as HTMLInputElement;
+    expect(dentistRadio.checked).toBe(true);
+    expect(hygienistRadio.checked).toBe(false);
+  });
+
+  it("submits segment change in payload", async () => {
+    const { updateUserPermission } = await import(
+      "@/features/admin-users/api/users"
+    );
+    (updateUserPermission as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeUser({ segment: "dental_hygienist" }),
+    );
+    render(
+      withQuery(
+        <UserPermissionDialog
+          open
+          user={makeUser({ segment: "dentist" })}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByTestId("segment-radio-dental_hygienist"));
+    fireEvent.click(screen.getByTestId("save-button"));
+    await waitFor(() => {
+      expect(updateUserPermission).toHaveBeenCalledWith(12, {
+        segment: "dental_hygienist",
+      });
+    });
+  });
+
+  it("does not include segment when unchanged", async () => {
+    const { updateUserPermission } = await import(
+      "@/features/admin-users/api/users"
+    );
+    (updateUserPermission as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeUser({ daily_quota_override: 50 }),
+    );
+    render(
+      withQuery(
+        <UserPermissionDialog open user={makeUser()} onClose={() => {}} />,
+      ),
+    );
+    fireEvent.click(screen.getByLabelText("기본값 사용"));
+    fireEvent.change(screen.getByTestId("quota-input"), {
+      target: { value: "50" },
+    });
+    fireEvent.click(screen.getByTestId("save-button"));
+    await waitFor(() => {
+      expect(updateUserPermission).toHaveBeenCalled();
+    });
+    const [, payload] = (
+      updateUserPermission as ReturnType<typeof vi.fn>
+    ).mock.calls[0];
+    expect(payload).not.toHaveProperty("segment");
+  });
+
   it("renders inline error when server returns 422 BLOCK_ACTION_CONFLICT", async () => {
     const { updateUserPermission, UserPermissionUpdateError } = await import(
       "@/features/admin-users/api/users"

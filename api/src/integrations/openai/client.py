@@ -26,27 +26,45 @@ class TokenUsage:
     cost_usd: float
 
 
+DEFAULT_CHAT_MODEL = "o4-mini"
+
+
+def _is_reasoning_model(name: str) -> bool:
+    """o3-/o4- 계열은 reasoning 모델 — temperature 파라미터 미지원.
+
+    OpenAI API가 reasoning 모델에 temperature != 1 전달 시 400 반환.
+    """
+    return name.startswith("o3") or name.startswith("o4")
+
+
 def build_chat_llm(
     *,
     streaming: bool,
     callbacks: list | None = None,
     temperature: float = 0.0,
     max_tokens: int = 1024,
+    model_name: str | None = None,
 ) -> ChatOpenAI:
-    """ADR-0002 §결정 2: model_name="o4-mini" 기본값 유지 (변경 금지).
+    """ADR-0002 §결정 2: 인수자 기본값은 ``o4-mini`` (변경 금지 → 관리자 override만 허용).
 
-    temperature·max_tokens는 Story 8.4 런타임 구성 주입용.
-    model_name 파라미터 추가는 ADR-0003 Accepted 후 B-02 PR에서 진행.
+    ``model_name``이 None이면 ``DEFAULT_CHAT_MODEL``(=o4-mini)을 사용한다. 관리자 설정
+    페이지에서 Redis ``runtime:chat_model``을 다른 허용 모델로 바꿨을 때만 외부에서
+    주입한 값이 들어온다 (runtime_config_service.ALLOWED_CHAT_MODELS 화이트리스트).
 
-    o4-mini는 reasoning 모델로 temperature 파라미터를 지원하지 않음.
-    OpenAI API가 temperature != 1 시 400 오류 반환. 파라미터 전달 생략.
+    reasoning 모델(o3-/o4-)은 ``temperature`` 파라미터를 미지원하므로 전달하지 않는다.
+    일반 chat 모델(gpt-4o*, gpt-4-turbo 등)에만 ``temperature``를 전달한다.
     """
-    return ChatOpenAI(
-        model_name="o4-mini",
-        streaming=streaming,
-        callbacks=callbacks or [],
-        max_tokens=max_tokens,
-    )
+    effective_model = model_name or DEFAULT_CHAT_MODEL
+
+    kwargs: dict = {
+        "model_name": effective_model,
+        "streaming": streaming,
+        "callbacks": callbacks or [],
+        "max_tokens": max_tokens,
+    }
+    if not _is_reasoning_model(effective_model):
+        kwargs["temperature"] = temperature
+    return ChatOpenAI(**kwargs)
 
 
 # Story 2.6: 역질문 응답 구조화 전용 모델 — RAG 본 체인의 o4-mini와 별도 운용.

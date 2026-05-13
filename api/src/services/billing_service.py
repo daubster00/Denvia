@@ -25,14 +25,14 @@ logger = structlog.get_logger(__name__)
 # Basic 플랜 기능 목록 — 관리자 편집 대상 아니므로 코드 상수로 관리
 _FREE_FEATURES = [
     "하루 3회 Q&A",
-    "기본 치과 지식 답변",
+    "기본 보험청구·행정 답변",
     "질문 재구성 제안",
 ]
 
 # Pro 플랜 기능 목록
 _PRO_FEATURES = [
     "무제한 Q&A",
-    "심화 임상 답변",
+    "심화 보험청구·행정 답변",
     "응답 속도 우선",
     "질문 재구성 제안",
     "피드백 기능",
@@ -1157,6 +1157,161 @@ async def finalize_cancellations(db: AsyncSession) -> dict:
         duration_ms=duration_ms,
     )
     return {"scanned": len(targets), "finalized": finalized, "duration_ms": duration_ms}
+
+
+async def extend_active_subscriptions(
+    killswitch_state_id: int,
+    db: AsyncSession,
+) -> dict:
+    """Story 9.2 — manual_total 해제 시 활성/cancel_pending 구독의 만료일 자동 연장.
+
+    - 정지 기간 = killswitch_state.deactivated_at - activated_at
+    - 대상 구독: status IN (active, cancel_pending) AND created_at <= deactivated_at
+                AND current_period_end > activated_at
+    - 100건 단위 chunk commit + chunk 사이 50ms sleep (부하 분산).
+    - 알림톡 idempotency_key: f"killswitch:{killswitch_state_id}:sub:{sub.id}".
+    - audit_logs INSERT (action='subscription.extended_killswitch', actor_user_id=NULL=시스템).
+    """
+    from api.src.models.audit_log import AuditLog
+    from api.src.models.killswitch_state import KillswitchState as KSModel
+
+    ks = (await db.execute(
+        select(KSModel).where(KSModel.id == killswitch_state_id)
+    )).scalar_one_or_none()
+    if ks is None:
+        logger.error(
+            "billing.extend_subscriptions.killswitch_not_found",
+            killswitch_state_id=killswitch_state_id,
+        )
+        return {"status": "skip", "reason": "not_found"}
+    if ks.mode != MODE_MANUAL_TOTAL or ks.deactivated_at is None:
+        logger.info(
+            "billing.extend_subscriptions.invalid_state",
+            killswitch_state_id=killswitch_state_id,
+            mode=ks.mode,
+            deactivated_at=str(ks.deactivated_at),
+        )
+        return {"status": "skip", "reason": "invalid_state"}
+
+    activated_at = ks.activated_at
+    deactivated_at = ks.deactivated_at
+    if activated_at.tzinfo is None:
+        activated_at = activated_at.replace(tzinfo=UTC)
+    if deactivated_at.tzinfo is None:
+        deactivated_at = deactivated_at.replace(tzinfo=UTC)
+    duration: timedelta = deactivated_at - activated_at
+    duration_seconds = int(duration.total_seconds())
+    duration_hours = max(1, round(duration_seconds / 3600))
+
+    # 연장 대상 SELECT — active + cancel_pending, 정지 종료 시점까지 살아있던 구독.
+    targets_result = await db.execute(
+        select(Subscription).where(
+            Subscription.status.in_(("active", "cancel_pending")),
+            Subscription.created_at <= deactivated_at,
+            Subscription.current_period_end > activated_at,
+        )
+    )
+    targets = list(targets_result.scalars().all())
+    extended_count = 0
+
+    chunk_size = 100
+    for i in range(0, len(targets), chunk_size):
+        chunk = targets[i : i + chunk_size]
+        for sub in chunk:
+            # 개별 row-level lock — finalize_cancellations 등과 race 방지.
+            relock = await db.execute(
+                select(Subscription).where(Subscription.id == sub.id).with_for_update()
+            )
+            s = relock.scalar_one_or_none()
+            if s is None or s.status not in ("active", "cancel_pending"):
+                continue
+
+            # 멱등성 체크 — 동일 killswitch_state_id + 구독 조합은 한 번만 처리한다.
+            # (워커 재시작·중복 enqueue로 태스크가 두 번 실행되어도 기간이 이중 연장되지 않음)
+            existing_ext = (await db.execute(
+                select(AuditLog).where(
+                    AuditLog.action == "subscription.extended_killswitch",
+                    AuditLog.target_type == "subscription",
+                    AuditLog.target_id == s.id,
+                    AuditLog.diff_json["killswitch_state_id"].astext
+                    == str(killswitch_state_id),
+                ).limit(1)
+            )).scalar_one_or_none()
+            if existing_ext is not None:
+                logger.info(
+                    "billing.extend_subscriptions.already_extended",
+                    subscription_id=s.id,
+                    killswitch_state_id=killswitch_state_id,
+                )
+                continue
+
+            old_period_end = s.current_period_end
+            s.current_period_end = old_period_end + duration
+            if s.next_charge_at is not None:
+                s.next_charge_at = s.next_charge_at + duration
+
+            extended_to_iso = s.current_period_end.astimezone(UTC).date().isoformat()
+
+            db.add(
+                AuditLog(
+                    actor_user_id=None,  # 시스템 actor
+                    action="subscription.extended_killswitch",
+                    target_type="subscription",
+                    target_id=s.id,
+                    diff_json={
+                        "duration_seconds": duration_seconds,
+                        "extended_to": s.current_period_end.isoformat(),
+                        "killswitch_state_id": killswitch_state_id,
+                    },
+                )
+            )
+            extended_count += 1
+
+            # 알림톡 발송 — idempotency_key로 워커 재시도 시 중복 차단.
+            try:
+                user_row = (await db.execute(
+                    select(User).where(User.id == s.user_id)
+                )).scalar_one_or_none()
+                if user_row is not None and user_row.phone:
+                    from api.src.integrations.messaging.notification_service import (
+                        get_notification_service,
+                    )
+                    svc = get_notification_service()
+                    await svc.send(
+                        user_id=user_row.id,
+                        phone=user_row.phone,
+                        template_code="subscription.extended_due_to_killswitch",
+                        variables={
+                            "duration_hours": str(duration_hours),
+                            "extended_to": extended_to_iso,
+                        },
+                        idempotency_key=f"killswitch:{killswitch_state_id}:sub:{s.id}",
+                    )
+            except Exception:
+                logger.warning(
+                    "billing.extend_subscriptions.notify_failed",
+                    subscription_id=s.id,
+                    killswitch_state_id=killswitch_state_id,
+                    exc_info=True,
+                )
+                # 알림 실패 시에도 row 갱신은 commit (NotificationService 큐로 deferred 처리됨).
+
+        await db.commit()
+        # 부하 분산 — chunk 사이 50ms sleep.
+        await asyncio.sleep(0.05)
+
+    logger.info(
+        "billing.extend_subscriptions.completed",
+        killswitch_state_id=killswitch_state_id,
+        extended_count=extended_count,
+        duration_seconds=duration_seconds,
+    )
+    return {
+        "status": "ok",
+        "extended_count": extended_count,
+        "duration_seconds": duration_seconds,
+        "killswitch_state_id": killswitch_state_id,
+    }
 
 
 async def get_current_subscription(user: User, db: AsyncSession) -> dict:

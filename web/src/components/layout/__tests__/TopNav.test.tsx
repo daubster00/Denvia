@@ -126,15 +126,17 @@ describe("TopNav — 풀 메뉴 확장 (Story 4.3 AC-1)", () => {
     expect(myLink.getAttribute("aria-current")).toBeNull();
   });
 
-  it("Free 사용자는 'Bs' 플랜 원이 상단에 노출된다 (Basic 약어)", () => {
+  it("Free 사용자는 회색 심볼 아이콘이 상단 플랜 원에 노출된다 (Basic)", () => {
     useSessionStore.setState({ user: _LOGGED_IN_USER });
     render(<TopNav />, { wrapper });
 
     const badge = screen.getByLabelText("Basic 플랜");
-    expect(badge.textContent).toBe("Bs");
+    const img = badge.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src") ?? "").toContain("symbol_no_background_gray");
   });
 
-  it("Pro 사용자는 'Pr' 플랜 원이 상단에 노출되고 메뉴 안에서 'Pro' 명이 표시된다", () => {
+  it("Pro 사용자는 컬러 심볼 아이콘이 상단 플랜 원에 노출되고 메뉴 안에서 'Pro' 명이 표시된다", () => {
     useSessionStore.setState({
       user: { ..._LOGGED_IN_USER, subscription_status: "pro" },
     });
@@ -142,7 +144,9 @@ describe("TopNav — 풀 메뉴 확장 (Story 4.3 AC-1)", () => {
 
     expect(screen.getByRole("link", { name: "쪽지함" })).toBeDefined();
     const badge = screen.getByLabelText("Pro 플랜");
-    expect(badge.textContent).toBe("Pr");
+    const img = badge.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src") ?? "").toContain("symbol_no_background_color");
 
     openAccountMenu();
     expect(screen.getByText("현재 플랜")).toBeDefined();

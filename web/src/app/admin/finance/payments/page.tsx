@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { IconDownload } from "@wanteddev/wds-icon";
 import {
   buildPaymentEventsExportUrl,
@@ -88,9 +87,6 @@ export default function PaymentsTimelinePage() {
   return (
     <section className={styles.page} aria-labelledby="payments-title">
       <header className={styles.header}>
-        <Link href="/admin/finance" className={styles.backLink}>
-          ← 재무로 돌아가기
-        </Link>
         <h1 id="payments-title" className={styles.title}>
           결제 기록
         </h1>

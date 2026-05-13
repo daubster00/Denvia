@@ -10,7 +10,6 @@ import styles from "./page.module.css";
 
 const ALL_ACTIONS = [
   { value: "user.permission_edit", label: "권한 수정" },
-  { value: "user.speed_override", label: "속도 변경" },
   { value: "user.block_auto_expired", label: "자동 차단 만료" },
 ];
 
@@ -19,14 +18,13 @@ const PER_PAGE = 20;
 export default function AdminUsersEditsPage() {
   const params = useSearchParams();
   const userIdRaw = params.get("user_id");
-  const targetIdInitial = userIdRaw && /^\d+$/.test(userIdRaw)
+  const targetId = userIdRaw && /^\d+$/.test(userIdRaw)
     ? Number(userIdRaw)
     : undefined;
 
   const [selectedActions, setSelectedActions] = useState<string[]>(
     ALL_ACTIONS.map((a) => a.value),
   );
-  const [targetId, setTargetId] = useState<number | undefined>(targetIdInitial);
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeLog, setActiveLog] = useState<AuditLogItem | undefined>();
@@ -49,7 +47,6 @@ export default function AdminUsersEditsPage() {
 
   function resetFilters() {
     setSelectedActions(ALL_ACTIONS.map((a) => a.value));
-    setTargetId(undefined);
     setPage(1);
   }
 
@@ -85,48 +82,14 @@ export default function AdminUsersEditsPage() {
           </div>
         </div>
 
-        <div className={styles.filterGroup}>
-          <label htmlFor="target-id-input" className={styles.filterLabel}>
-            대상 사용자 ID
-          </label>
-          <div className={styles.idRow}>
-            <input
-              id="target-id-input"
-              type="number"
-              min={1}
-              value={targetId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) {
-                  setTargetId(undefined);
-                  setPage(1);
-                  return;
-                }
-                const parsed = Number(v);
-                if (Number.isInteger(parsed) && parsed >= 1) {
-                  setTargetId(parsed);
-                  setPage(1);
-                }
-              }}
-              className={styles.idInput}
-              placeholder="예: 12"
-              data-testid="target-id-input"
-            />
-            {targetId !== undefined ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setTargetId(undefined);
-                  setPage(1);
-                }}
-                className={styles.clearButton}
-                data-testid="clear-target-id"
-              >
-                초기화
-              </button>
-            ) : null}
+        {targetId !== undefined ? (
+          <div className={styles.filterGroup}>
+            <span className={styles.filterLabel}>대상 사용자 ID</span>
+            <span className={styles.idDisplay} data-testid="target-id-display">
+              {targetId}
+            </span>
           </div>
-        </div>
+        ) : null}
       </section>
 
       <UserEditHistoryTable

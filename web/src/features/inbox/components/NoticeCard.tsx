@@ -6,6 +6,8 @@
  * type 분기 아이콘·strip 색상 + 미읽음 좌측 strip + sanitize HTML 렌더.
  */
 
+import { IconMail, IconCircleInfo, IconCoins } from "@wanteddev/wds-icon";
+
 import type { InboxItem } from "../types";
 import styles from "./NoticeCard.module.css";
 
@@ -19,6 +21,12 @@ const TYPE_LABEL: Record<InboxItem["type"], string> = {
   system: "시스템",
   billing: "결제",
 };
+
+const TYPE_ICON = {
+  notice: IconMail,
+  system: IconCircleInfo,
+  billing: IconCoins,
+} as const;
 
 export function NoticeCard({ item, onClick }: NoticeCardProps) {
   const stripClass =
@@ -35,6 +43,8 @@ export function NoticeCard({ item, onClick }: NoticeCardProps) {
         ? styles.iconSystem
         : styles.iconNotice;
 
+  const TypeIcon = TYPE_ICON[item.type];
+
   return (
     <button
       type="button"
@@ -45,7 +55,7 @@ export function NoticeCard({ item, onClick }: NoticeCardProps) {
     >
       <span className={`${styles.strip} ${stripClass}`} aria-hidden="true" />
       <span className={`${styles.icon} ${iconClass}`} aria-hidden="true">
-        {iconForType(item.type)}
+        <TypeIcon />
       </span>
       <span className={styles.body}>
         <span className={styles.titleRow}>
@@ -58,34 +68,6 @@ export function NoticeCard({ item, onClick }: NoticeCardProps) {
         <span className={styles.timestamp}>{formatRelative(item.created_at)}</span>
       </span>
     </button>
-  );
-}
-
-function iconForType(type: InboxItem["type"]): React.ReactNode {
-  if (type === "billing") {
-    return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="5" width="20" height="14" rx="2" />
-        <line x1="2" y1="10" x2="22" y2="10" />
-      </svg>
-    );
-  }
-  if (type === "system") {
-    return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 11l18-8v18l-18-8v-2z" />
-    </svg>
   );
 }
 

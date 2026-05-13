@@ -30,6 +30,14 @@ vi.mock("@/features/admin-rag/api/knowledge", () => ({
   fetchRagStatus: vi.fn(),
 }));
 
+vi.mock("@/features/admin-anomaly/api/anomaly", () => ({
+  fetchAnomalyList: vi.fn(),
+}));
+
+vi.mock("@/features/admin-support/api/inquiries", () => ({
+  fetchSupportCounts: vi.fn(),
+}));
+
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...rest}>
@@ -63,6 +71,23 @@ describe("AdminDashboardPage", () => {
     const { fetchRagStatus } = await import(
       "@/features/admin-rag/api/knowledge"
     );
+    const { fetchAnomalyList } = await import(
+      "@/features/admin-anomaly/api/anomaly"
+    );
+    const { fetchSupportCounts } = await import(
+      "@/features/admin-support/api/inquiries"
+    );
+    // Story 5.6: 이상탐지/CS 위젯 기본 stub (빈 상태)
+    (fetchAnomalyList as ReturnType<typeof vi.fn>).mockResolvedValue({
+      page: 1,
+      per_page: 3,
+      total: 0,
+      items: [],
+    });
+    (fetchSupportCounts as ReturnType<typeof vi.fn>).mockResolvedValue({
+      open_inquiries: 0,
+      pending_refunds: 0,
+    });
     // Story 5.3: 기본 stub
     (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({
       unit: "month",
@@ -78,8 +103,8 @@ describe("AdminDashboardPage", () => {
       pro_count: 1,
       blocked_count: 0,
       withdrawn_count: 1,
-      pending_cancellation_count: null,
-      upcoming_renewals: [],
+      pending_cancellation_count: 0,
+      pending_cancellations: [],
     });
     // Story 5.4: 피드백 위젯 stub
     (fetchFeedback as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -98,6 +123,9 @@ describe("AdminDashboardPage", () => {
     (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValue({
       year_month: "2026-05",
       revenue_krw: 1_485_000,
+      gross_revenue_krw: 1_485_000,
+      refund_krw: 0,
+      net_revenue_krw: 1_485_000,
       token_cost_usd: "12.345600",
       token_cost_krw: 17_284,
       usd_to_krw: 1400,
@@ -130,6 +158,8 @@ describe("AdminDashboardPage", () => {
       fetchSubscribers,
       fetchFeedback,
       fetchSegments,
+      fetchAnomalyList,
+      fetchSupportCounts,
     };
   }
 
@@ -223,7 +253,7 @@ describe("AdminDashboardPage", () => {
     expect(refresh).toBeTruthy();
   });
 
-  it("준비 중 위젯 5종 모두 노출", async () => {
+  it("Analytics 위젯 6종(가입자/구독/피드백/세그먼트/재무/이상탐지·CS) 모두 노출", async () => {
     const { fetchBudgetCurrentMonth, fetchUserTokens, fetchRagStatus } =
       await loadMocks();
     (fetchBudgetCurrentMonth as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -256,9 +286,9 @@ describe("AdminDashboardPage", () => {
     expect(screen.getByText("구독 현황")).toBeTruthy();
     expect(screen.getByText("피드백 비율")).toBeTruthy();
     expect(screen.getByText("재무 요약")).toBeTruthy();
-    expect(screen.getByText("이상탐지/CS")).toBeTruthy();
-    // Story 5.5: 재무 요약 활성화 → 준비 중 배지 1개 (이상탐지/CS만 placeholder 유지)
-    expect(screen.getAllByText("준비 중")).toHaveLength(1);
+    expect(screen.getByText("이상탐지 / CS")).toBeTruthy();
+    // Story 5.6: 이상탐지/CS 활성화 → 준비 중 배지 없음
+    expect(screen.queryAllByText("준비 중")).toHaveLength(0);
 
     // Story 5.3 위젯 상세 링크 활성화 — 가입자 추이 / 구독 현황
     const signupsLink = screen.getByRole("link", {
@@ -295,6 +325,12 @@ describe("AdminDashboardPage", () => {
       name: /재무 요약 상세 페이지로 이동/,
     });
     expect(revenueLink.getAttribute("href")).toBe("/admin/finance/revenue");
+
+    // Story 5.6: 이상탐지/CS 위젯 상세 링크 활성화
+    const anomalyCsLink = screen.getByRole("link", {
+      name: /이상탐지 \/ CS 상세 페이지로 이동/,
+    });
+    expect(anomalyCsLink.getAttribute("href")).toBe("/admin/anomaly");
   });
 
   it("일부 API 실패해도 다른 위젯 렌더 (격리)", async () => {

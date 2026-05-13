@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   type SearchFilters,
   SearchFilterBar,
 } from "@/features/admin-users/components/SearchFilterBar";
-import { UserDetailDrawer } from "@/features/admin-users/components/UserDetailDrawer";
 import { UserSearchTable } from "@/features/admin-users/components/UserSearchTable";
-import { useUserDetail } from "@/features/admin-users/hooks/useUserDetail";
 import { useUsersSearch } from "@/features/admin-users/hooks/useUsersSearch";
 import styles from "./page.module.css";
 
@@ -21,9 +20,10 @@ const DEFAULT_FILTERS: SearchFilters = {
 const PER_PAGE = 20;
 
 export default function AdminUsersPage() {
+  const router = useRouter();
+
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
   const search = useUsersSearch({
     q: filters.q || undefined,
@@ -33,8 +33,6 @@ export default function AdminUsersPage() {
     page,
     per_page: PER_PAGE,
   });
-
-  const detail = useUserDetail(selectedUserId);
 
   function handleFilterChange(next: SearchFilters) {
     setFilters(next);
@@ -74,18 +72,9 @@ export default function AdminUsersPage() {
         page={page}
         perPage={PER_PAGE}
         onPageChange={setPage}
-        onSelectUser={(item) => setSelectedUserId(item.user_id)}
+        onSelectUser={(item) => router.push(`/admin/users/${item.user_id}`)}
         onResetFilters={handleResetFilters}
         onRetry={() => search.refetch()}
-      />
-
-      <UserDetailDrawer
-        open={selectedUserId !== null}
-        detail={detail.data}
-        isLoading={detail.isLoading}
-        isError={detail.isError}
-        onClose={() => setSelectedUserId(null)}
-        onRetry={() => detail.refetch()}
       />
     </section>
   );

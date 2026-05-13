@@ -8,7 +8,10 @@
 }
 
 .btn {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -17,10 +20,25 @@
   color: #5a5c63;
 }
 
+.btn:hover:not(:disabled) {
+  color: #1f2024;
+  border-color: #c8c9cc;
+}
+
 .btnActive {
-  border: none;
+  border: 1px solid transparent;
   background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
   color: #ffffff;
+}
+
+.btnActive:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
 }
 
 .btnDisabled {

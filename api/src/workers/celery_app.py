@@ -21,6 +21,7 @@ celery_app = Celery(
         "api.src.workers.budget_tasks",        # Story 5.2: 예산 임계 감시
         "api.src.workers.billing_tasks",       # Story 3.3: 자동 갱신 배치
         "api.src.workers.anomaly_tasks",       # Story 6.2: 차단 자동 만료
+        "api.src.workers.content_schedule_tasks",  # Story 4.2: F-502 야간 차단 토글
     ],
 )
 
@@ -88,6 +89,16 @@ celery_app.conf.update(
         "retention-payments-daily": {
             "task": "retention_tasks.delete_old_payments",
             "schedule": crontab(hour=3, minute=30),
+        },
+        # Story 4.2: F-502 야간 광고 차단 상태 전환 — KST 21:00 / 08:00
+        # (budget-check-hourly 매시 minute=0과 동시 발화 허용 — 별도 워커 처리, 충돌 없음)
+        "toggle-night-block-on-2100": {
+            "task": "content_schedule_tasks.toggle_night_block_on",
+            "schedule": crontab(hour=21, minute=0),
+        },
+        "toggle-night-block-off-0800": {
+            "task": "content_schedule_tasks.toggle_night_block_off",
+            "schedule": crontab(hour=8, minute=0),
         },
     },
 )

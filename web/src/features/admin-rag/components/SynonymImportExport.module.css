@@ -1,0 +1,172 @@
+.actionBar {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.linkBtn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.linkBtn:hover {
+  background: #f9fafb;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modalDesc {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.modalDesc code {
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+.fileInput {
+  display: block;
+  font-size: 14px;
+  width: 100%;
+}
+
+.summaryBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #374151;
+}
+
+.warnText {
+  color: #b45309;
+}
+
+.details {
+  font-size: 13px;
+  color: #374151;
+}
+
+.details summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.detailsList {
+  margin: 4px 0 0 16px;
+  padding: 0;
+}
+
+.detailsList li {
+  margin-bottom: 2px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.primaryBtn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #4f46e5;
+  font-size: 14px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: #4338ca;
+}
+
+.error {
+  font-size: 13px;
+  color: #ef4444;
+  margin: 0;
+}

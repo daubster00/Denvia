@@ -1,0 +1,94 @@
+.row {
+  display: grid;
+  grid-template-columns: 220px 1fr 160px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.rowEditing {
+  padding: 16px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: #f5f7ff;
+}
+
+.canonicalCell {
+  display: flex;
+  align-items: center;
+}
+
+.canonicalText {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.synonymsCell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #1d4ed8;
+}
+
+.emptyText {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.actionsCell {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editBtn {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.editBtn:hover {
+  background: #f9fafb;
+}
+
+.deleteBtn {
+  padding: 6px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.deleteBtn:hover {
+  background: #fef2f2;
+}
+
+@media (max-width: 768px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .actionsCell {
+    justify-content: flex-start;
+  }
+}

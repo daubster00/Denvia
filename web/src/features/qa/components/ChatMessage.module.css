@@ -3,52 +3,102 @@
 .userRow {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 12px;
+  margin-bottom: 52px;
 }
 
 .userBubble {
-  max-width: 70%;
-  padding: 12px 16px;
-  background-color: #ede9fe;
-  border-radius: 16px 16px 4px 16px;
-  font-size: 15px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 166px;
+  min-height: 78px;
+  max-width: min(70%, 520px);
+  padding: 18px 34px;
+  background: linear-gradient(135deg, #f2efff 0%, #ebe5ff 100%);
+  border-radius: 8px 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
   color: #171719;
-  line-height: 1.55;
+  line-height: 1.45;
+  text-align: center;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.userBubble::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 6px;
+  border-radius: 0 8px 8px 0;
+  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
 }
 
 .assistantRow {
   display: flex;
+  align-items: flex-start;
   justify-content: flex-start;
-  margin-bottom: 12px;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+/* 로딩 중에는 큰 GIF와 짧은 "생각중이야" 말풍선이 세로로 가운데 정렬되어야 자연스럽다. */
+.assistantRowLoading {
+  align-items: center;
+  gap: 4px;
+}
+
+.assistantAvatar {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #eceef2;
+  box-shadow: 0 12px 30px rgba(23, 23, 25, 0.1);
+  margin-top: -8px;
+}
+
+.assistantAvatarImg {
+  width: 44px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* 답변 생성 중 표시용 — 동그라미 배경 없이 GIF 자체를 크게 보여줘서
+   심볼 안의 "..." 모션이 충분히 보이도록 한다. */
+.loadingThinking {
+  flex-shrink: 0;
+  width: 70px;
+  height: auto;
+  object-fit: contain;
 }
 
 .assistantBubble {
-  max-width: 80%;
-  padding: 12px 16px;
+  max-width: 640px;
+  padding: 26px 30px 27px;
   background-color: #ffffff;
-  border-radius: 16px 16px 16px 4px;
-  border-left: 3px solid;
-  border-image: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%) 1;
-  font-size: 15px;
+  border-radius: 16px;
+  border: 1px solid #e4e7ec;
+  font-size: 16px;
   color: #171719;
-  line-height: 1.55;
+  line-height: 1.8;
   white-space: pre-wrap;
   word-break: break-word;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 12px 32px rgba(23, 23, 25, 0.08);
 }
 
 .pendingRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   color: #70737c;
-}
-
-.pendingIcon {
-  width: 20px;
-  height: 20px;
 }
 
 .errorText {
@@ -67,5 +117,51 @@
 }
 
 .assistantText {
-  margin: 0 0 10px;
+  margin: 0 0 24px;
+}
+
+.assistantFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assistantFooter > [aria-label="답변 피드백"] {
+  margin-top: 0;
+}
+
+@media (max-width: 767px) {
+  .userRow {
+    margin-bottom: 34px;
+  }
+
+  .userBubble {
+    min-width: 132px;
+    min-height: 58px;
+    max-width: 78%;
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+
+  .assistantRow {
+    gap: 12px;
+  }
+
+  .assistantAvatar {
+    width: 48px;
+    height: 48px;
+    margin-top: 0;
+  }
+
+  .assistantAvatarImg {
+    width: 28px;
+  }
+
+  .assistantBubble {
+    max-width: calc(100% - 60px);
+    padding: 18px 20px;
+    font-size: 15px;
+    line-height: 1.7;
+  }
 }

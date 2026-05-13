@@ -1,11 +1,14 @@
 .card {
   background: var(--color-surface, #ffffff);
   border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 28px 30px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  justify-content: center;
+  gap: 14px;
+  min-height: 180px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.04);
 }
 
 .row {
@@ -22,15 +25,19 @@
 }
 
 .value {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  color: var(--color-text, #111827);
+  color: var(--color-text, #0f172a);
 }
 
 .dailyBlock {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.dailyBlock .value {
+  color: #7c3aed;
 }
 
 .progress {

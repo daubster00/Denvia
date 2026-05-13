@@ -16,6 +16,7 @@ from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.billing_key import BillingKey
+from api.src.models.manual_refund_queue import ManualRefundQueue
 from api.src.models.payment import Payment
 from api.src.models.payment_event import PaymentEvent
 from api.src.models.user import User
@@ -196,18 +197,79 @@ async def list_payment_events(
     return items, int(total), error_summary
 
 
+def _extract_refund_reason_from_event(raw: Any) -> str | None:
+    """payment_events.raw_response_json에서 사용자 입력 환불 사유 추출.
+
+    두 경로를 모두 본다:
+    1) 수동 큐 진입 시 _enqueue_manual_review가 박는 명시적 `reason` (refund_requested 이벤트)
+    2) 토스 자동 환불 응답의 `cancels[*].cancelReason` (refund_success 이벤트, 가장 최근 취소 우선)
+    """
+    if not isinstance(raw, dict):
+        return None
+    reason = raw.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        return reason
+    cancels = raw.get("cancels")
+    if isinstance(cancels, list):
+        sorted_cancels = sorted(
+            (c for c in cancels if isinstance(c, dict)),
+            key=lambda c: c.get("canceledAt") or "",
+            reverse=True,
+        )
+        for c in sorted_cancels:
+            cr = c.get("cancelReason")
+            if isinstance(cr, str) and cr.strip():
+                return cr
+    return None
+
+
 async def get_payment_event(
     session: AsyncSession, *, event_id: int
 ) -> PaymentEventDetailResponse | None:
-    """단건 조회 — list와 동일 JOIN + raw_response_json 추가 노출."""
+    """단건 조회 — list와 동일 JOIN + raw_response_json + 수동 환불 큐 매칭."""
     stmt = _build_base_select().where(PaymentEvent.id == event_id).limit(1)
     row = (await session.execute(stmt)).first()
     if row is None:
         return None
     item = _row_to_item(row)
+
+    queue_stmt = (
+        select(ManualRefundQueue.id, ManualRefundQueue.status, ManualRefundQueue.reason)
+        .where(ManualRefundQueue.payment_id == row.payment_id)
+        .order_by(desc(ManualRefundQueue.id))
+        .limit(1)
+    )
+    queue_row = (await session.execute(queue_stmt)).first()
+
+    refund_reason = queue_row.reason if queue_row else None
+    if not refund_reason:
+        # 1차 폴백: 지금 보고 있는 이벤트의 raw_response_json에서 직접 추출.
+        refund_reason = _extract_refund_reason_from_event(row.raw_response_json)
+    if not refund_reason:
+        # 2차 폴백: 같은 결제의 다른 환불 이벤트(refund_requested/success/denied)에서 추출.
+        reason_stmt = (
+            select(PaymentEvent.raw_response_json)
+            .where(
+                PaymentEvent.payment_id == row.payment_id,
+                PaymentEvent.event_type.in_(
+                    ("refund_requested", "refund_success", "refund_denied")
+                ),
+                PaymentEvent.id != event_id,
+            )
+            .order_by(desc(PaymentEvent.created_at), desc(PaymentEvent.id))
+        )
+        for r in (await session.execute(reason_stmt)).all():
+            candidate = _extract_refund_reason_from_event(r[0])
+            if candidate:
+                refund_reason = candidate
+                break
+
     return PaymentEventDetailResponse(
         **item.model_dump(),
         raw_response_json=row.raw_response_json,
+        manual_refund_queue_id=queue_row.id if queue_row else None,
+        manual_refund_queue_status=queue_row.status if queue_row else None,
+        refund_reason=refund_reason,
     )
 
 

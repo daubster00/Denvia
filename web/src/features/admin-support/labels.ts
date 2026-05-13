@@ -1,6 +1,10 @@
 /** Admin 고객문의 + 환불 — 한국어 라벨. */
 
-import type { InquiryStatus, UserSegment } from "@/features/admin-support/api/inquiries";
+import type {
+  InquiryStatus,
+  InquiryType,
+  UserSegment,
+} from "@/features/admin-support/api/inquiries";
 import type {
   RefundQueueStatus,
   RefundReasonCode,
@@ -14,6 +18,19 @@ export const INQUIRY_STATUS_LABELS: Record<InquiryStatus, string> = {
 
 export function formatInquiryStatus(status: InquiryStatus): string {
   return INQUIRY_STATUS_LABELS[status] ?? status;
+}
+
+export const INQUIRY_TYPE_LABELS: Record<InquiryType, string> = {
+  billing: "결제·환불",
+  account: "계정",
+  usage: "기능 사용법",
+  bug: "오류·버그",
+  suggestion: "건의사항",
+  other: "기타",
+};
+
+export function formatInquiryType(type: InquiryType): string {
+  return INQUIRY_TYPE_LABELS[type] ?? type;
 }
 
 export const SEGMENT_LABELS: Record<UserSegment, string> = {

@@ -27,6 +27,9 @@ const sample: api.PaymentEventDetail = {
   provider_error_message: "잘못된 카드번호",
   status: "failed",
   raw_response_json: { code: "INVALID_CARD_NUMBER", message: "잘못된 카드번호" },
+  manual_refund_queue_id: null,
+  manual_refund_queue_status: null,
+  refund_reason: null,
 };
 
 describe("PaymentEventDetailDrawer", () => {
@@ -73,19 +76,16 @@ describe("PaymentEventDetailDrawer", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("raw_response_json 원본 렌더", async () => {
+  it("raw_response_json 원본은 노출하지 않는다", async () => {
     render(
       withClient(
         <PaymentEventDetailDrawer eventId={42} onClose={vi.fn()} />,
       ),
     );
-    // JSON viewer pre/code 블록에 stringified JSON이 있어야 함
-    await waitFor(() => {
-      const code = screen
-        .getAllByText((_, el) => el?.tagName === "CODE")
-        .find((el) => el.textContent?.includes('"code"'));
-      expect(code?.textContent).toContain("INVALID_CARD_NUMBER");
-    });
+    await waitFor(() => screen.getByRole("dialog"));
+    expect(screen.queryByText(/raw_response_json/)).toBeNull();
+    expect(screen.queryByText(/PG 응답 원본/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "JSON 복사" })).toBeNull();
   });
 
   it("PG 에러 코드 영역 노출", async () => {
@@ -96,5 +96,36 @@ describe("PaymentEventDetailDrawer", () => {
     );
     await waitFor(() => screen.getByText("PG 에러"));
     expect(screen.getByText("잘못된 카드번호")).toBeTruthy();
+  });
+
+  it("manual_refund_queue_id 없으면 비활성 라벨 노출", async () => {
+    render(
+      withClient(
+        <PaymentEventDetailDrawer eventId={42} onClose={vi.fn()} />,
+      ),
+    );
+    await waitFor(() => screen.getByRole("dialog"));
+    expect(screen.getByText("환불 검토 큐 항목 없음")).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "환불 검토 큐로" }),
+    ).toBeNull();
+  });
+
+  it("manual_refund_queue_id 있으면 상태 필터 포함 링크 노출", async () => {
+    vi.spyOn(api, "fetchPaymentEventDetail").mockResolvedValue({
+      ...sample,
+      status: "refunded",
+      manual_refund_queue_id: 123,
+      manual_refund_queue_status: "approved",
+    });
+    render(
+      withClient(
+        <PaymentEventDetailDrawer eventId={42} onClose={vi.fn()} />,
+      ),
+    );
+    const link = await screen.findByRole("link", { name: "환불 검토 큐로" });
+    expect(link.getAttribute("href")).toBe(
+      "/admin/cs?tab=refunds&status=approved&queue_id=123",
+    );
   });
 });

@@ -17,3 +17,27 @@ export async function fetchBudgetCurrentMonth(): Promise<BudgetCurrentMonth> {
   if (!res.ok) throw new Error(`budget fetch failed: ${res.status}`);
   return res.json() as Promise<BudgetCurrentMonth>;
 }
+
+export async function updateMonthlyBudgetLimit(
+  monthlyLimitUsd: number,
+): Promise<BudgetCurrentMonth> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/budget/monthly-limit`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ monthly_limit_usd: monthlyLimitUsd }),
+  });
+  if (!res.ok) {
+    let detail = `월 예산 한도 변경에 실패했습니다. (HTTP ${res.status})`;
+    try {
+      const body = (await res.json()) as { detail?: string | unknown };
+      if (typeof body?.detail === "string") {
+        detail = body.detail;
+      }
+    } catch {
+      // ignore JSON parse error — keep default detail
+    }
+    throw new Error(detail);
+  }
+  return res.json() as Promise<BudgetCurrentMonth>;
+}

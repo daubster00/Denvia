@@ -35,7 +35,12 @@ vi.mock("@/features/auth/api", () => ({
   fetchMe: vi.fn(),
 }));
 
+vi.mock("@/features/account/api", () => ({
+  fetchUsageSummary: vi.fn(),
+}));
+
 const { fetchMe } = await import("@/features/auth/api");
+const { fetchUsageSummary } = await import("@/features/account/api");
 
 import MyPage from "../page";
 
@@ -54,6 +59,8 @@ beforeEach(() => {
   mockPush.mockReset();
   vi.mocked(fetchMe).mockReset();
   vi.mocked(fetchMe).mockImplementation(() => new Promise(() => {}));
+  vi.mocked(fetchUsageSummary).mockReset();
+  vi.mocked(fetchUsageSummary).mockImplementation(() => new Promise(() => {}));
 });
 
 describe("MyPage — 인증 가드", () => {
@@ -130,6 +137,133 @@ describe("MyPage — 인증 가드", () => {
       must_reset_password: false,
       is_social: false,
     } as never);
+
+    const { findByTestId } = render(<MyPage />, { wrapper: makeWrapper() });
+
+    expect(await findByTestId("account-summary")).toBeDefined();
+    expect(await findByTestId("payment-history")).toBeDefined();
+  });
+
+  it("free + show_subscribe_button=false → 결제 내역 섹션 미렌더 (A-303 OFF)", async () => {
+    useSessionStore.setState({
+      user: {
+        user_id: 1,
+        email: "u@e.com",
+        role: "user",
+        subscription_status: "free",
+        segment: "doctor",
+        years_of_experience: 3,
+        must_reset_password: false,
+        is_social: false,
+      },
+    });
+    vi.mocked(fetchMe).mockResolvedValue({
+      user_id: 1,
+      email: "u@e.com",
+      role: "user",
+      subscription_status: "free",
+      segment: "doctor",
+      years_of_experience: 3,
+      must_reset_password: false,
+      is_social: false,
+    } as never);
+    vi.mocked(fetchUsageSummary).mockResolvedValue({
+      month_question_count: 0,
+      daily_used: 0,
+      daily_limit: 10,
+      daily_remaining: 10,
+      daily_reset_at: "2026-05-12T00:00:00+09:00",
+      subscription_status: "free",
+      segment: "doctor",
+      years_of_experience: 3,
+      show_subscribe_button: false,
+    });
+
+    const { findByTestId, queryByTestId } = render(<MyPage />, {
+      wrapper: makeWrapper(),
+    });
+
+    expect(await findByTestId("account-summary")).toBeDefined();
+    await waitFor(() => {
+      expect(queryByTestId("payment-history")).toBeNull();
+    });
+  });
+
+  it("free + show_subscribe_button=true → 결제 내역 섹션 노출 (A-303 ON)", async () => {
+    useSessionStore.setState({
+      user: {
+        user_id: 1,
+        email: "u@e.com",
+        role: "user",
+        subscription_status: "free",
+        segment: "doctor",
+        years_of_experience: 3,
+        must_reset_password: false,
+        is_social: false,
+      },
+    });
+    vi.mocked(fetchMe).mockResolvedValue({
+      user_id: 1,
+      email: "u@e.com",
+      role: "user",
+      subscription_status: "free",
+      segment: "doctor",
+      years_of_experience: 3,
+      must_reset_password: false,
+      is_social: false,
+    } as never);
+    vi.mocked(fetchUsageSummary).mockResolvedValue({
+      month_question_count: 0,
+      daily_used: 0,
+      daily_limit: 10,
+      daily_remaining: 10,
+      daily_reset_at: "2026-05-12T00:00:00+09:00",
+      subscription_status: "free",
+      segment: "doctor",
+      years_of_experience: 3,
+      show_subscribe_button: true,
+    });
+
+    const { findByTestId } = render(<MyPage />, { wrapper: makeWrapper() });
+
+    expect(await findByTestId("account-summary")).toBeDefined();
+    expect(await findByTestId("payment-history")).toBeDefined();
+  });
+
+  it("pro + show_subscribe_button=false → 결제 내역 섹션 노출 (해지/환불 진입)", async () => {
+    useSessionStore.setState({
+      user: {
+        user_id: 1,
+        email: "u@e.com",
+        role: "user",
+        subscription_status: "pro",
+        segment: "doctor",
+        years_of_experience: 5,
+        must_reset_password: false,
+        is_social: false,
+      },
+    });
+    vi.mocked(fetchMe).mockResolvedValue({
+      user_id: 1,
+      email: "u@e.com",
+      role: "user",
+      subscription_status: "pro",
+      segment: "doctor",
+      years_of_experience: 5,
+      must_reset_password: false,
+      is_social: false,
+    } as never);
+    vi.mocked(fetchUsageSummary).mockResolvedValue({
+      month_question_count: 100,
+      daily_used: 0,
+      daily_limit: 0,
+      daily_remaining: 0,
+      daily_reset_at: "2026-05-12T00:00:00+09:00",
+      subscription_status: "pro",
+      segment: "doctor",
+      years_of_experience: 5,
+      show_subscribe_button: false,
+    });
 
     const { findByTestId } = render(<MyPage />, { wrapper: makeWrapper() });
 

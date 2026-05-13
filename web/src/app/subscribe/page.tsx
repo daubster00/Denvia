@@ -137,7 +137,7 @@ function SubscribeContent() {
         <div className={styles.hero}>
           <h1 className={styles.title}>Denvia 플랜 선택</h1>
           <p className={styles.subtitle}>
-            치과 임상 Q&A를 더 스마트하게 — Pro로 무제한 이용하세요
+            치과 보험청구·행정 Q&A를 더 스마트하게 — Pro로 무제한 이용하세요
           </p>
         </div>
 

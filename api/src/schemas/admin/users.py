@@ -114,6 +114,10 @@ class UserPermissionUpdateRequest(BaseModel):
     """
 
     subscription_status: Literal["free", "pro", "blocked"] | None = None
+    segment: Literal["dentist", "dental_hygienist", "student_other"] | None = Field(
+        default=None,
+        description="가입유형 — 관리자가 사용자 분류를 교정할 때 사용 (SSOT 편차 #1: 관리자만 변경 가능).",
+    )
     daily_quota_override: int | None = Field(default=None, ge=1, le=10000)
     daily_quota_override_clear: bool | None = Field(
         default=None,
@@ -141,6 +145,7 @@ class UserPermissionUpdateRequest(BaseModel):
         """모든 필드가 None이면 422 — 무의미한 PATCH 거부."""
         if (
             self.subscription_status is None
+            and self.segment is None
             and self.daily_quota_override is None
             and self.daily_quota_override_clear is not True
             and self.free_delay_override is None

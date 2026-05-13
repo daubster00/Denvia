@@ -18,7 +18,7 @@ from api.src.models.budget_threshold import BudgetThreshold
 from api.src.models.killswitch_state import KillswitchState, MODE_AUTO_FREE_ONLY
 from api.src.models.user import User
 from api.src.services.budget_service import get_current_month_snapshot
-from api.src.settings import REDIS_DB_CELERY, settings
+from api.src.settings import REDIS_DB_CELERY, REDIS_DB_RUNTIME_CONFIG, settings
 from api.src.workers.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
@@ -38,8 +38,11 @@ async def _check_thresholds_async() -> dict:
     redis = aioredis.from_url(
         f"{settings.redis_url}/{REDIS_DB_CELERY}", decode_responses=True
     )
+    runtime_redis = aioredis.from_url(
+        f"{settings.redis_url}/{REDIS_DB_RUNTIME_CONFIG}", decode_responses=True
+    )
     try:
-        notification = _build_notification_service(session_factory, redis)
+        notification = _build_notification_service(session_factory, redis, runtime_redis)
         async with session_factory() as session:
             snapshot = await get_current_month_snapshot(session)
             await session.commit()
@@ -102,6 +105,7 @@ async def _check_thresholds_async() -> dict:
                     .values(
                         mode=MODE_AUTO_FREE_ONLY,
                         reason=f"auto:budget_hard_cap_{ym}",
+                        year_month=ym,  # Story 9.2: 0028 마이그 후 활성 row의 기준월 명시
                     )
                     .on_conflict_do_nothing(
                         index_elements=["mode"],
@@ -153,6 +157,7 @@ async def _check_thresholds_async() -> dict:
             return {"year_month": ym, "percent": percent, "actions": actions}
     finally:
         await redis.aclose()
+        await runtime_redis.aclose()
         await engine.dispose()
 
 
@@ -205,9 +210,13 @@ async def _publish(redis, payload: dict) -> None:
 def _build_notification_service(
     session_factory: async_sessionmaker,
     redis,
+    runtime_redis,
 ) -> NotificationService:
     """HOLD-MSG 동안 stub provider 사용."""
     provider = StubMessagingAdapter()
     return NotificationService(
-        provider=provider, session_factory=session_factory, redis=redis
+        provider=provider,
+        session_factory=session_factory,
+        redis=redis,
+        runtime_redis=runtime_redis,
     )

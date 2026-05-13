@@ -116,16 +116,16 @@ beforeEach(() => {
 });
 
 describe("PaymentHistoryTable — EmptyState (AC-8)", () => {
-  it("total=0 + show_subscribe_button=true → '구독 페이지로' 버튼 노출", async () => {
+  it("total=0 + show_subscribe_button=true → '플랜 보러가기' 버튼 노출", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
     await waitFor(() =>
-      expect(screen.getByText("아직 결제 내역이 없어요.")).toBeDefined()
+      expect(screen.getByText("아직 결제 내역이 없어요")).toBeDefined()
     );
-    expect(screen.getByText("구독 페이지로")).toBeDefined();
+    expect(screen.getByText("플랜 보러가기")).toBeDefined();
   });
 
   it("total=0 + show_subscribe_button=false → 구독 버튼 미렌더 (DOM 자체)", async () => {
@@ -146,19 +146,19 @@ describe("PaymentHistoryTable — EmptyState (AC-8)", () => {
     renderTable();
 
     await waitFor(() =>
-      expect(screen.getByText("아직 결제 내역이 없어요.")).toBeDefined()
+      expect(screen.getByText("아직 결제 내역이 없어요")).toBeDefined()
     );
-    expect(screen.queryByText("구독 페이지로")).toBeNull();
+    expect(screen.queryByText("플랜 보러가기")).toBeNull();
   });
 
-  it("'구독 페이지로' 클릭 → router.push('/subscribe')", async () => {
+  it("'플랜 보러가기' 클릭 → router.push('/subscribe')", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => screen.getByText("구독 페이지로"));
-    fireEvent.click(screen.getByText("구독 페이지로"));
+    await waitFor(() => screen.getByText("플랜 보러가기"));
+    fireEvent.click(screen.getByText("플랜 보러가기"));
     expect(mockRouterPush).toHaveBeenCalledWith("/subscribe");
   });
 });
@@ -174,7 +174,7 @@ describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
       expect(screen.getByText(/sub-1-2026-04-30/)).toBeDefined()
     );
     // 결제 금액 + 카드 + status 라벨 + 환불 버튼
-    expect(screen.getByText("₩9,900")).toBeDefined();
+    expect(screen.getAllByText("9,900원").length).toBeGreaterThan(0);
     expect(screen.getByText("현대 **** 1234")).toBeDefined();
     expect(screen.getByText("결제 완료")).toBeDefined();
     expect(screen.getByText("환불 요청")).toBeDefined();
@@ -290,23 +290,25 @@ describe("PaymentHistoryTable — Pagination (AC-5)", () => {
   });
 });
 
-describe("PaymentHistoryTable — SubscriptionStatusCard 통합 (AC-6)", () => {
-  it("status=active → '구독 해지' 버튼 노출", async () => {
+describe("PaymentHistoryTable — 구독 관리 버튼 위치", () => {
+  it("status=active → 결제 내역에서는 '구독 해지' 버튼 미노출", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subActive);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("구독 해지")).toBeDefined());
+    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
+    expect(screen.queryByText("구독 해지")).toBeNull();
   });
 
-  it("status=cancel_pending → '해지 철회' 버튼 노출", async () => {
+  it("status=cancel_pending → 결제 내역에서는 '해지 철회' 버튼 미노출", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subCancelPending);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("해지 철회")).toBeDefined());
+    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
+    expect(screen.queryByText("해지 철회")).toBeNull();
   });
 
   it("status=none → SubscriptionStatusCard 미렌더", async () => {
@@ -315,7 +317,7 @@ describe("PaymentHistoryTable — SubscriptionStatusCard 통합 (AC-6)", () => {
 
     renderTable();
 
-    await waitFor(() => screen.getByText("아직 결제 내역이 없어요."));
+    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
     expect(screen.queryByText("구독 해지")).toBeNull();
     expect(screen.queryByText("해지 철회")).toBeNull();
   });

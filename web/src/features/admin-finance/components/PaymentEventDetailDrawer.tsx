@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchPaymentEventDetail,
   type PaymentEventDetail,
+  type PaymentEventType,
 } from "@/features/admin-finance/api/payments";
 import { getPaymentEventMeta } from "./PaymentDot";
 import styles from "./PaymentEventDetailDrawer.module.css";
@@ -34,8 +35,17 @@ const STATUS_LABEL: Record<PaymentEventDetail["status"], string> = {
   refund_pending: "환불 진행 중",
 };
 
+const REFUND_EVENT_TYPES: ReadonlySet<PaymentEventType> = new Set([
+  "refund_requested",
+  "refund_success",
+  "refund_denied",
+]);
+
+function isRefundEvent(t: PaymentEventType): boolean {
+  return REFUND_EVENT_TYPES.has(t);
+}
+
 export function PaymentEventDetailDrawer({ eventId, onClose }: DrawerProps) {
-  const [copyToast, setCopyToast] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   const { data, error, isLoading } = useQuery({
@@ -63,20 +73,6 @@ export function PaymentEventDetailDrawer({ eventId, onClose }: DrawerProps) {
     );
     firstFocusable?.focus();
   }, [eventId]);
-
-  const handleCopy = async () => {
-    if (!data?.raw_response_json) return;
-    try {
-      await navigator.clipboard.writeText(
-        JSON.stringify(data.raw_response_json, null, 2),
-      );
-      setCopyToast("복사됨");
-      window.setTimeout(() => setCopyToast(null), 2000);
-    } catch {
-      setCopyToast("복사 실패");
-      window.setTimeout(() => setCopyToast(null), 2000);
-    }
-  };
 
   return (
     <div
@@ -168,47 +164,48 @@ export function PaymentEventDetailDrawer({ eventId, onClose }: DrawerProps) {
               </section>
             )}
 
-            <section className={styles.jsonSection} aria-label="PG 응답 원본 JSON">
-              <h3 className={styles.sectionHeading}>PG 응답 원본 (raw_response_json)</h3>
-              <pre className={styles.jsonViewer}>
-                <code>
-                  {data.raw_response_json
-                    ? JSON.stringify(data.raw_response_json, null, 2)
-                    : "(no response payload)"}
-                </code>
-              </pre>
-            </section>
+            {isRefundEvent(data.event_type) && data.refund_reason && (
+              <section className={styles.refundBox} aria-label="환불 사유">
+                <h3 className={styles.sectionHeading}>환불 사유</h3>
+                <p className={styles.refundReason}>{data.refund_reason}</p>
+              </section>
+            )}
 
             <footer className={styles.actionBar}>
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onClick={handleCopy}
-                disabled={!data.raw_response_json}
-              >
-                JSON 복사
-              </button>
               <Link
                 href={`/admin/users/${data.user_id}`}
                 className={styles.actionLink}
               >
                 사용자 보기
               </Link>
-              <span
-                className={styles.actionLinkDisabled}
-                title="Story 9.3에서 활성화"
-              >
-                환불 검토 큐로 (준비 중)
-              </span>
-              <Link
-                href={`/admin/users/edits?target_id=${data.payment_id}&action_in=billing.refund`}
-                className={styles.actionLink}
-              >
-                감사 로그 보기
-              </Link>
-              {copyToast && (
-                <span className={styles.toast} role="status">
-                  {copyToast}
+              {data.manual_refund_queue_id !== null ? (
+                <Link
+                  href={`/admin/cs?tab=refunds&status=${data.manual_refund_queue_status ?? "pending"}&queue_id=${data.manual_refund_queue_id}`}
+                  className={styles.actionLink}
+                >
+                  환불 검토 큐로
+                </Link>
+              ) : (
+                <span
+                  className={styles.actionLinkDisabled}
+                  title="이 결제는 수동 환불 큐에 등록되지 않았습니다"
+                >
+                  환불 검토 큐 항목 없음
+                </span>
+              )}
+              {data.manual_refund_queue_id !== null ? (
+                <Link
+                  href={`/admin/finance/audit?target_id=${data.manual_refund_queue_id}&action_in=refund.manual.approve,refund.manual.deny`}
+                  className={styles.actionLink}
+                >
+                  감사 로그 보기
+                </Link>
+              ) : (
+                <span
+                  className={styles.actionLinkDisabled}
+                  title="이 결제와 연결된 관리자 감사 로그가 없습니다"
+                >
+                  감사 로그 항목 없음
                 </span>
               )}
             </footer>

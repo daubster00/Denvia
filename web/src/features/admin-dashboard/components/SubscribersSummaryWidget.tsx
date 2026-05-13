@@ -40,7 +40,11 @@ export function SubscribersSummaryWidget() {
       title="구독 현황"
       caption="현재 시점 무료/Pro/차단/탈퇴 사용자 수입니다."
       detailHref="/admin/dashboard/analytics/subscribers"
-      footnote="갱신 예정일은 PG 연동 후 표시됩니다"
+      footnote={
+        data && data.pending_cancellation_count > 0
+          ? `유료 종결 예정 ${data.pending_cancellation_count.toLocaleString()}건 — 상세에서 확인`
+          : undefined
+      }
     >
       {isLoading && <WidgetLoadingState />}
       {!isLoading && error && <WidgetErrorState onRetry={() => refetch()} />}

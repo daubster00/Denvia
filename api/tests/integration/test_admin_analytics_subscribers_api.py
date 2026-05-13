@@ -111,8 +111,8 @@ class TestSubscribersEndpoint:
                 "pro_count": 12,
                 "blocked_count": 1,
                 "withdrawn_count": 7,
-                "pending_cancellation_count": None,
-                "upcoming_renewals": [],
+                "pending_cancellation_count": 0,
+                "pending_cancellations": [],
             }),
         ):
             res = await self._call()
@@ -123,8 +123,8 @@ class TestSubscribersEndpoint:
         assert data["blocked_count"] == 1
         assert data["withdrawn_count"] == 7
 
-    async def test_subscribers_pending_cancellation_is_null(self):
-        """HOLD-PG 자리 — pending_cancellation_count는 항상 null."""
+    async def test_subscribers_pending_cancellation_count_zero(self):
+        """해지 예약 없음 → pending_cancellation_count는 0."""
         with patch(
             "api.src.routers.admin.analytics.get_subscriber_counts",
             new=AsyncMock(return_value={
@@ -132,16 +132,20 @@ class TestSubscribersEndpoint:
                 "pro_count": 0,
                 "blocked_count": 0,
                 "withdrawn_count": 0,
-                "pending_cancellation_count": None,
-                "upcoming_renewals": [],
+                "pending_cancellation_count": 0,
+                "pending_cancellations": [],
             }),
         ):
             res = await self._call()
         assert res.status_code == 200
-        assert res.json()["pending_cancellation_count"] is None
+        assert res.json()["pending_cancellation_count"] == 0
 
-    async def test_subscribers_upcoming_renewals_is_empty(self):
-        """HOLD-PG 자리 — upcoming_renewals는 항상 빈 리스트."""
+    async def test_subscribers_pending_cancellations_list(self):
+        """해지 예약 목록 응답에 포함."""
+        from datetime import datetime, timezone
+
+        canceled_at = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+        period_end = datetime(2026, 5, 22, 0, 0, tzinfo=timezone.utc)
         with patch(
             "api.src.routers.admin.analytics.get_subscriber_counts",
             new=AsyncMock(return_value={
@@ -149,20 +153,33 @@ class TestSubscribersEndpoint:
                 "pro_count": 1,
                 "blocked_count": 0,
                 "withdrawn_count": 0,
-                "pending_cancellation_count": None,
-                "upcoming_renewals": [],
+                "pending_cancellation_count": 1,
+                "pending_cancellations": [
+                    {
+                        "user_id": 42,
+                        "email_masked": "a****@x.com",
+                        "canceled_at": canceled_at,
+                        "current_period_end": period_end,
+                    }
+                ],
             }),
         ):
             res = await self._call()
         body = res.json()
-        assert body["upcoming_renewals"] == []
+        assert body["pending_cancellation_count"] == 1
+        assert len(body["pending_cancellations"]) == 1
+        item = body["pending_cancellations"][0]
+        assert item["user_id"] == 42
+        assert item["email_masked"] == "a****@x.com"
+        assert item["canceled_at"].startswith("2026-05-01")
+        assert item["current_period_end"].startswith("2026-05-22")
 
     async def test_subscribers_as_of_kst_iso8601(self):
         with patch(
             "api.src.routers.admin.analytics.get_subscriber_counts",
             new=AsyncMock(return_value={
                 "free_count": 1, "pro_count": 0, "blocked_count": 0, "withdrawn_count": 0,
-                "pending_cancellation_count": None, "upcoming_renewals": [],
+                "pending_cancellation_count": 0, "pending_cancellations": [],
             }),
         ):
             res = await self._call()
@@ -175,7 +192,7 @@ class TestSubscribersEndpoint:
             "api.src.routers.admin.analytics.get_subscriber_counts",
             new=AsyncMock(return_value={
                 "free_count": 0, "pro_count": 0, "blocked_count": 0, "withdrawn_count": 0,
-                "pending_cancellation_count": None, "upcoming_renewals": [],
+                "pending_cancellation_count": 0, "pending_cancellations": [],
             }),
         ):
             res = await self._call()
@@ -183,7 +200,7 @@ class TestSubscribersEndpoint:
 
     async def test_subscribers_excludes_withdrawn_from_active_status_groups(self):
         """get_subscriber_counts 직접 호출: withdrawn=NOT NULL은 free/pro/blocked에서 제외."""
-        # 시나리오: free 활성 3 + free 탈퇴 2 → free_count=3, withdrawn_count=2
+        # 시나리오: free 활성 3 + free 탈퇴 2 + cancel_pending 1
         from api.src.services.analytics_service import get_subscriber_counts
 
         call_count = 0
@@ -195,9 +212,15 @@ class TestSubscribersEndpoint:
             if call_count == 1:
                 # GROUP BY status (withdrawn_at IS NULL)
                 r.all.return_value = [("free", 3), ("pro", 1)]
-            else:
+            elif call_count == 2:
                 # COUNT(withdrawn IS NOT NULL)
                 r.scalar_one.return_value = 2
+            elif call_count == 3:
+                # COUNT(cancel_pending)
+                r.scalar_one.return_value = 1
+            else:
+                # SELECT cancel_pending list
+                r.all.return_value = []
             return r
 
         session = MagicMock()
@@ -208,5 +231,5 @@ class TestSubscribersEndpoint:
         assert out["pro_count"] == 1
         assert out["blocked_count"] == 0
         assert out["withdrawn_count"] == 2
-        assert out["pending_cancellation_count"] is None
-        assert out["upcoming_renewals"] == []
+        assert out["pending_cancellation_count"] == 1
+        assert out["pending_cancellations"] == []

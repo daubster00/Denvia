@@ -42,7 +42,7 @@ from api.src.schemas.admin.users import (
 logger = structlog.get_logger(__name__)
 
 _QA_EXCERPT_LEN = 60
-_RECENT_QA_LIMIT = 10
+_RECENT_QA_LIMIT = 5
 _RECENT_ANOMALY_LIMIT = 3
 
 
@@ -161,7 +161,7 @@ async def search_users(
     None이면 모든 상태를 포함한다.
     """
     # 1. WHERE 절 구성 — None인 필터는 SQL에서 제외 (불필요한 분기 회피)
-    conditions: list[Any] = []
+    conditions: list[Any] = [User.role != "admin"]  # 관리자 계정 제외
     if segment is not None:
         conditions.append(User.segment == segment)
     if subscription_status is not None:
@@ -217,7 +217,7 @@ def _excerpt(text: str | None, length: int = _QA_EXCERPT_LEN) -> str:
 
 
 async def get_user_detail(db: AsyncSession, user_id: int) -> UserDetailResponse:
-    """단건 사용자 상세 — 기본 정보 + 결제 요약 + 최근 QA 10 + 이상 이벤트 3.
+    """단건 사용자 상세 — 기본 정보 + 결제 요약 + 최근 QA 5 + 이상 이벤트 3.
 
     존재하지 않으면 404 ADMIN_USER_NOT_FOUND.
     """
@@ -255,7 +255,7 @@ async def get_user_detail(db: AsyncSession, user_id: int) -> UserDetailResponse:
         next_charge_at=subscription.next_charge_at if subscription else None,
     )
 
-    # 최근 QA 10건
+    # 최근 QA 5건
     qa_rows = (
         await db.execute(
             select(QALog)

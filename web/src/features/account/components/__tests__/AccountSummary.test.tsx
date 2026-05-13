@@ -32,7 +32,7 @@ async function flushAsync() {
 }
 
 describe("AccountSummary — Story 4.3 AC-2 분기", () => {
-  it("free + show_subscribe_button=true → 4개 카드(플랜·사용량·가입유형) + 구독하기", async () => {
+  it("free + show_subscribe_button=true → 3개 카드(플랜·사용량·가입유형), 구독 버튼은 결제 내역에서 관리", async () => {
     vi.mocked(fetchUsageSummary).mockResolvedValue({
       month_question_count: 12,
       daily_used: 3,
@@ -62,7 +62,7 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
     expect(screen.getByText(/12회/)).toBeDefined();
     expect(screen.getByText(/3\/10회/)).toBeDefined();
     expect(screen.getByText("치과의사")).toBeDefined();
-    expect(screen.getByRole("link", { name: "구독하기" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "구독하기" })).toBeNull();
   });
 
   it("pro → 당일 사용량 카드 미렌더 (월 카운트만 표시)", async () => {
@@ -96,7 +96,7 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
     expect(screen.queryByRole("link", { name: "구독하기" })).toBeNull();
   });
 
-  it("cancel_pending → '해지 예정' 카드 노출", async () => {
+  it("cancel_pending → 현재 플랜 카드에 '해지 철회' 버튼 노출", async () => {
     vi.mocked(fetchUsageSummary).mockResolvedValue({
       month_question_count: 50,
       daily_used: 0,
@@ -121,8 +121,7 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
     await flushAsync();
     await flushAsync();
 
-    expect(screen.getByText(/해지 예정/)).toBeDefined();
-    expect(screen.getByText(/2026-05-15/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "해지 철회" })).toBeDefined();
   });
 
   it("segment is null → 가입유형 카드가 '회원 정보 완성' 안내로 분기", async () => {

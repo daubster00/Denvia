@@ -121,6 +121,7 @@ export interface BlockActionPayload {
 
 export interface UserPermissionUpdatePayload {
   subscription_status?: SubscriptionStatus;
+  segment?: Segment;
   daily_quota_override?: number;
   daily_quota_override_clear?: boolean;
   block_action?: BlockActionPayload;

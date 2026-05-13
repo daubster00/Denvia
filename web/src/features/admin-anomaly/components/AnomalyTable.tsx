@@ -106,7 +106,7 @@ export function AnomalyTable({
           {items.map((item) => {
             const userCell = item.target_user_id ? (
               <a
-                href={`/admin/users?user_id=${item.target_user_id}`}
+                href={`/admin/users/${item.target_user_id}`}
                 className={styles.userLink}
               >
                 {item.target_user_email_masked ?? `#${item.target_user_id}`}
@@ -133,7 +133,7 @@ export function AnomalyTable({
                     {item.status === "actioned" ? (
                       item.target_user_id ? (
                         <a
-                          href={`/admin/users?user_id=${item.target_user_id}`}
+                          href={`/admin/users/${item.target_user_id}`}
                           className={styles.linkButton}
                         >
                           차단 사용자 보기
