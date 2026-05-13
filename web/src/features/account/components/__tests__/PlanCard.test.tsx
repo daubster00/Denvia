@@ -46,12 +46,12 @@ describe("PlanCard — Story 4.3 AC-2 / AC-4", () => {
     expect(screen.queryByRole("link", { name: "구독하기" })).toBeNull();
   });
 
-  it("pro → 'Pro — 무제한' + ProBadge 노출, 구독하기 버튼 미노출", () => {
+  it("pro → 'Pro — 무제한' 노출, 구독하기 버튼 미노출", () => {
     render(<PlanCard subscriptionStatus="pro" showSubscribeButton={false} />, {
       wrapper,
     });
     expect(screen.getByText("Pro — 무제한")).toBeDefined();
-    expect(screen.getByLabelText("Pro 플랜")).toBeDefined();
+    expect(screen.queryByLabelText("Pro 플랜")).toBeNull();
     expect(screen.queryByRole("link", { name: "구독하기" })).toBeNull();
   });
 

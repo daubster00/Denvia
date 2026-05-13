@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { ProBadge } from "@/features/billing/components/ProBadge";
 import { CancelSubscriptionFlow } from "@/features/billing/components/CancelSubscriptionFlow";
 import { useCurrentSubscription } from "@/features/billing/hooks/useCurrentSubscription";
 import { useResumeSubscription } from "@/features/billing/hooks/useResumeSubscription";
@@ -56,9 +55,8 @@ export function PlanCard({ subscriptionStatus, showSubscribeButton }: PlanCardPr
       <div className={styles.content}>
         <h2 className={styles.title}>현재 플랜</h2>
         {subscriptionStatus === "pro" && (
-          <div className={styles.proBody}>
+          <div className={styles.body}>
             <span className={styles.planName}>Pro — 무제한</span>
-            <ProBadge size="lg" showIcon />
           </div>
         )}
         {subscriptionStatus === "admin" && (

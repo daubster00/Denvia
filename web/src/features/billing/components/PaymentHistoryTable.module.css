@@ -353,15 +353,83 @@
 }
 
 @media (max-width: 1180px) {
-  .historyLayout,
-  .detailPanel {
+  .historyLayout {
     grid-template-columns: 1fr;
     gap: 20px;
+  }
+
+  .detailPanel {
+    display: none;
   }
 
   .amountBox {
     max-width: none;
   }
+}
+
+.detailModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.detailModal {
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+
+.detailModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.detailModalTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.detailModalClose {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #4b5563;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detailModalClose:hover {
+  background: #f3f4f6;
+}
+
+.detailModalBody {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 @media (max-width: 767px) {

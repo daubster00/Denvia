@@ -132,6 +132,8 @@ function statusClass(status: PaymentStatus): string {
   }
 }
 
+const NARROW_QUERY = "(max-width: 1180px)";
+
 export function PaymentHistoryTable() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -142,6 +144,8 @@ export function PaymentHistoryTable() {
   const [refundTarget, setRefundTarget] = useState<RefundPaymentInfo | null>(
     null
   );
+  const [isNarrow, setIsNarrow] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   const { data, isLoading, isError, refetch, isFetching } = usePaymentHistory(
     page,
@@ -166,6 +170,40 @@ export function PaymentHistoryTable() {
       setSelectedPaymentId(items[0].payment_id);
     }
   }, [items, selectedPaymentId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mq = window.matchMedia(NARROW_QUERY);
+    const update = () => setIsNarrow(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!isNarrow) setDetailModalOpen(false);
+  }, [isNarrow]);
+
+  useEffect(() => {
+    if (!detailModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDetailModalOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [detailModalOpen]);
+
+  const handleItemClick = useCallback(
+    (id: number) => {
+      setSelectedPaymentId(id);
+      if (isNarrow) setDetailModalOpen(true);
+    },
+    [isNarrow]
+  );
+
+  const handleDetailModalClose = useCallback(() => setDetailModalOpen(false), []);
 
   const handlePerPageChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -198,6 +236,75 @@ export function PaymentHistoryTable() {
   }, [queryClient]);
 
   const showSubscribeButton = usage?.show_subscribe_button ?? false;
+
+  const renderDetailContent = (item: PaymentHistoryItem) => (
+    <>
+      <div className={styles.detailInfo}>
+        <h3 className={styles.detailTitle}>결제 정보</h3>
+        <dl className={styles.detailList}>
+          <div>
+            <dt>결제일</dt>
+            <dd>{formatDetailDate(item.charged_at)}</dd>
+          </div>
+          <div>
+            <dt>결제 상품</dt>
+            <dd>{formatPlanName(item)}</dd>
+          </div>
+          <div>
+            <dt>결제 금액</dt>
+            <dd>{formatAmount(item.amount_krw)}</dd>
+          </div>
+          <div>
+            <dt>결제 수단</dt>
+            <dd>{formatCard(item.card_company, item.card_last4)}</dd>
+          </div>
+          <div>
+            <dt>승인번호</dt>
+            <dd>{item.provider_order_id}</dd>
+          </div>
+          <div>
+            <dt>결제 상태</dt>
+            <dd><PaymentStatusBadge status={item.status} /></dd>
+          </div>
+          <div>
+            <dt>이용 기간</dt>
+            <dd>{formatPeriod(item.subscription_period_start, item.subscription_period_end)}</dd>
+          </div>
+        </dl>
+        {isRefundable(item.status) && (
+          <button
+            type="button"
+            className={styles.refundBtn}
+            onClick={() => handleRefundClick(item)}
+          >
+            환불 요청
+          </button>
+        )}
+      </div>
+
+      <aside className={styles.amountBox} aria-label="결제 금액 상세">
+        <h3 className={styles.amountTitle}>결제 금액 상세</h3>
+        <dl className={styles.amountList}>
+          <div>
+            <dt>상품 금액</dt>
+            <dd>{formatAmount(item.amount_krw)}</dd>
+          </div>
+          <div>
+            <dt>부가가치세 (10%)</dt>
+            <dd>0원</dd>
+          </div>
+          <div>
+            <dt>쿠폰 할인</dt>
+            <dd>-0원</dd>
+          </div>
+          <div className={styles.amountTotal}>
+            <dt>총 결제 금액</dt>
+            <dd>{formatAmount(item.amount_krw)}</dd>
+          </div>
+        </dl>
+      </aside>
+    </>
+  );
 
   return (
     <div className={styles.wrapper}>
@@ -253,7 +360,7 @@ export function PaymentHistoryTable() {
                   key={item.payment_id}
                   type="button"
                   className={`${styles.historyItem} ${selected ? styles.historyItemSelected : ""}`}
-                  onClick={() => setSelectedPaymentId(item.payment_id)}
+                  onClick={() => handleItemClick(item.payment_id)}
                   aria-pressed={selected}
                 >
                   <span className={styles.itemDate}>{formatPaymentDate(item.charged_at)}</span>
@@ -306,71 +413,40 @@ export function PaymentHistoryTable() {
           </div>
 
           <section className={styles.detailPanel} aria-label="결제 정보">
-            <div className={styles.detailInfo}>
-              <h3 className={styles.detailTitle}>결제 정보</h3>
-              <dl className={styles.detailList}>
-                <div>
-                  <dt>결제일</dt>
-                  <dd>{formatDetailDate(selectedItem.charged_at)}</dd>
-                </div>
-                <div>
-                  <dt>결제 상품</dt>
-                  <dd>{formatPlanName(selectedItem)}</dd>
-                </div>
-                <div>
-                  <dt>결제 금액</dt>
-                  <dd>{formatAmount(selectedItem.amount_krw)}</dd>
-                </div>
-                <div>
-                  <dt>결제 수단</dt>
-                  <dd>{formatCard(selectedItem.card_company, selectedItem.card_last4)}</dd>
-                </div>
-                <div>
-                  <dt>승인번호</dt>
-                  <dd>{selectedItem.provider_order_id}</dd>
-                </div>
-                <div>
-                  <dt>결제 상태</dt>
-                  <dd><PaymentStatusBadge status={selectedItem.status} /></dd>
-                </div>
-                <div>
-                  <dt>이용 기간</dt>
-                  <dd>{formatPeriod(selectedItem.subscription_period_start, selectedItem.subscription_period_end)}</dd>
-                </div>
-              </dl>
-              {isRefundable(selectedItem.status) && (
-                <button
-                  type="button"
-                  className={styles.refundBtn}
-                  onClick={() => handleRefundClick(selectedItem)}
-                >
-                  환불 요청
-                </button>
-              )}
-            </div>
-
-            <aside className={styles.amountBox} aria-label="결제 금액 상세">
-              <h3 className={styles.amountTitle}>결제 금액 상세</h3>
-              <dl className={styles.amountList}>
-                <div>
-                  <dt>상품 금액</dt>
-                  <dd>{formatAmount(selectedItem.amount_krw)}</dd>
-                </div>
-                <div>
-                  <dt>부가가치세 (10%)</dt>
-                  <dd>0원</dd>
-                </div>
-                <div>
-                  <dt>쿠폰 할인</dt>
-                  <dd>-0원</dd>
-                </div>
-                <div className={styles.amountTotal}>
-                  <dt>총 결제 금액</dt>
-                  <dd>{formatAmount(selectedItem.amount_krw)}</dd>
-                </div>
-              </dl>
-            </aside>
+            {renderDetailContent(selectedItem)}
           </section>
+        </div>
+      )}
+
+      {detailModalOpen && selectedItem && (
+        <div
+          className={styles.detailModalBackdrop}
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleDetailModalClose();
+          }}
+        >
+          <div
+            className={styles.detailModal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="결제 정보"
+          >
+            <header className={styles.detailModalHeader}>
+              <h3 className={styles.detailModalTitle}>결제 정보</h3>
+              <button
+                type="button"
+                className={styles.detailModalClose}
+                onClick={handleDetailModalClose}
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </header>
+            <div className={styles.detailModalBody}>
+              {renderDetailContent(selectedItem)}
+            </div>
+          </div>
         </div>
       )}
 
