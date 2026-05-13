@@ -7,7 +7,6 @@ import type {
   CurrentSubscription,
   IssueBillingKeyResponse,
   PaymentHistoryResponse,
-  RefundResult,
   ResumeSubscriptionResponse,
   SubscriptionResponse,
 } from "./types";
@@ -65,22 +64,6 @@ export async function resumeSubscription(): Promise<ResumeSubscriptionResponse> 
 /** GET /api/v1/billing/subscriptions/current — 현재 구독 상태 조회. */
 export async function fetchCurrentSubscription(): Promise<CurrentSubscription> {
   return apiFetch<CurrentSubscription>("/api/v1/billing/subscriptions/current");
-}
-
-// ── Story 3.6 ────────────────────────────────────────────────────────────────
-
-/** POST /api/v1/billing/payments/{paymentId}/refund — 환불 요청(자동/수동 분기). */
-export async function requestRefund(
-  paymentId: number,
-  reason?: string
-): Promise<RefundResult> {
-  return apiFetch<RefundResult>(
-    `/api/v1/billing/payments/${paymentId}/refund`,
-    {
-      method: "POST",
-      body: JSON.stringify({ reason: reason ?? null }),
-    }
-  );
 }
 
 // ── Story 4.4 ────────────────────────────────────────────────────────────────

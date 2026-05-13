@@ -27,8 +27,6 @@ const sample: api.PaymentEventDetail = {
   provider_error_message: "잘못된 카드번호",
   status: "failed",
   raw_response_json: { code: "INVALID_CARD_NUMBER", message: "잘못된 카드번호" },
-  manual_refund_queue_id: null,
-  manual_refund_queue_status: null,
   refund_reason: null,
 };
 
@@ -98,34 +96,15 @@ describe("PaymentEventDetailDrawer", () => {
     expect(screen.getByText("잘못된 카드번호")).toBeTruthy();
   });
 
-  it("manual_refund_queue_id 없으면 비활성 라벨 노출", async () => {
+  it("감사 로그 보기 링크는 payment_id 기준으로 노출", async () => {
     render(
       withClient(
         <PaymentEventDetailDrawer eventId={42} onClose={vi.fn()} />,
       ),
     );
-    await waitFor(() => screen.getByRole("dialog"));
-    expect(screen.getByText("환불 검토 큐 항목 없음")).toBeTruthy();
-    expect(
-      screen.queryByRole("link", { name: "환불 검토 큐로" }),
-    ).toBeNull();
-  });
-
-  it("manual_refund_queue_id 있으면 상태 필터 포함 링크 노출", async () => {
-    vi.spyOn(api, "fetchPaymentEventDetail").mockResolvedValue({
-      ...sample,
-      status: "refunded",
-      manual_refund_queue_id: 123,
-      manual_refund_queue_status: "approved",
-    });
-    render(
-      withClient(
-        <PaymentEventDetailDrawer eventId={42} onClose={vi.fn()} />,
-      ),
-    );
-    const link = await screen.findByRole("link", { name: "환불 검토 큐로" });
+    const link = await screen.findByRole("link", { name: "감사 로그 보기" });
     expect(link.getAttribute("href")).toBe(
-      "/admin/cs?tab=refunds&status=approved&queue_id=123",
+      "/admin/finance/audit?target_type=payment&target_id=99",
     );
   });
 });

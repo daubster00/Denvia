@@ -163,13 +163,6 @@
   outline: none;
 }
 
-.actionLinkDisabled {
-  font-size: 0.8125rem;
-  color: #9ca3af;
-  padding: 0.5rem 0.625rem;
-  cursor: not-allowed;
-}
-
 .stateMsg {
   text-align: center;
   color: #6b7280;

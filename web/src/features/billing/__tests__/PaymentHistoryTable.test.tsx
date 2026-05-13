@@ -164,7 +164,7 @@ describe("PaymentHistoryTable — EmptyState (AC-8)", () => {
 });
 
 describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
-  it("7컬럼 + 환불 요청 버튼 노출 (status=success)", async () => {
+  it("7컬럼 표시 (status=success, 자가 환불 버튼은 v1.1에서 폐지)", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([makeItem()]));
 
@@ -173,14 +173,13 @@ describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
     await waitFor(() =>
       expect(screen.getByText(/sub-1-2026-04-30/)).toBeDefined()
     );
-    // 결제 금액 + 카드 + status 라벨 + 환불 버튼
     expect(screen.getAllByText("9,900원").length).toBeGreaterThan(0);
     expect(screen.getByText("현대 **** 1234")).toBeDefined();
-    expect(screen.getByText("결제 완료")).toBeDefined();
-    expect(screen.getByText("환불 요청")).toBeDefined();
+    expect(screen.getAllByText("결제 완료").length).toBeGreaterThan(0);
+    expect(screen.queryByText("환불 요청")).toBeNull();
   });
 
-  it("status=refunded → 액션 버튼 미렌더, '환불 완료' 뱃지", async () => {
+  it("status=refunded → '환불 완료' 뱃지", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(
       makeResponse([makeItem({ status: "refunded" })])
@@ -188,11 +187,13 @@ describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("환불 완료")).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getAllByText("환불 완료").length).toBeGreaterThan(0)
+    );
     expect(screen.queryByText("환불 요청")).toBeNull();
   });
 
-  it("status=refund_pending → '환불 처리 중' 뱃지, 액션 없음", async () => {
+  it("status=refund_pending → '환불 처리 중' 뱃지", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(
       makeResponse([makeItem({ status: "refund_pending" })])
@@ -200,7 +201,9 @@ describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("환불 처리 중")).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getAllByText("환불 처리 중").length).toBeGreaterThan(0)
+    );
     expect(screen.queryByText("환불 요청")).toBeNull();
   });
 
@@ -219,7 +222,7 @@ describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
     );
   });
 
-  it("status=failed → 액션 없음 + '실패' 뱃지", async () => {
+  it("status=failed → '실패' 뱃지", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(
       makeResponse([makeItem({ status: "failed" })])
@@ -227,7 +230,9 @@ describe("PaymentHistoryTable — 1건 row 표시 (AC-2)", () => {
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("실패")).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getAllByText("실패").length).toBeGreaterThan(0)
+    );
     expect(screen.queryByText("환불 요청")).toBeNull();
   });
 });
@@ -320,24 +325,6 @@ describe("PaymentHistoryTable — 구독 관리 버튼 위치", () => {
     await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
     expect(screen.queryByText("구독 해지")).toBeNull();
     expect(screen.queryByText("해지 철회")).toBeNull();
-  });
-});
-
-describe("PaymentHistoryTable — RefundRequestPopup 호출 (AC-7)", () => {
-  it("'환불 요청' 클릭 → RefundRequestPopup 모달 마운트", async () => {
-    mockFetchCurrentSubscription.mockResolvedValue(subNone);
-    mockFetchPaymentHistory.mockResolvedValue(makeResponse([makeItem()]));
-
-    renderTable();
-
-    await waitFor(() => screen.getByText("환불 요청"));
-    fireEvent.click(screen.getByText("환불 요청"));
-
-    // RefundRequestPopup 모달 안의 결제 정보 표시 검증
-    await waitFor(() =>
-      expect(screen.getByRole("dialog", { name: "환불 요청" })).toBeDefined()
-    );
-    expect(screen.getByText("9,900원")).toBeDefined();
   });
 });
 

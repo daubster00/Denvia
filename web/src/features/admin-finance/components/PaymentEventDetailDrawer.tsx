@@ -186,36 +186,12 @@ export function PaymentEventDetailDrawer({ eventId, onClose }: DrawerProps) {
               >
                 사용자 보기
               </Link>
-              {data.manual_refund_queue_id !== null ? (
-                <Link
-                  href={`/admin/cs?tab=refunds&status=${data.manual_refund_queue_status ?? "pending"}&queue_id=${data.manual_refund_queue_id}`}
-                  className={styles.actionLink}
-                >
-                  환불 검토 큐로
-                </Link>
-              ) : (
-                <span
-                  className={styles.actionLinkDisabled}
-                  title="이 결제는 수동 환불 큐에 등록되지 않았습니다"
-                >
-                  환불 검토 큐 항목 없음
-                </span>
-              )}
-              {data.manual_refund_queue_id !== null ? (
-                <Link
-                  href={`/admin/finance/audit?target_id=${data.manual_refund_queue_id}&action_in=refund.manual.approve,refund.manual.deny`}
-                  className={styles.actionLink}
-                >
-                  감사 로그 보기
-                </Link>
-              ) : (
-                <span
-                  className={styles.actionLinkDisabled}
-                  title="이 결제와 연결된 관리자 감사 로그가 없습니다"
-                >
-                  감사 로그 항목 없음
-                </span>
-              )}
+              <Link
+                href={`/admin/finance/audit?target_type=payment&target_id=${data.payment_id}`}
+                className={styles.actionLink}
+              >
+                감사 로그 보기
+              </Link>
             </footer>
           </>
         )}

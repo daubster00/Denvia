@@ -6,7 +6,6 @@
  *   GET   /api/v1/admin/support/inquiries/{id}         (recent_qa + replies 추가)
  *   PATCH /api/v1/admin/support/inquiries/{id}         (force 추가)
  *   POST  /api/v1/admin/support/inquiries/{id}/reply   (Tiptap reply_html, 신규)
- *   GET   /api/v1/admin/support/counts                 (탭 카운트, 신규)
  *
  * 모든 mutate 호출에 X-CSRF-Token 헤더 부착.
  */
@@ -116,7 +115,6 @@ export interface InquiryReplyResponse {
 
 export interface SupportCountsResponse {
   open_inquiries: number;
-  pending_refunds: number;
 }
 
 export class InquiryUpdateError extends Error {

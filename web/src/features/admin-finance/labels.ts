@@ -1,5 +1,22 @@
-import { formatRefundReason } from "@/features/admin-support/labels";
-import type { RefundReasonCode } from "@/features/billing/types";
+// v1.0 자가 환불 큐의 reason_code — 신규 발생 경로는 모두 제거됐으나,
+// 과거 audit_logs row 를 화면에 표시하기 위해 라벨 매핑만 유지한다.
+type RefundReasonCode =
+  | "qa_count_exceeded"
+  | "period_exceeded"
+  | "both"
+  | "no_subscription";
+
+const REFUND_REASON_CODE_LABELS: Record<RefundReasonCode, string> = {
+  period_exceeded: "환불 가능 기간(7일) 초과",
+  qa_count_exceeded: "질의 사용 발생",
+  both: "기간 초과 + 질의 사용",
+  no_subscription: "구독 정보 없음",
+};
+
+function formatRefundReason(code: RefundReasonCode | null): string {
+  if (code === null) return "-";
+  return REFUND_REASON_CODE_LABELS[code] ?? code;
+}
 
 export const FINANCE_AUDIT_ACTION_LABELS: Record<string, string> = {
   "refund.manual.approve": "환불 승인",

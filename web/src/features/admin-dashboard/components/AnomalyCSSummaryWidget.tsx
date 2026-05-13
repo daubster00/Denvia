@@ -80,9 +80,8 @@ export function AnomalyCSSummaryWidget() {
   const supportData = supportQuery.data;
   const newAnomalyCount = anomalyData?.total ?? 0;
   const openInquiries = supportData?.open_inquiries ?? 0;
-  const pendingRefunds = supportData?.pending_refunds ?? 0;
   const recentItems = anomalyData?.items ?? [];
-  const totalPending = newAnomalyCount + openInquiries + pendingRefunds;
+  const totalPending = newAnomalyCount + openInquiries;
 
   return (
     <DashboardWidget
@@ -113,7 +112,7 @@ export function AnomalyCSSummaryWidget() {
             </Link>
             <Link
               className={styles.figureLink}
-              href="/admin/cs?tab=inquiries"
+              href="/admin/cs"
               aria-label="미응답 문의 상세 보기"
             >
               <div className={styles.figureItem}>
@@ -124,22 +123,6 @@ export function AnomalyCSSummaryWidget() {
                   }`}
                 >
                   {openInquiries.toLocaleString()}건
-                </dd>
-              </div>
-            </Link>
-            <Link
-              className={styles.figureLink}
-              href="/admin/cs?tab=refunds"
-              aria-label="환불 대기 상세 보기"
-            >
-              <div className={styles.figureItem}>
-                <dt className={styles.figureLabel}>환불 대기</dt>
-                <dd
-                  className={`${styles.figureValue} ${
-                    pendingRefunds > 0 ? styles.figureAlert : ""
-                  }`}
-                >
-                  {pendingRefunds.toLocaleString()}건
                 </dd>
               </div>
             </Link>

@@ -60,39 +60,6 @@ export interface CurrentSubscription {
   cancel_reason: string | null;
 }
 
-// ── Story 3.6 ────────────────────────────────────────────────────────────────
-
-export interface RefundRequest {
-  reason?: string;
-}
-
-export interface RefundedResponse {
-  status: "refunded";
-  amount_krw: number;
-  refunded_at: string;
-}
-
-export type RefundReasonCode =
-  | "qa_count_exceeded"
-  | "period_exceeded"
-  | "both"
-  | "no_subscription";
-
-export interface QueuedForReviewResponse {
-  status: "queued_for_review";
-  queue_id: number;
-  reason_code: RefundReasonCode | null;
-}
-
-export type RefundResult = RefundedResponse | QueuedForReviewResponse;
-
-export interface RefundPaymentInfo {
-  id: number;
-  amount_krw: number;
-  charged_at: string;
-  card_last4: string | null;
-}
-
 // ── Story 4.4 ────────────────────────────────────────────────────────────────
 
 export type PaymentStatus =

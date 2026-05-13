@@ -1,35 +1,31 @@
 "use client";
 
 /**
- * PaymentHistoryTable — 마이페이지 결제 내역 테이블 + 해지/환불 진입 (Story 4.4 / FR27 / F-402).
+ * PaymentHistoryTable — 마이페이지 결제 내역 테이블 (Story 4.4 / FR27 / F-402).
+ *
+ * 환불 정책 v1.1: 사용자 자가 환불 폼은 폐지. 환불은 1:1 문의 → 관리자 검토 → 운영 환불.
+ * 본 테이블은 결제 내역 조회 + status badge 표시만 담당.
  *
  * 구성:
  *   - 상단: SubscriptionStatusCard (active → 해지 / cancel_pending → 철회 / none → 미렌더)
- *   - 본문: 7컬럼 테이블 (결제일자/상품·기간/이메일/결제수단/금액/주문번호/상태) + 액션
+ *   - 본문: 7컬럼 테이블 (결제일자/상품·기간/이메일/결제수단/금액/주문번호/상태)
  *   - 하단: per_page select + 이전/다음 + "현재/총" 페이지 표시
  *   - 0건: EmptyState — A-303(useUsageSummary.show_subscribe_button) ON 시 "구독 페이지로" 버튼
  *   - 에러: ErrorState — "새로고침" 버튼 (페이지 fallback 금지)
  *
  * 재사용:
  *   - Story 3.5: useCurrentSubscription / useResumeSubscription / SubscriptionStatusCard / CancelSubscriptionFlow
- *   - Story 3.6: RefundRequestPopup / RefundPaymentInfo
  *   - Story 4.3: useUsageSummary (A-303 토글 재사용 — round-trip 회피)
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { useUsageSummary } from "@/features/account/hooks/useUsageSummary";
 
 import { usePaymentHistory } from "../hooks/usePaymentHistory";
-import type {
-  PaymentHistoryItem,
-  PaymentStatus,
-  RefundPaymentInfo,
-} from "../types";
+import type { PaymentHistoryItem, PaymentStatus } from "../types";
 import { PaymentStatusBadge } from "./PaymentStatusBadge";
-import { RefundRequestPopup } from "./RefundRequestPopup";
 
 import styles from "./PaymentHistoryTable.module.css";
 
@@ -100,10 +96,6 @@ function formatCard(
   return `${co} **** ${last4}`;
 }
 
-function isRefundable(status: PaymentStatus): boolean {
-  return status === "success";
-}
-
 function statusText(status: PaymentStatus): string {
   switch (status) {
     case "success":
@@ -136,14 +128,10 @@ const NARROW_QUERY = "(max-width: 1180px)";
 
 export function PaymentHistoryTable() {
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<PerPage>(20);
   const [selectedPaymentId, setSelectedPaymentId] = useState<number | null>(null);
-  const [refundTarget, setRefundTarget] = useState<RefundPaymentInfo | null>(
-    null
-  );
   const [isNarrow, setIsNarrow] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
@@ -217,24 +205,6 @@ export function PaymentHistoryTable() {
   const handlePrev = useCallback(() => setPage((p) => Math.max(1, p - 1)), []);
   const handleNext = useCallback(() => setPage((p) => p + 1), []);
 
-  const handleRefundClick = useCallback((item: PaymentHistoryItem) => {
-    setRefundTarget({
-      id: item.payment_id,
-      amount_krw: item.amount_krw,
-      // RefundRequestPopup의 RefundPaymentInfo.charged_at은 string 필수.
-      // success 상태에서만 환불 버튼이 노출되므로 charged_at은 항상 존재한다.
-      charged_at: item.charged_at ?? "",
-      card_last4: item.card_last4,
-    });
-  }, []);
-
-  const handleRefundClose = useCallback(() => setRefundTarget(null), []);
-
-  const handleRefundSuccess = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["me", "payments"] });
-    queryClient.invalidateQueries({ queryKey: ["billing", "current-subscription"] });
-  }, [queryClient]);
-
   const showSubscribeButton = usage?.show_subscribe_button ?? false;
 
   const renderDetailContent = (item: PaymentHistoryItem) => (
@@ -271,15 +241,6 @@ export function PaymentHistoryTable() {
             <dd>{formatPeriod(item.subscription_period_start, item.subscription_period_end)}</dd>
           </div>
         </dl>
-        {isRefundable(item.status) && (
-          <button
-            type="button"
-            className={styles.refundBtn}
-            onClick={() => handleRefundClick(item)}
-          >
-            환불 요청
-          </button>
-        )}
       </div>
 
       <aside className={styles.amountBox} aria-label="결제 금액 상세">
@@ -450,14 +411,6 @@ export function PaymentHistoryTable() {
         </div>
       )}
 
-      {refundTarget && (
-        <RefundRequestPopup
-          isOpen
-          onClose={handleRefundClose}
-          payment={refundTarget}
-          onSuccess={handleRefundSuccess}
-        />
-      )}
     </div>
   );
 }

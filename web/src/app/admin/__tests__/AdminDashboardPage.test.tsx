@@ -86,7 +86,6 @@ describe("AdminDashboardPage", () => {
     });
     (fetchSupportCounts as ReturnType<typeof vi.fn>).mockResolvedValue({
       open_inquiries: 0,
-      pending_refunds: 0,
     });
     // Story 5.3: 기본 stub
     (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({

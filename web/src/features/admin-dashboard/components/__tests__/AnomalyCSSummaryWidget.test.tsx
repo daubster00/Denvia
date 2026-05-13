@@ -75,7 +75,6 @@ const anomalyResponse = {
 
 const supportResponse = {
   open_inquiries: 7,
-  pending_refunds: 2,
 };
 
 describe("AnomalyCSSummaryWidget", () => {
@@ -96,7 +95,7 @@ describe("AnomalyCSSummaryWidget", () => {
     expect(screen.getByText(/로딩 중/)).toBeTruthy();
   });
 
-  it("미검토 이상행동·미응답 문의·환불 대기 카운트 + 최근 항목 렌더", async () => {
+  it("미검토 이상행동·미응답 문의 카운트 + 최근 항목 렌더", async () => {
     const { fetchAnomalyList } = await import(
       "@/features/admin-anomaly/api/anomaly"
     );
@@ -114,7 +113,7 @@ describe("AnomalyCSSummaryWidget", () => {
 
     await screen.findByText("5건");
     expect(screen.getByText("7건")).toBeTruthy();
-    expect(screen.getByText("2건")).toBeTruthy();
+    expect(screen.queryByText(/환불 대기/)).toBeNull();
     expect(screen.getByText("로그인 무차별 시도")).toBeTruthy();
     expect(screen.getByText("abc***@example.com")).toBeTruthy();
     expect(screen.getByText("IP 10.0.0.2")).toBeTruthy();
@@ -135,7 +134,6 @@ describe("AnomalyCSSummaryWidget", () => {
     });
     (fetchSupportCounts as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       open_inquiries: 0,
-      pending_refunds: 0,
     });
 
     renderWithQuery(<AnomalyCSSummaryWidget />);
@@ -158,7 +156,6 @@ describe("AnomalyCSSummaryWidget", () => {
     });
     (fetchSupportCounts as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       open_inquiries: 4,
-      pending_refunds: 0,
     });
 
     renderWithQuery(<AnomalyCSSummaryWidget />);
@@ -211,13 +208,10 @@ describe("AnomalyCSSummaryWidget", () => {
     const inquiriesLink = screen.getByRole("link", {
       name: /미응답 문의 상세 보기/,
     });
-    expect(inquiriesLink.getAttribute("href")).toBe(
-      "/admin/cs?tab=inquiries",
-    );
+    expect(inquiriesLink.getAttribute("href")).toBe("/admin/cs");
 
-    const refundsLink = screen.getByRole("link", {
-      name: /환불 대기 상세 보기/,
-    });
-    expect(refundsLink.getAttribute("href")).toBe("/admin/cs?tab=refunds");
+    expect(
+      screen.queryByRole("link", { name: /환불 대기 상세 보기/ }),
+    ).toBeNull();
   });
 });
