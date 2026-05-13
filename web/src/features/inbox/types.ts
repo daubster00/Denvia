@@ -13,6 +13,7 @@ export interface InboxItem {
   created_at: string;
   notice_id: number | null;
   popup_id: number | null;
+  inquiry_id: number | null;
 }
 
 export interface InboxListResponse {

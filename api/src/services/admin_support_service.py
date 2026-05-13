@@ -16,10 +16,14 @@ from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException, Request
-from sqlalchemy import case, desc, func, or_, select
+from sqlalchemy import case, delete as sa_delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.middleware.audit_actions import AUDIT_SUPPORT_REPLY
+from api.src.middleware.audit_actions import (
+    AUDIT_SUPPORT_REPLY,
+    AUDIT_SUPPORT_REPLY_DELETE,
+    AUDIT_SUPPORT_REPLY_EDIT,
+)
 from api.src.models.customer_inquiry import CustomerInquiry
 from api.src.models.inbox_message import InboxMessage
 from api.src.models.inquiry_attachment import InquiryAttachment
@@ -31,6 +35,7 @@ from api.src.schemas.admin.support import (
     InquiryDetailResponse,
     InquiryListItem,
     InquiryListResponse,
+    InquiryReplyEditRequest,
     InquiryReplyItem,
     InquiryReplyRequest,
     InquiryStatus,
@@ -334,6 +339,7 @@ async def update_inquiry(
             user_id=inquiry.user_id,
             notice_id=None,
             popup_id=None,
+            inquiry_id=inquiry.id,
             type="system",
             title=INQUIRY_REPLY_INBOX_TITLE,
             body_html=safe_body,
@@ -435,6 +441,8 @@ async def create_reply(
             user_id=inquiry.user_id,
             notice_id=None,
             popup_id=None,
+            inquiry_id=inquiry_id,
+            reply_id=reply.id,
             type="system",
             title=INQUIRY_REPLY_INBOX_TITLE,
             body_html=safe_html,
@@ -465,6 +473,132 @@ async def create_reply(
     return await get_inquiry(db, inquiry_id)
 
 
+async def update_reply(
+    request: Request,
+    db: AsyncSession,
+    inquiry_id: int,
+    reply_id: int,
+    payload: InquiryReplyEditRequest,
+    *,
+    admin_id: int,
+) -> InquiryDetailResponse | None:
+    """관리자 답변 수정 — inquiry_replies.reply_html 갱신 + 매칭 inbox 본문 동기.
+
+    1. inquiry_replies row 검증 (inquiry_id 일치).
+    2. reply_html sanitize → 비어있으면 422.
+    3. inquiry_replies.reply_html 갱신.
+    4. inbox_messages 중 reply_id 일치 row의 body_html 동기 갱신.
+       (구버전 데이터로 reply_id가 NULL이면 동기 대상 없음 — inquiry만 갱신.)
+    5. audit_logs는 미들웨어가 응답 직후 자동 INSERT.
+    """
+    reply_row = await db.execute(
+        select(InquiryReply).where(
+            InquiryReply.id == reply_id,
+            InquiryReply.inquiry_id == inquiry_id,
+        )
+    )
+    reply = reply_row.scalar_one_or_none()
+    if reply is None:
+        return None
+
+    safe_html = sanitize_body_html(payload.reply_html)
+    if not safe_html.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_PARAM",
+                "message": "본문이 비어 있습니다.",
+                "field": "reply_html",
+            },
+        )
+
+    before_len = len(reply.reply_html)
+    reply.reply_html = safe_html
+
+    # 사용자 쪽지함 동기 — reply_id로 매칭되는 row 모두 갱신(보통 1건).
+    inbox_rows = (
+        await db.execute(
+            select(InboxMessage).where(InboxMessage.reply_id == reply_id)
+        )
+    ).scalars().all()
+    inbox_updated = 0
+    for inbox in inbox_rows:
+        inbox.body_html = safe_html
+        inbox_updated += 1
+
+    await db.flush()
+
+    request.state.audit_action = AUDIT_SUPPORT_REPLY_EDIT
+    request.state.audit_target_type = "inquiry_reply"
+    request.state.audit_target_id = reply_id
+    request.state.audit_diff = json.dumps(
+        {
+            "inquiry_id": inquiry_id,
+            "reply_id": reply_id,
+            "before_length": before_len,
+            "after_length": len(safe_html),
+            "inbox_synced": inbox_updated,
+        },
+        ensure_ascii=False,
+    )
+
+    await db.commit()
+
+    return await get_inquiry(db, inquiry_id)
+
+
+async def delete_reply(
+    request: Request,
+    db: AsyncSession,
+    inquiry_id: int,
+    reply_id: int,
+    *,
+    admin_id: int,
+) -> InquiryDetailResponse | None:
+    """관리자 답변 삭제 — inquiry_replies row 삭제 + 매칭 inbox row 동기 삭제.
+
+    1. inquiry_replies row 검증.
+    2. inbox_messages 중 reply_id 일치 row 먼저 삭제(사용자 쪽지에서 회수).
+    3. inquiry_replies row 삭제.
+    4. audit_logs는 미들웨어가 응답 직후 자동 INSERT.
+
+    상태(status)는 자동 변경하지 않는다 — 관리자가 별도로 재오픈 등을 결정.
+    """
+    reply_row = await db.execute(
+        select(InquiryReply).where(
+            InquiryReply.id == reply_id,
+            InquiryReply.inquiry_id == inquiry_id,
+        )
+    )
+    reply = reply_row.scalar_one_or_none()
+    if reply is None:
+        return None
+
+    inbox_result = await db.execute(
+        sa_delete(InboxMessage).where(InboxMessage.reply_id == reply_id)
+    )
+    inbox_deleted = inbox_result.rowcount or 0
+
+    await db.delete(reply)
+    await db.flush()
+
+    request.state.audit_action = AUDIT_SUPPORT_REPLY_DELETE
+    request.state.audit_target_type = "inquiry_reply"
+    request.state.audit_target_id = reply_id
+    request.state.audit_diff = json.dumps(
+        {
+            "inquiry_id": inquiry_id,
+            "reply_id": reply_id,
+            "inbox_deleted": inbox_deleted,
+        },
+        ensure_ascii=False,
+    )
+
+    await db.commit()
+
+    return await get_inquiry(db, inquiry_id)
+
+
 def _iso(value) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -474,6 +608,8 @@ __all__ = [
     "get_inquiry",
     "update_inquiry",
     "create_reply",
+    "update_reply",
+    "delete_reply",
     "count_open_inquiries",
     "INQUIRY_REPLY_INBOX_TITLE",
 ]

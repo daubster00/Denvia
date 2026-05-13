@@ -43,6 +43,7 @@ const oneItem: InboxListResponse = {
       created_at: new Date().toISOString(),
       notice_id: 10,
       popup_id: null,
+      inquiry_id: null,
     },
   ],
   page: 1,

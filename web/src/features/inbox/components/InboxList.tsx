@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 
+import { useRouter } from "next/navigation";
 import { IconInbox } from "@wanteddev/wds-icon";
 
 import { useInbox } from "../hooks/useInbox";
@@ -20,6 +21,7 @@ interface InboxListProps {
 const PER_PAGE_OPTIONS = [10, 20, 50] as const;
 
 export function InboxList({ filter }: InboxListProps) {
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<number>(20);
   const [activeItem, setActiveItem] = useState<InboxItem | null>(null);
@@ -28,10 +30,15 @@ export function InboxList({ filter }: InboxListProps) {
   const markRead = useMarkRead();
 
   function handleCardClick(item: InboxItem) {
-    setActiveItem(item);
     if (!item.is_read) {
       markRead.mutate(item.message_id);
     }
+    // 문의 답변 쪽지는 본문 팝업 대신 원본 문의 상세로 이동.
+    if (item.inquiry_id != null) {
+      router.push(`/my/inquiries/${item.inquiry_id}`);
+      return;
+    }
+    setActiveItem(item);
   }
 
   if (isLoading) {

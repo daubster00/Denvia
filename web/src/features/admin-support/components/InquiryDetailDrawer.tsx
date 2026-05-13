@@ -16,6 +16,8 @@ import {
 } from "@/features/admin-support/labels";
 import { useUpdateInquiry } from "@/features/admin-support/hooks/useUpdateInquiry";
 import { usePostInquiryReply } from "@/features/admin-support/hooks/usePostInquiryReply";
+import { useEditInquiryReply } from "@/features/admin-support/hooks/useEditInquiryReply";
+import { useDeleteInquiryReply } from "@/features/admin-support/hooks/useDeleteInquiryReply";
 import { StatusRevertConfirmDialog } from "./StatusRevertConfirmDialog";
 import styles from "./InquiryDetailDrawer.module.css";
 
@@ -96,9 +98,14 @@ export function InquiryDetailDrawer({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [revertCandidate, setRevertCandidate] = useState<InquiryStatus | null>(null);
+  const [editingReplyId, setEditingReplyId] = useState<number | null>(null);
+  const [editingHtml, setEditingHtml] = useState<string>("");
+  const [deleteCandidateId, setDeleteCandidateId] = useState<number | null>(null);
 
   const updateMutation = useUpdateInquiry(detail?.id ?? null);
   const replyMutation = usePostInquiryReply(detail?.id ?? null);
+  const editReplyMutation = useEditInquiryReply(detail?.id ?? null);
+  const deleteReplyMutation = useDeleteInquiryReply(detail?.id ?? null);
 
   useEffect(() => {
     setReplyHtml("");
@@ -106,6 +113,9 @@ export function InquiryDetailDrawer({
     setFeedback(null);
     setErrorMsg(null);
     setRevertCandidate(null);
+    setEditingReplyId(null);
+    setEditingHtml("");
+    setDeleteCandidateId(null);
   }, [detail?.id]);
 
   useEffect(() => {
@@ -113,9 +123,15 @@ export function InquiryDetailDrawer({
     closeBtnRef.current?.focus();
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && revertCandidate === null) {
-        onClose();
-        return;
+      if (e.key === "Escape") {
+        if (deleteCandidateId !== null) {
+          if (!deleteReplyMutation.isPending) setDeleteCandidateId(null);
+          return;
+        }
+        if (revertCandidate === null) {
+          onClose();
+          return;
+        }
       }
       if (e.key === "Tab" && drawerRef.current) {
         const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
@@ -135,7 +151,13 @@ export function InquiryDetailDrawer({
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose, revertCandidate]);
+  }, [
+    open,
+    onClose,
+    revertCandidate,
+    deleteCandidateId,
+    deleteReplyMutation.isPending,
+  ]);
 
   if (!open) return null;
 
@@ -175,6 +197,58 @@ export function InquiryDetailDrawer({
   function handleRevertConfirm() {
     if (revertCandidate === null) return;
     executeStatusUpdate(revertCandidate, true);
+  }
+
+  function handleStartEditReply(reply: InquiryReplyItem) {
+    setEditingReplyId(reply.reply_id);
+    setEditingHtml(reply.reply_html_safe);
+    setFeedback(null);
+    setErrorMsg(null);
+  }
+
+  function handleCancelEditReply() {
+    if (editReplyMutation.isPending) return;
+    setEditingReplyId(null);
+    setEditingHtml("");
+  }
+
+  function handleSubmitEditReply() {
+    if (editingReplyId === null || editReplyMutation.isPending) return;
+    if (isEmptyHtml(editingHtml)) {
+      setErrorMsg("답변 본문을 입력해주세요.");
+      return;
+    }
+    setFeedback(null);
+    setErrorMsg(null);
+    editReplyMutation.mutate(
+      { replyId: editingReplyId, payload: { reply_html: editingHtml } },
+      {
+        onSuccess: () => {
+          setEditingReplyId(null);
+          setEditingHtml("");
+          setFeedback("답변이 수정되었고 사용자 쪽지함에도 반영되었습니다.");
+        },
+        onError: (err) => {
+          setErrorMsg(err.message ?? "답변 수정에 실패했습니다.");
+        },
+      },
+    );
+  }
+
+  function handleConfirmDeleteReply() {
+    if (deleteCandidateId === null || deleteReplyMutation.isPending) return;
+    setFeedback(null);
+    setErrorMsg(null);
+    deleteReplyMutation.mutate(deleteCandidateId, {
+      onSuccess: () => {
+        setDeleteCandidateId(null);
+        setFeedback("답변이 삭제되었고 사용자 쪽지함에서도 회수되었습니다.");
+      },
+      onError: (err) => {
+        setDeleteCandidateId(null);
+        setErrorMsg(err.message ?? "답변 삭제에 실패했습니다.");
+      },
+    });
   }
 
   function handleReplySubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -327,19 +401,85 @@ export function InquiryDetailDrawer({
                   답변 이력 ({detail.replies.length}건)
                 </h4>
                 <ul className={styles.replyList}>
-                  {detail.replies.map((reply: InquiryReplyItem) => (
-                    <li key={reply.reply_id} className={styles.replyItem}>
-                      <p className={styles.replyMeta}>
-                        관리자({reply.admin_email_masked}) ·{" "}
-                        {formatDateTime(reply.created_at)}
-                      </p>
-                      <div
-                        className={styles.replyContent}
-                        // sanitize는 백엔드에서 nh3로 적용 + 응답 직전 재sanitize (이중 방어)
-                        dangerouslySetInnerHTML={{ __html: reply.reply_html_safe }}
-                      />
-                    </li>
-                  ))}
+                  {detail.replies.map((reply: InquiryReplyItem) => {
+                    const isEditing = editingReplyId === reply.reply_id;
+                    return (
+                      <li key={reply.reply_id} className={styles.replyItem}>
+                        <div className={styles.replyMeta}>
+                          <span className={styles.replyMetaText}>
+                            관리자({reply.admin_email_masked}) ·{" "}
+                            {formatDateTime(reply.created_at)}
+                          </span>
+                          {!isEditing ? (
+                            <span className={styles.replyActions}>
+                              <button
+                                type="button"
+                                className={styles.replyActionButton}
+                                onClick={() => handleStartEditReply(reply)}
+                                disabled={
+                                  editReplyMutation.isPending ||
+                                  deleteReplyMutation.isPending ||
+                                  editingReplyId !== null
+                                }
+                              >
+                                수정
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.replyActionButton} ${styles.replyActionDanger}`}
+                                onClick={() => setDeleteCandidateId(reply.reply_id)}
+                                disabled={
+                                  editReplyMutation.isPending ||
+                                  deleteReplyMutation.isPending ||
+                                  editingReplyId !== null
+                                }
+                              >
+                                삭제
+                              </button>
+                            </span>
+                          ) : null}
+                        </div>
+                        {isEditing ? (
+                          <div className={styles.replyEditForm}>
+                            <RichTextEditor
+                              value={editingHtml}
+                              onChange={setEditingHtml}
+                              ariaLabel="답변 수정 본문"
+                            />
+                            <div className={styles.replyEditActions}>
+                              <button
+                                type="button"
+                                className={styles.replyEditCancel}
+                                onClick={handleCancelEditReply}
+                                disabled={editReplyMutation.isPending}
+                              >
+                                취소
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.replyEditSubmit}
+                                onClick={handleSubmitEditReply}
+                                disabled={
+                                  editReplyMutation.isPending ||
+                                  isEmptyHtml(editingHtml)
+                                }
+                              >
+                                {editReplyMutation.isPending ? "저장 중…" : "저장"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className={styles.replyContent}
+                            // sanitize는 백엔드에서 nh3로 적용 + 응답 직전 재sanitize (이중 방어)
+                            dangerouslySetInnerHTML={{
+                              __html: reply.reply_html_safe,
+                            }}
+                          />
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             ) : null}
@@ -446,6 +586,45 @@ export function InquiryDetailDrawer({
         }}
         onConfirm={handleRevertConfirm}
       />
+
+      {deleteCandidateId !== null ? (
+        <div
+          className={styles.confirmDialogBackdrop}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reply-delete-title"
+        >
+          <div className={styles.confirmDialog}>
+            <h3 id="reply-delete-title" className={styles.confirmDialogTitle}>
+              답변을 삭제하시겠습니까?
+            </h3>
+            <p className={styles.confirmDialogBody}>
+              답변 이력과 사용자 쪽지함의 해당 메시지가 함께 삭제됩니다. 이 작업은
+              되돌릴 수 없습니다.
+            </p>
+            <div className={styles.confirmDialogActions}>
+              <button
+                type="button"
+                className={styles.replyEditCancel}
+                onClick={() => {
+                  if (!deleteReplyMutation.isPending) setDeleteCandidateId(null);
+                }}
+                disabled={deleteReplyMutation.isPending}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className={`${styles.replyActionButton} ${styles.replyActionDanger}`}
+                onClick={handleConfirmDeleteReply}
+                disabled={deleteReplyMutation.isPending}
+              >
+                {deleteReplyMutation.isPending ? "삭제 중…" : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

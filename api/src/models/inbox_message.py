@@ -38,6 +38,16 @@ class InboxMessage(Base):
     popup_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("popups.id", ondelete="CASCADE"), nullable=True
     )
+    inquiry_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("customer_inquiries.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reply_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("inquiry_replies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     type: Mapped[str] = mapped_column(
         SQLEnum(
             "notice",

@@ -106,6 +106,10 @@ export interface InquiryReplyPayload {
   new_status?: "in_progress" | "resolved" | null;
 }
 
+export interface InquiryReplyEditPayload {
+  reply_html: string;
+}
+
 export interface InquiryReplyResponse {
   inquiry: InquiryDetailResponse;
 }
@@ -258,4 +262,44 @@ export async function postInquiryReply(
     throw await _toError(res, "답변 등록에 실패했습니다.");
   }
   return res.json() as Promise<InquiryReplyResponse>;
+}
+
+export async function editInquiryReply(
+  inquiryId: number,
+  replyId: number,
+  payload: InquiryReplyEditPayload,
+): Promise<InquiryDetailResponse> {
+  const headers = _withCsrf({ "Content-Type": "application/json" });
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/support/inquiries/${inquiryId}/replies/${replyId}`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    throw await _toError(res, "답변 수정에 실패했습니다.");
+  }
+  return res.json() as Promise<InquiryDetailResponse>;
+}
+
+export async function deleteInquiryReply(
+  inquiryId: number,
+  replyId: number,
+): Promise<InquiryDetailResponse> {
+  const headers = _withCsrf({});
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/support/inquiries/${inquiryId}/replies/${replyId}`,
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers,
+    },
+  );
+  if (!res.ok) {
+    throw await _toError(res, "답변 삭제에 실패했습니다.");
+  }
+  return res.json() as Promise<InquiryDetailResponse>;
 }

@@ -16,6 +16,7 @@ function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
     created_at: new Date().toISOString(),
     notice_id: 12,
     popup_id: null,
+    inquiry_id: null,
     ...overrides,
   };
 }

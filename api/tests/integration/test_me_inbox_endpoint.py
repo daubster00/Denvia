@@ -129,6 +129,7 @@ class TestInboxEndpoints:
                         created_at="2026-04-30T05:23:11+00:00",
                         notice_id=12,
                         popup_id=None,
+                        inquiry_id=None,
                     )
                 ],
                 page=1,
@@ -158,6 +159,7 @@ class TestInboxEndpoints:
             "created_at",
             "notice_id",
             "popup_id",
+            "inquiry_id",
         }
         assert item["message_id"] == 4521
         assert item["body_html_safe"] == "<p>점검</p>"

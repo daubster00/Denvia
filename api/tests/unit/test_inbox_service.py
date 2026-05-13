@@ -78,6 +78,7 @@ async def test_list_inbox_sanitizes_body_html() -> None:
     msg.created_at = datetime(2026, 4, 30, tzinfo=timezone.utc)
     msg.notice_id = 5
     msg.popup_id = None
+    msg.inquiry_id = None
 
     db = AsyncMock()
     count_result = MagicMock()

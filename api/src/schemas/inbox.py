@@ -16,6 +16,7 @@ class InboxItem(BaseModel):
     created_at: str  # ISO 8601 (UTC)
     notice_id: int | None
     popup_id: int | None
+    inquiry_id: int | None
 
 
 class InboxListResponse(BaseModel):

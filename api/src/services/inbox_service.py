@@ -76,6 +76,7 @@ async def list_inbox(
             created_at=r.created_at.isoformat(),
             notice_id=r.notice_id,
             popup_id=r.popup_id,
+            inquiry_id=r.inquiry_id,
         )
         for r in rows
     ]

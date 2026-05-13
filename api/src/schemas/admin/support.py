@@ -147,6 +147,15 @@ class InquiryReplyResponse(BaseModel):
     inquiry: InquiryDetailResponse
 
 
+class InquiryReplyEditRequest(BaseModel):
+    """PATCH /api/v1/admin/support/inquiries/{inquiry_id}/replies/{reply_id}.
+
+    답변 본문을 새 HTML로 교체. 일치하는 inbox_messages.body_html도 동기 갱신.
+    """
+
+    reply_html: str = Field(min_length=1, max_length=20_000)
+
+
 class SupportCountsResponse(BaseModel):
     """GET /api/v1/admin/support/counts — 탭 카운트 1회 fetch."""
 
@@ -168,5 +177,6 @@ __all__ = [
     "InquiryUpdateRequest",
     "InquiryReplyRequest",
     "InquiryReplyResponse",
+    "InquiryReplyEditRequest",
     "SupportCountsResponse",
 ]

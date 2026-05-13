@@ -29,6 +29,7 @@ from api.src.models.user import User
 from api.src.schemas.admin.support import (
     InquiryDetailResponse,
     InquiryListResponse,
+    InquiryReplyEditRequest,
     InquiryReplyRequest,
     InquiryReplyResponse,
     InquiryStatus,
@@ -273,6 +274,81 @@ async def reply_inquiry(
         trace_id=str(getattr(request.state, "trace_id", "")),
     )
     return InquiryReplyResponse(inquiry=detail)
+
+
+@router.patch(
+    "/inquiries/{inquiry_id}/replies/{reply_id}",
+    response_model=InquiryDetailResponse,
+)
+@limiter.limit("30/minute", key_func=_admin_user_id_key)
+async def edit_reply(
+    request: Request,
+    inquiry_id: int,
+    reply_id: int,
+    payload: InquiryReplyEditRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> InquiryDetailResponse:
+    """답변 본문 수정 — inquiry_replies + 매칭 inbox 동기 갱신.
+
+    권한: 모든 admin. audit_logs는 미들웨어가 응답 직후 자동 INSERT.
+    """
+    detail = await admin_support_service.update_reply(
+        request, db, inquiry_id, reply_id, payload, admin_id=admin.id
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "INQUIRY_REPLY_NOT_FOUND",
+                "message": "답변을 찾을 수 없습니다.",
+            },
+        )
+    logger.info(
+        "admin.support.reply.edited",
+        actor_user_id=admin.id,
+        target_inquiry_id=inquiry_id,
+        target_reply_id=reply_id,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return detail
+
+
+@router.delete(
+    "/inquiries/{inquiry_id}/replies/{reply_id}",
+    response_model=InquiryDetailResponse,
+)
+@limiter.limit("30/minute", key_func=_admin_user_id_key)
+async def remove_reply(
+    request: Request,
+    inquiry_id: int,
+    reply_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> InquiryDetailResponse:
+    """답변 삭제 — inquiry_replies + 매칭 inbox row 동기 삭제.
+
+    상태(status)는 변경하지 않는다(관리자가 별도 판단).
+    """
+    detail = await admin_support_service.delete_reply(
+        request, db, inquiry_id, reply_id, admin_id=admin.id
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "INQUIRY_REPLY_NOT_FOUND",
+                "message": "답변을 찾을 수 없습니다.",
+            },
+        )
+    logger.info(
+        "admin.support.reply.deleted",
+        actor_user_id=admin.id,
+        target_inquiry_id=inquiry_id,
+        target_reply_id=reply_id,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return detail
 
 
 async def _notify_inquiry_reply(

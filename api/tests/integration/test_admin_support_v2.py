@@ -332,3 +332,109 @@ class TestInquiryDetailSubscriptionStatus:
             res = await self._get(7)
         assert res.status_code == 200
         assert res.json()["user_subscription_status"] == "blocked"
+
+
+@pytest.mark.asyncio
+class TestReplyEditDelete:
+    """PATCH /inquiries/{id}/replies/{reply_id} 및 DELETE — 답변 수정/삭제."""
+
+    async def _patch(self, inquiry_id: int, reply_id: int, payload: dict):
+        token = _make_admin_jwt()
+        admin = _make_admin()
+        gen, _ = _stub_session()
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
+            app.dependency_overrides[get_session] = gen
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    res = await client.patch(
+                        f"/api/v1/admin/support/inquiries/{inquiry_id}/replies/{reply_id}",
+                        json=payload,
+                        cookies={
+                            "denvia_admin_session": token,
+                            "denvia_admin_csrf": "csrf-test",
+                        },
+                        headers={"X-CSRF-Token": "csrf-test"},
+                    )
+            finally:
+                app.dependency_overrides.clear()
+        return res
+
+    async def _delete(self, inquiry_id: int, reply_id: int):
+        token = _make_admin_jwt()
+        admin = _make_admin()
+        gen, _ = _stub_session()
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
+            app.dependency_overrides[get_session] = gen
+            try:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    res = await client.delete(
+                        f"/api/v1/admin/support/inquiries/{inquiry_id}/replies/{reply_id}",
+                        cookies={
+                            "denvia_admin_session": token,
+                            "denvia_admin_csrf": "csrf-test",
+                        },
+                        headers={"X-CSRF-Token": "csrf-test"},
+                    )
+            finally:
+                app.dependency_overrides.clear()
+        return res
+
+    async def test_edit_reply_returns_200(self):
+        with patch(
+            "api.src.routers.admin.support.admin_support_service.update_reply",
+            new=AsyncMock(return_value=_make_detail()),
+        ) as svc:
+            res = await self._patch(7, 42, {"reply_html": "<p>수정된 답변</p>"})
+        assert res.status_code == 200
+        body = res.json()
+        assert body["id"] == 7
+        # 서비스에 inquiry_id, reply_id 전달 확인
+        call_args = svc.call_args
+        assert call_args.args[2] == 7  # inquiry_id
+        assert call_args.args[3] == 42  # reply_id
+
+    async def test_edit_reply_404_when_missing(self):
+        with patch(
+            "api.src.routers.admin.support.admin_support_service.update_reply",
+            new=AsyncMock(return_value=None),
+        ):
+            res = await self._patch(7, 999, {"reply_html": "<p>없음</p>"})
+        assert res.status_code == 404
+        body = res.json()
+        assert body["code"] == "INQUIRY_REPLY_NOT_FOUND"
+
+    async def test_edit_reply_empty_html_returns_422(self):
+        res = await self._patch(7, 42, {"reply_html": ""})
+        assert res.status_code == 422
+
+    async def test_edit_reply_oversize_returns_422(self):
+        big = "<p>" + ("x" * 25000) + "</p>"
+        res = await self._patch(7, 42, {"reply_html": big})
+        assert res.status_code == 422
+
+    async def test_delete_reply_returns_200(self):
+        with patch(
+            "api.src.routers.admin.support.admin_support_service.delete_reply",
+            new=AsyncMock(return_value=_make_detail()),
+        ) as svc:
+            res = await self._delete(7, 42)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["id"] == 7
+        call_args = svc.call_args
+        assert call_args.args[2] == 7
+        assert call_args.args[3] == 42
+
+    async def test_delete_reply_404_when_missing(self):
+        with patch(
+            "api.src.routers.admin.support.admin_support_service.delete_reply",
+            new=AsyncMock(return_value=None),
+        ):
+            res = await self._delete(7, 999)
+        assert res.status_code == 404
+        body = res.json()
+        assert body["code"] == "INQUIRY_REPLY_NOT_FOUND"
