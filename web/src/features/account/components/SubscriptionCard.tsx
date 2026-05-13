@@ -67,7 +67,7 @@ export function SubscriptionCard({ enabled = true }: SubscriptionCardProps) {
           className={styles.manageBtn}
           onClick={scrollToPaymentHistory}
         >
-          관리하기
+          구독 관리
         </button>
       </section>
     );

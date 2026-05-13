@@ -23,9 +23,13 @@ import { useRouter } from "next/navigation";
 
 import { useUsageSummary } from "@/features/account/hooks/useUsageSummary";
 
+import { useCurrentSubscription } from "../hooks/useCurrentSubscription";
 import { usePaymentHistory } from "../hooks/usePaymentHistory";
+import { useResumeSubscription } from "../hooks/useResumeSubscription";
 import type { PaymentHistoryItem, PaymentStatus } from "../types";
+import { CancelSubscriptionFlow } from "./CancelSubscriptionFlow";
 import { PaymentStatusBadge } from "./PaymentStatusBadge";
+import { SubscriptionStatusCard } from "./SubscriptionStatusCard";
 
 import styles from "./PaymentHistoryTable.module.css";
 
@@ -134,12 +138,15 @@ export function PaymentHistoryTable() {
   const [selectedPaymentId, setSelectedPaymentId] = useState<number | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [isCancelFlowOpen, setIsCancelFlowOpen] = useState(false);
 
   const { data, isLoading, isError, refetch, isFetching } = usePaymentHistory(
     page,
     perPage
   );
   const { data: usage } = useUsageSummary();
+  const { data: subscription } = useCurrentSubscription();
+  const resumeMutation = useResumeSubscription();
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -269,6 +276,28 @@ export function PaymentHistoryTable() {
 
   return (
     <div className={styles.wrapper}>
+      {subscription?.status === "active" && (
+        <SubscriptionStatusCard
+          variant="active"
+          nextChargeAt={subscription.next_charge_at ?? subscription.current_period_end}
+          onCancelClick={() => setIsCancelFlowOpen(true)}
+        />
+      )}
+      {subscription?.status === "cancel_pending" && (
+        <SubscriptionStatusCard
+          variant="cancel_pending"
+          effectiveAt={subscription.current_period_end}
+          onResumeClick={() => resumeMutation.mutate()}
+          isResuming={resumeMutation.isPending}
+        />
+      )}
+
+      <CancelSubscriptionFlow
+        isOpen={isCancelFlowOpen}
+        onClose={() => setIsCancelFlowOpen(false)}
+        currentPeriodEnd={subscription?.current_period_end ?? null}
+      />
+
       {isLoading && (
         <div className={styles.loading} role="status" aria-live="polite">
           <span className={styles.spinner} aria-hidden="true" />

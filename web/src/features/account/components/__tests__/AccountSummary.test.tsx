@@ -11,6 +11,18 @@ vi.mock("../../api", () => ({
 
 vi.mock("@/features/billing/api", () => ({
   fetchCurrentSubscription: vi.fn(),
+  resumeSubscription: vi.fn(),
+  cancelSubscription: vi.fn(),
+  checkRefundEligibility: vi.fn().mockResolvedValue({
+    eligible: false,
+    payment_id: null,
+    amount_krw: null,
+    charged_at: null,
+    days_since_charge: null,
+    qa_count_during_period: null,
+    reason_code: "no_active_payment",
+  }),
+  cancelSubscriptionWithRefund: vi.fn(),
 }));
 
 const { fetchUsageSummary } = await import("../../api");

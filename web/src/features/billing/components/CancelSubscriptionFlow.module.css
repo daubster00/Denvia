@@ -168,3 +168,71 @@
   margin: 0;
   text-align: center;
 }
+
+/* v1.1 — 청약철회 분기 옵션 라디오 (Story 3.6 v1.1) */
+.optionGroup {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.optionLabel {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #ffffff;
+}
+
+.optionLabel:hover {
+  background: #f9fafb;
+}
+
+.optionLabel input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.optionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.optionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.optionDesc {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.inquiryHint {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.inquiryLink {
+  color: #4f46e5;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.inquiryLink:hover {
+  color: #4338ca;
+}

@@ -88,3 +88,34 @@ export interface PaymentHistoryResponse {
   per_page: number;
   total: number;
 }
+
+// ── Story 3.6 v1.1 — 청약철회 (Cooling-off Refund) ────────────────────────────
+
+export type RefundEligibilityReasonCode =
+  | "ok"
+  | "period_exceeded"
+  | "qa_count_exceeded"
+  | "both"
+  | "no_active_payment";
+
+export interface RefundEligibilityResponse {
+  eligible: boolean;
+  payment_id: number | null;
+  amount_krw: number | null;
+  charged_at: string | null;
+  days_since_charge: number | null;
+  qa_count_during_period: number | null;
+  reason_code: RefundEligibilityReasonCode;
+}
+
+export interface CancelWithRefundRequest {
+  confirmation: true;
+}
+
+export interface CancelWithRefundResponse {
+  status: "refunded";
+  refund_kind: "cooling_off";
+  amount_krw: number;
+  refunded_at: string;
+  subscription_status: "canceled";
+}

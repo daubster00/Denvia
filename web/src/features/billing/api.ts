@@ -4,9 +4,11 @@ import { apiFetch } from "@/lib/api-client";
 import type {
   BillingPlansResponse,
   CancelSubscriptionResponse,
+  CancelWithRefundResponse,
   CurrentSubscription,
   IssueBillingKeyResponse,
   PaymentHistoryResponse,
+  RefundEligibilityResponse,
   ResumeSubscriptionResponse,
   SubscriptionResponse,
 } from "./types";
@@ -75,5 +77,25 @@ export async function fetchPaymentHistory(
 ): Promise<PaymentHistoryResponse> {
   return apiFetch<PaymentHistoryResponse>(
     `/api/v1/me/payments?page=${page}&per_page=${perPage}`
+  );
+}
+
+// ── Story 3.6 v1.1 — 청약철회 (Cooling-off Refund) ────────────────────────────
+
+/** GET /api/v1/billing/subscriptions/me/refund-eligibility — 청약철회 가능 여부 사전 조회. */
+export async function checkRefundEligibility(): Promise<RefundEligibilityResponse> {
+  return apiFetch<RefundEligibilityResponse>(
+    "/api/v1/billing/subscriptions/me/refund-eligibility"
+  );
+}
+
+/** POST /api/v1/billing/subscriptions/me/cancel-with-refund — 즉시 해지 + 전액 환불. */
+export async function cancelSubscriptionWithRefund(): Promise<CancelWithRefundResponse> {
+  return apiFetch<CancelWithRefundResponse>(
+    "/api/v1/billing/subscriptions/me/cancel-with-refund",
+    {
+      method: "POST",
+      body: JSON.stringify({ confirmation: true }),
+    }
   );
 }

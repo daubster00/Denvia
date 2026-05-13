@@ -16,12 +16,18 @@ const mockFetchPaymentHistory = vi.fn();
 const mockFetchCurrentSubscription = vi.fn();
 const mockFetchUsageSummary = vi.fn();
 const mockResumeSubscription = vi.fn();
+const mockCheckRefundEligibility = vi.fn();
+const mockCancelSubscriptionWithRefund = vi.fn();
+const mockCancelSubscription = vi.fn();
 const mockRouterPush = vi.fn();
 
 vi.mock("../api", () => ({
   fetchPaymentHistory: (...a: unknown[]) => mockFetchPaymentHistory(...a),
   fetchCurrentSubscription: () => mockFetchCurrentSubscription(),
   resumeSubscription: () => mockResumeSubscription(),
+  checkRefundEligibility: () => mockCheckRefundEligibility(),
+  cancelSubscriptionWithRefund: () => mockCancelSubscriptionWithRefund(),
+  cancelSubscription: (...a: unknown[]) => mockCancelSubscription(...a),
 }));
 
 vi.mock("@/features/account/api", () => ({
@@ -295,25 +301,23 @@ describe("PaymentHistoryTable — Pagination (AC-5)", () => {
   });
 });
 
-describe("PaymentHistoryTable — 구독 관리 버튼 위치", () => {
-  it("status=active → 결제 내역에서는 '구독 해지' 버튼 미노출", async () => {
+describe("PaymentHistoryTable — 구독 진입점 (Story 3.6 v1.1)", () => {
+  it("status=active → 결제 내역 상단에 '구독 해지' 버튼 노출", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subActive);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
-    expect(screen.queryByText("구독 해지")).toBeNull();
+    await waitFor(() => expect(screen.getByText("구독 해지")).toBeDefined());
   });
 
-  it("status=cancel_pending → 결제 내역에서는 '해지 철회' 버튼 미노출", async () => {
+  it("status=cancel_pending → 결제 내역 상단에 '해지 철회' 버튼 노출", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subCancelPending);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
-    expect(screen.queryByText("해지 철회")).toBeNull();
+    await waitFor(() => expect(screen.getByText("해지 철회")).toBeDefined());
   });
 
   it("status=none → SubscriptionStatusCard 미렌더", async () => {
