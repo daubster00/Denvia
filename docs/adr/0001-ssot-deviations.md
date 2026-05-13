@@ -1,6 +1,6 @@
 # ADR-0001: SSOT 편차 5건 — 가입유형 권한·세그먼트 통합·아이디 찾기·kill-switch 이원화·환불 정책 부분환불 전환
 
-> **최종 수정일:** 2026-05-12
+> **최종 수정일:** 2026-05-13
 > **작성자:** Hyung woo
 > **승인자:** (인수자 검토 시 기입)
 > **버전:** v1.1
@@ -344,3 +344,4 @@ SSOT 측 정의(F-207 + 협의서 #B-03 + PRD FR19 초판):
 | 2026-04-24 | Hyung woo (code-review D1 적용) | OK — README "다중 결정 ADR 패턴" 신설로 본 ADR 구조 정합성 공식 확인. 자체 검증 이력 문구도 패턴 명시로 정정. | — |
 | 2026-04-24 | claude-opus-4-7 (code-review 후속 6건 patch 적용) | OK — 메타 헤더 Story 번호 9건 정렬(`1.3·1.5·1.6·4.3·5.2·6.2·6.4·9.2·9.4` 일치), 편차 #2 기존 데이터 마이그레이션 SQL + alembic data migration 추가, 편차 #3 `signup_method` ORM 미정의 정정(oauth_identity 조인 명시) + Rate Limit(Redis DB2) 정책 추가, 편차 #4 알림톡 템플릿 Story 5.2(발송 로직)·9.2(KillSwitchPanel UI/State) 단일 소유 명확화 적용 완료. README 인덱스 표 Story 번호도 동일 정렬. | — |
 | 2026-05-12 | claude-opus-4-7 (편차 #5 추가) | OK — 편차 #5(환불 정책 부분환불 전환) 6개 H3 섹션 엄수 등재. PRD FR17/FR19/FR29/FR55 본문 동시 갱신. 메타 헤더 Story 번호 확장(`3.3·3.4·3.6·4.4·9.3` 추가). README 인덱스 표 정렬은 후속 작업으로 분리(`docs/adr/README.md` 별도 patch 필요). | README 인덱스 표 정렬 TBD |
+| 2026-05-13 | claude-opus-4-7 (편차 #5 Phase 4 cleanup) | OK — 편차 #5 v1.0 자가 환불 잔재(폼·관리자 승인 큐·`manual_refund_queue` 참조 코드) dead code 제거 완료. **Step 1**(백엔드, commit `970de94`): ORM `manual_refund_queue.py`·`routers/admin/refunds.py`·`services/admin_refund_service.py`·`schemas/admin/refunds.py`·테스트 일괄 삭제. main 라우터 mount/finance ORM lookup/admin support count 호출도 해제. **Step 2**(프론트, commit `4112da1`): `RefundRequestPopup`·`useRequestRefund`·`billing.requestRefund`·admin-support 환불 큐 패널(`RefundsTabPanel`/`RefundReviewDrawer`/`RefundQueueTable`/`RefundActionConfirmDialog`/`SupportTabsNav`/`api/refunds.ts`)·admin-finance refund 큐 링크·`PaymentEventDetail.manual_refund_queue_*` 필드 삭제. vitest 35/35 PASS. **Step 3**(문서): `_bmad-output/planning-artifacts/epics.md`(Story 3.6·4.4·9.3 v1.0 ACs를 OBSOLETE 마킹), `_bmad-output/implementation-artifacts/3-6-refund-request.md`(Phase 4 Patch-T2·T8 status `[x]` flip + Step 1~4 진행 노트), `docs/RUNBOOK_INCIDENT.md` 시나리오 ① 결제 장애 조치 단계(`manual_refund_queue INSERT` → v1.1 운영 환불 동선 / Story 9.1 RefundDialog). **Step 4 잔여**: Patch-T1(0017 drop 마이그) — 코드 의존성 0이므로 단독 안전. 메모리 `project_refund_policy` 9.3 → 9.1 stale 참조 1건 정정 동반. | Patch-T1(0017 drop 마이그) — Step 4로 별도 PR |

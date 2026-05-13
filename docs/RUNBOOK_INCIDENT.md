@@ -1,9 +1,9 @@
 # RUNBOOK_INCIDENT — Denvia 이상 대응 플레이북
 
-> **최종 수정일:** 2026-04-24
+> **최종 수정일:** 2026-05-13
 > **작성자:** Hyung woo
 > **승인자:** (인수자 검토 시 기입)
-> **버전:** v1.0
+> **버전:** v1.1 (2026-05-13 — 시나리오 ① 환불 절차를 ADR-0001 편차 #5 / Story 3.6 v1.1 정책에 맞춰 정정)
 > **관련 FR/Story:** FR55·FR56·NFR-SC3 / Story 9.4
 
 본 플레이북은 Denvia 운영 중 발생할 수 있는 **7가지 대표 이상 시나리오**에 대한 표준 대응 절차를 정의한다. 각 시나리오는 **`증상 → 진단 → 조치 → 에스컬레이션`** 4단계 구성이다.
@@ -49,8 +49,10 @@
    FROM payments
    WHERE status = 'failed' AND retry_count >= 3 AND created_at >= NOW() - INTERVAL '7 days';
    ```
-2. **수동 환불 큐 생성**: `manual_refund_queue` 테이블에 INSERT(Story 3.6 / Story 9.3 범위)
-3. **고객 알림톡 발송**: 템플릿 `billing.refund_pending_review` (TBD — Story 3.6에서 추가)로 수동 검토 진행 안내
+2. **운영 환불 처리** (필요 시 — 환불 정책 v1.1, ADR-0001 편차 #5):
+   - ~~v1.0: `manual_refund_queue` 테이블 INSERT (사용자 자가 환불 폼 + 관리자 승인 큐)~~ **[폐기 — 2026-05-12]**
+   - v1.1: 사용자가 1:1 문의(`inquiry_type=billing`)로 환불 요청 → 관리자가 `/admin/finance/payments` 결제 내역 화면에서 해당 결제 건의 "환불하기" 버튼 → `RefundDialog`에서 금액·사유 입력 + 2단계 확인 → 토스 `cancelAmount` 호출 (Story 9.1 v1.1 책임). 본 시나리오에서 최종 실패 결제 건은 관리자가 통상 운영 환불 동선으로 직접 처리한다.
+3. **고객 알림톡 발송**: 결제 실패 자체 안내는 `billing.retry_failed_3`로 이미 발송됨. 운영 환불 처리 시 `billing.refund_success`(단일 템플릿, `refund_reason_label`로 구분 — Story 3.6 v1.1 Patch-T9 / ALIMTALK_TEMPLATES.md §7) 자동 발송.
 4. **카드 정보 갱신 유도**: `INVALID_CARD` 에러 군은 `/mypage/payment-method` 갱신 링크를 알림톡으로 안내(Story 4.4 — TBD)
 
 ### 에스컬레이션
