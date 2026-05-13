@@ -1,4 +1,8 @@
-"""Admin 수동 환불 검토 라우터 — Story 9.3 (A-503).
+# DEPRECATED v1.1 (ADR-0001 편차 #5, 2026-05-13) — 신규 라우터는 routers/admin/payments.py.
+# 본 라우터는 폐지된 manual_refund_queue 큐 흐름(자가 환불 폼 → 관리자 승인/거부)의 잔여물이다.
+# 라우트 자체의 제거는 Phase 3에서 결정한다(잔여 큐 row가 0건임을 확인한 후 main.py include 제거).
+# 신규 admin 환불 작업은 routers.admin.payments(create_payment_refund)를 사용할 것.
+"""Admin 수동 환불 검토 라우터 — Story 9.3 (A-503) — [DEPRECATED v1.1].
 
 GET   /api/v1/admin/refunds                     manual_refund_queue 목록 — 60/min
 POST  /api/v1/admin/refunds/{queue_id}/approve  PG refund 호출 + 9 테이블 전이 — 30/min

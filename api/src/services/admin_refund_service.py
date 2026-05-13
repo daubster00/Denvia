@@ -1,4 +1,11 @@
-"""Admin 수동 환불 검토 서비스 (Story 9.3 A-503).
+# DEPRECATED v1.1 (ADR-0001 편차 #5, 2026-05-13) — 신규 흐름은 admin_payment_service.create_refund.
+# 본 모듈은 폐지된 사용자 자가 환불 폼(POST /billing/payments/{id}/refund) → manual_refund_queue
+# 큐 → 관리자 approve/deny 흐름의 잔여물이다. 자가 환불 폼은 Story 3.6 v1.1 Phase 1에서
+# `cancel-with-refund`(청약철회 단일 경로)로 통합되며 폐기되었고, 관리자 환불은 본 v1.1에서
+# `POST /api/v1/admin/payments/{payment_id}/refunds`로 단일화되었다. manual_refund_queue 테이블
+# 자체와 본 모듈의 실제 제거는 Phase 3에서 결정한다(잔여 큐 row가 0건임을 확인한 후).
+# 신규 환불 작업은 절대 본 모듈을 import하지 말 것.
+"""Admin 수동 환불 검토 서비스 (Story 9.3 A-503) — [DEPRECATED v1.1].
 
 GET   list_queue   manual_refund_queue 목록 (status/from/to/q + 페이지네이션)
 POST  approve      PG refund 호출 + payment.status='refunded' + 알림톡 + 쪽지함 + SSE

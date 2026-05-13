@@ -172,6 +172,14 @@ export function PaymentEventDetailDrawer({ eventId, onClose }: DrawerProps) {
             )}
 
             <footer className={styles.actionBar}>
+              {data.status === "success" && (
+                <Link
+                  href={`/admin/finance/payments/${data.payment_id}/refund`}
+                  className={styles.actionLinkPrimary}
+                >
+                  이 결제 환불 처리
+                </Link>
+              )}
               <Link
                 href={`/admin/users/${data.user_id}`}
                 className={styles.actionLink}

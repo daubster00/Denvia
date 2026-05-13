@@ -1,4 +1,8 @@
-"""ManualRefundQueue SQLAlchemy ORM 모델 — Story 3.6 수동 환불 검토 큐.
+# DEPRECATED v1.1 (ADR-0001 편차 #5, 2026-05-13) — 신규 환불 row는 refunds 테이블에 INSERT.
+# 본 모델·테이블은 폐지된 자가 환불 폼 → 관리자 큐 흐름의 잔여물이다. 신규 환불 INSERT는
+# api.src.models.refund.Refund + api.src.services.admin_payment_service.create_refund 사용.
+# 본 모델·DB 테이블의 실제 제거는 Phase 3에서 결정한다(잔여 row 0건 확인 후 alembic drop).
+"""ManualRefundQueue SQLAlchemy ORM 모델 — Story 3.6 수동 환불 검토 큐 — [DEPRECATED v1.1].
 
 자동 환불 조건(7일 이내 + qa_logs=0건) 미충족 시 INSERT.
 Epic 9 A-503 관리자 화면에서 status='approved'/'denied'로 UPDATE.
