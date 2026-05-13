@@ -332,7 +332,9 @@ async def remove_reply(
 ) -> InquiryDetailResponse:
     """답변 삭제 — inquiry_replies + 매칭 inbox row 동기 삭제.
 
-    상태(status)는 변경하지 않는다(관리자가 별도 판단).
+    삭제 후 남은 답변이 0건이고 status='resolved'이면
+    자동으로 status='open' + resolved_at=NULL로 되돌린다
+    (답변 없는데 "답변완료" 표시 모순 차단).
     """
     detail = await admin_support_service.delete_reply(
         request, db, inquiry_id, reply_id, admin_id=admin.id

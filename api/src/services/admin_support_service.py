@@ -317,11 +317,15 @@ async def update_inquiry(
     db: AsyncSession,
     inquiry_id: int,
     payload: InquiryUpdateRequest,
+    *,
+    admin_id: int,
 ) -> InquiryDetailResponse | None:
     """4.5 호환 PATCH — reply_message(plain text) / status 변경.
 
     Story 9.3 확장:
     - 역행 전이 (resolved → open 등) force=False 시 409.
+    - plain text 답변도 inquiry_replies row를 함께 INSERT하여 추후 편집/삭제 시
+      쪽지함과 1:1 매칭(reply_id)이 가능하도록 한다.
     """
     inquiry_row = await db.execute(
         select(CustomerInquiry).where(CustomerInquiry.id == inquiry_id)
@@ -335,16 +339,25 @@ async def update_inquiry(
 
     if payload.reply_message is not None:
         safe_body = _html.escape(payload.reply_message)
-        inbox = InboxMessage(
-            user_id=inquiry.user_id,
-            notice_id=None,
-            popup_id=None,
+        reply = InquiryReply(
             inquiry_id=inquiry.id,
-            type="system",
-            title=INQUIRY_REPLY_INBOX_TITLE,
-            body_html=safe_body,
+            admin_id=admin_id,
+            reply_html=safe_body,
         )
-        db.add(inbox)
+        db.add(reply)
+        await db.flush()
+        db.add(
+            InboxMessage(
+                user_id=inquiry.user_id,
+                notice_id=None,
+                popup_id=None,
+                inquiry_id=inquiry.id,
+                reply_id=reply.id,
+                type="system",
+                title=INQUIRY_REPLY_INBOX_TITLE,
+                body_html=safe_body,
+            )
+        )
         inquiry.status = "resolved"
         inquiry.resolved_at = func.now()
         reply_sent = True
@@ -560,9 +573,9 @@ async def delete_reply(
     1. inquiry_replies row 검증.
     2. inbox_messages 중 reply_id 일치 row 먼저 삭제(사용자 쪽지에서 회수).
     3. inquiry_replies row 삭제.
-    4. audit_logs는 미들웨어가 응답 직후 자동 INSERT.
-
-    상태(status)는 자동 변경하지 않는다 — 관리자가 별도로 재오픈 등을 결정.
+    4. 남은 답변이 0건이고 현재 status='resolved'이면 status='open'으로 되돌리고
+       resolved_at을 NULL로 비운다 — 답변이 없는데 "답변완료"로 남는 표시 모순을 차단.
+    5. audit_logs는 미들웨어가 응답 직후 자동 INSERT.
     """
     reply_row = await db.execute(
         select(InquiryReply).where(
@@ -574,6 +587,12 @@ async def delete_reply(
     if reply is None:
         return None
 
+    inquiry = (
+        await db.execute(
+            select(CustomerInquiry).where(CustomerInquiry.id == inquiry_id)
+        )
+    ).scalar_one()
+
     inbox_result = await db.execute(
         sa_delete(InboxMessage).where(InboxMessage.reply_id == reply_id)
     )
@@ -581,6 +600,22 @@ async def delete_reply(
 
     await db.delete(reply)
     await db.flush()
+
+    remaining = (
+        await db.execute(
+            select(func.count())
+            .select_from(InquiryReply)
+            .where(InquiryReply.inquiry_id == inquiry_id)
+        )
+    ).scalar_one()
+
+    status_reverted = False
+    before_status = inquiry.status
+    if remaining == 0 and inquiry.status == "resolved":
+        inquiry.status = "open"
+        inquiry.resolved_at = None
+        status_reverted = True
+        await db.flush()
 
     request.state.audit_action = AUDIT_SUPPORT_REPLY_DELETE
     request.state.audit_target_type = "inquiry_reply"
@@ -590,6 +625,10 @@ async def delete_reply(
             "inquiry_id": inquiry_id,
             "reply_id": reply_id,
             "inbox_deleted": inbox_deleted,
+            "remaining_replies": remaining,
+            "status_reverted": status_reverted,
+            "status_before": before_status,
+            "status_after": inquiry.status,
         },
         ensure_ascii=False,
     )

@@ -85,7 +85,7 @@ def _make_detail(inquiry_id: int = 1, status: str = "open") -> InquiryDetailResp
         resolved_at=None,
         # Story 9.3 신규 필드
         user_segment=None,
-        user_subscription_status="active",
+        user_subscription_status="free",
         user_created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         recent_qa=[],
         replies=[],
