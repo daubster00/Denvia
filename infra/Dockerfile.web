@@ -65,4 +65,7 @@ ENV PORT=3000
 COPY --from=builder /repo /repo
 WORKDIR /repo/web
 EXPOSE 3000
-CMD ["sh", "-c", "corepack enable && pnpm start"]
+# Do not invoke pnpm in the runtime container. pnpm 11 performs a dependency
+# status check before scripts and can re-resolve workspace packages, which makes
+# production boot depend on the workspace graph instead of the built image.
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
