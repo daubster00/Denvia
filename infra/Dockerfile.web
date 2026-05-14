@@ -52,7 +52,10 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
 
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /repo/web
-RUN corepack enable && pnpm build
+# Invoke Next directly here as well. pnpm 11 runs a dependency status check
+# before scripts and may try to re-resolve workspace packages after the vendor
+# workspace install above, even though dependencies are already installed.
+RUN node node_modules/next/dist/bin/next build
 
 # ── 3) runner: 빌드 결과 + node_modules 그대로 두고 next start
 # 모노레포 + Next 16 조합에서 standalone output이 산출되지 않아 일반 start 방식 사용.
