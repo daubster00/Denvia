@@ -31,6 +31,18 @@ class PaymentEvent(Base):
         ),
         nullable=False,
     )
+    # 환불 종류 — refund_success / refund_denied 이벤트만 채워진다. 그 외 이벤트는 NULL.
+    # 마이그 0035에서 raw_response_json.refund_kind JSONB 인라인 값을 승격해 도입.
+    refund_kind: Mapped[str | None] = mapped_column(
+        Enum(
+            "manual_full",
+            "manual_partial",
+            "cooling_off",
+            name="refund_kind_enum",
+            create_type=False,
+        ),
+        nullable=True,
+    )
     # PG 응답 원본 — 디버깅·감사 목적으로 보관 (평문 빌링키 절대 포함 금지)
     raw_response_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

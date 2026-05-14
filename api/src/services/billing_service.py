@@ -1669,6 +1669,7 @@ async def _execute_cooling_off_refund(
             PaymentEvent(
                 payment_id=payment.id,
                 event_type="refund_denied",
+                refund_kind="cooling_off",
                 raw_response_json=raw_response,
             )
         )
@@ -1693,8 +1694,8 @@ async def _execute_cooling_off_refund(
         PaymentEvent(
             payment_id=payment.id,
             event_type="refund_success",
-            # `payment_events.refund_kind` 컬럼은 Story 9.1 v1.1에서 신설 예정.
-            # 그 전까지는 raw_response_json에 분류 메타를 함께 보관한다.
+            refund_kind="cooling_off",
+            # JSONB 인라인 refund_kind는 마이그 0035 도입 후에도 한 사이클 호환 유지.
             raw_response_json={
                 "refund_kind": "cooling_off",
                 "refund_amount_krw": payment.amount_krw,

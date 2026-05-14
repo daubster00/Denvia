@@ -427,6 +427,18 @@ async def test_execute_refund_success_transitions_states_and_notifies():
     assert kwargs["idempotency_key"] == f"refund:{payment.id}:cooling_off"
     assert kwargs["refund_reason"] == "cooling_off"
     assert kwargs["refund_amount_krw"] == 19800
+    # 마이그 0035 — refund_success PaymentEvent의 신규 refund_kind 컬럼이 'cooling_off'.
+    from api.src.models.payment_event import PaymentEvent
+
+    added_events = [
+        call.args[0]
+        for call in db.add.call_args_list
+        if isinstance(call.args[0], PaymentEvent)
+    ]
+    refund_success_events = [e for e in added_events if e.event_type == "refund_success"]
+    assert len(refund_success_events) == 1
+    assert refund_success_events[0].refund_kind == "cooling_off"
+    assert refund_success_events[0].raw_response_json["refund_kind"] == "cooling_off"
 
 
 @pytest.mark.asyncio
@@ -487,7 +499,14 @@ async def test_execute_refund_api_4xx_rolls_back_with_event_record():
     assert payment.status == "success"
     # refund_denied 이벤트가 한 번 add 되었어야 함
     add_calls = [c for c in db.add.call_args_list if c.args]
-    assert any(getattr(c.args[0], "event_type", None) == "refund_denied" for c in add_calls)
+    denied_events = [
+        c.args[0]
+        for c in add_calls
+        if getattr(c.args[0], "event_type", None) == "refund_denied"
+    ]
+    assert len(denied_events) == 1
+    # 마이그 0035 — 청약철회 거절도 refund_kind='cooling_off'로 분류 유지.
+    assert denied_events[0].refund_kind == "cooling_off"
 
 
 # ── _notify_refund (AC3 ⑥ + AC10) ─────────────────────────────────────────────

@@ -197,6 +197,7 @@ async def create_refund(
             PaymentEvent(
                 payment_id=payment.id,
                 event_type="refund_denied",
+                refund_kind=refund_reason,
                 raw_response_json={
                     "refund_kind": refund_reason,
                     "attempted_cancel_amount": payload.cancel_amount,
@@ -247,6 +248,7 @@ async def create_refund(
         PaymentEvent(
             payment_id=payment.id,
             event_type="refund_success",
+            refund_kind=refund_reason,
             raw_response_json={
                 "refund_kind": refund_reason,
                 "refund_amount_krw": payload.cancel_amount,

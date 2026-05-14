@@ -190,6 +190,7 @@ async def test_create_refund_full_single_shot_transitions_payment_and_subscripti
     assert refunds[0].idempotency_key == "refund:200:manual:1"
     events = [e for e in db.added_of(PaymentEvent) if e.event_type == "refund_success"]
     assert len(events) == 1
+    assert events[0].refund_kind == "manual_full"
     assert events[0].raw_response_json["refund_kind"] == "manual_full"
     inbox = db.added_of(InboxMessage)
     assert len(inbox) == 1
@@ -226,6 +227,7 @@ async def test_create_refund_partial_first_keeps_payment_and_subscription():
     # subscription select가 호출되지 않았음을 큐 잔량으로 확인
     assert db._execute_queue == []  # 모두 소비됨 (전액 분기였다면 2개 더 남았어야)
     events = [e for e in db.added_of(PaymentEvent) if e.event_type == "refund_success"]
+    assert events[0].refund_kind == "manual_partial"
     assert events[0].raw_response_json["refund_kind"] == "manual_partial"
 
 
@@ -260,6 +262,7 @@ async def test_create_refund_partial_second_reaches_zero_balance_transitions_sta
     assert refunds[0].idempotency_key == "refund:200:manual:2"
     events = [e for e in db.added_of(PaymentEvent) if e.event_type == "refund_success"]
     # 누적 잔액 0이지만 단발 전액이 아니어서 manual_partial로 분류
+    assert events[0].refund_kind == "manual_partial"
     assert events[0].raw_response_json["refund_kind"] == "manual_partial"
 
 
@@ -388,6 +391,9 @@ async def test_create_refund_pg_4xx_inserts_refund_denied_event_and_raises_502()
     assert db.commits == 1
     denied = [e for e in db.added_of(PaymentEvent) if e.event_type == "refund_denied"]
     assert len(denied) == 1
+    # 19,800원 결제에 10,000원 부분환불 시도 → manual_partial로 분류된 채로 거절 이벤트 보존
+    assert denied[0].refund_kind == "manual_partial"
+    assert denied[0].raw_response_json["refund_kind"] == "manual_partial"
     assert denied[0].raw_response_json["attempted_cancel_amount"] == 10000
     assert denied[0].raw_response_json["attempted_sequence"] == 1
     assert db.added_of(Refund) == []
