@@ -7,14 +7,14 @@
  * 본 테이블은 결제 내역 조회 + status badge 표시만 담당.
  *
  * 구성:
- *   - 상단: SubscriptionStatusCard (active → 해지 / cancel_pending → 철회 / none → 미렌더)
  *   - 본문: 7컬럼 테이블 (결제일자/상품·기간/이메일/결제수단/금액/주문번호/상태)
  *   - 하단: per_page select + 이전/다음 + "현재/총" 페이지 표시
  *   - 0건: EmptyState — A-303(useUsageSummary.show_subscribe_button) ON 시 "구독 페이지로" 버튼
  *   - 에러: ErrorState — "새로고침" 버튼 (페이지 fallback 금지)
  *
+ * 구독 해지/철회 진입점은 PlanCard(현재 플랜 카드)에서 담당한다.
+ *
  * 재사용:
- *   - Story 3.5: useCurrentSubscription / useResumeSubscription / SubscriptionStatusCard / CancelSubscriptionFlow
  *   - Story 4.3: useUsageSummary (A-303 토글 재사용 — round-trip 회피)
  */
 
@@ -23,13 +23,9 @@ import { useRouter } from "next/navigation";
 
 import { useUsageSummary } from "@/features/account/hooks/useUsageSummary";
 
-import { useCurrentSubscription } from "../hooks/useCurrentSubscription";
 import { usePaymentHistory } from "../hooks/usePaymentHistory";
-import { useResumeSubscription } from "../hooks/useResumeSubscription";
 import type { PaymentHistoryItem, PaymentStatus } from "../types";
-import { CancelSubscriptionFlow } from "./CancelSubscriptionFlow";
 import { PaymentStatusBadge } from "./PaymentStatusBadge";
-import { SubscriptionStatusCard } from "./SubscriptionStatusCard";
 
 import styles from "./PaymentHistoryTable.module.css";
 
@@ -138,15 +134,12 @@ export function PaymentHistoryTable() {
   const [selectedPaymentId, setSelectedPaymentId] = useState<number | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [isCancelFlowOpen, setIsCancelFlowOpen] = useState(false);
 
   const { data, isLoading, isError, refetch, isFetching } = usePaymentHistory(
     page,
     perPage
   );
   const { data: usage } = useUsageSummary();
-  const { data: subscription } = useCurrentSubscription();
-  const resumeMutation = useResumeSubscription();
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -276,28 +269,6 @@ export function PaymentHistoryTable() {
 
   return (
     <div className={styles.wrapper}>
-      {subscription?.status === "active" && (
-        <SubscriptionStatusCard
-          variant="active"
-          nextChargeAt={subscription.next_charge_at ?? subscription.current_period_end}
-          onCancelClick={() => setIsCancelFlowOpen(true)}
-        />
-      )}
-      {subscription?.status === "cancel_pending" && (
-        <SubscriptionStatusCard
-          variant="cancel_pending"
-          effectiveAt={subscription.current_period_end}
-          onResumeClick={() => resumeMutation.mutate()}
-          isResuming={resumeMutation.isPending}
-        />
-      )}
-
-      <CancelSubscriptionFlow
-        isOpen={isCancelFlowOpen}
-        onClose={() => setIsCancelFlowOpen(false)}
-        currentPeriodEnd={subscription?.current_period_end ?? null}
-      />
-
       {isLoading && (
         <div className={styles.loading} role="status" aria-live="polite">
           <span className={styles.spinner} aria-hidden="true" />

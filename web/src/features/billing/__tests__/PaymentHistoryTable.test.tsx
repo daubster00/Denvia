@@ -301,26 +301,30 @@ describe("PaymentHistoryTable — Pagination (AC-5)", () => {
   });
 });
 
-describe("PaymentHistoryTable — 구독 진입점 (Story 3.6 v1.1)", () => {
-  it("status=active → 결제 내역 상단에 '구독 해지' 버튼 노출", async () => {
+describe("PaymentHistoryTable — 구독 진입점 (PlanCard로 이전)", () => {
+  // 구독 해지/해지 철회 버튼은 PlanCard(현재 플랜 카드)가 단독 보유한다.
+  // PaymentHistoryTable 내부에서는 어떤 구독 상태에서도 렌더하지 않는다.
+  it("status=active → 결제 내역 내부에 '구독 해지' 버튼 미렌더", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subActive);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("구독 해지")).toBeDefined());
+    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
+    expect(screen.queryByText("구독 해지")).toBeNull();
   });
 
-  it("status=cancel_pending → 결제 내역 상단에 '해지 철회' 버튼 노출", async () => {
+  it("status=cancel_pending → 결제 내역 내부에 '해지 철회' 버튼 미렌더", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subCancelPending);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
     renderTable();
 
-    await waitFor(() => expect(screen.getByText("해지 철회")).toBeDefined());
+    await waitFor(() => screen.getByText("아직 결제 내역이 없어요"));
+    expect(screen.queryByText("해지 철회")).toBeNull();
   });
 
-  it("status=none → SubscriptionStatusCard 미렌더", async () => {
+  it("status=none → 구독 진입 버튼 미렌더", async () => {
     mockFetchCurrentSubscription.mockResolvedValue(subNone);
     mockFetchPaymentHistory.mockResolvedValue(makeResponse([], 0));
 
