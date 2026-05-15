@@ -67,12 +67,16 @@ class NaverProvider:
     def get_authorization_url(self, state: str) -> str:
         # scope는 네이버 앱 콘솔에서 허용된 항목만 유효. email은 기본 허용.
         # 동의 범위를 코드에서 명시하여 provider 응답 스키마 변화를 줄인다.
+        # auth_type=reauthenticate: 네이버 세션이 남아있어도 매번 재인증을 강제하여
+        # 공유 기기에서 다른 사용자가 본인 계정으로 로그인하거나, provider-collision
+        # 알림이 무한 재노출되는 것을 방지한다.
         params = {
             "response_type": "code",
             "client_id": self._client_id,
             "redirect_uri": self._redirect_uri,
             "state": state,
             "scope": "name email",
+            "auth_type": "reauthenticate",
         }
         self._last_state = state
         return f"{_AUTHORIZE_URL}?{urlencode(params)}"

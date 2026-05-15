@@ -31,6 +31,8 @@ class TestKakaoProvider:
         assert "state=abc123" in url
         assert "client_id=CID" in url
         assert "redirect_uri=http" in url
+        # 공유 기기 / provider-collision 무한 알림 방지: 매번 카카오 로그인/계정선택 화면 강제.
+        assert "prompt=login" in url
 
     @pytest.mark.asyncio
     async def test_exchange_code_success(self, monkeypatch):
@@ -448,6 +450,8 @@ class TestNaverProvider:
         url = p.get_authorization_url("st")
         assert url.startswith("https://nid.naver.com/oauth2.0/authorize?")
         assert "state=st" in url
+        # 공유 기기 / provider-collision 무한 알림 방지: 매번 네이버 재인증 화면 강제.
+        assert "auth_type=reauthenticate" in url
 
     @pytest.mark.asyncio
     async def test_fetch_profile_mobile(self, monkeypatch):

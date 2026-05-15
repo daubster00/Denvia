@@ -61,12 +61,16 @@ class KakaoProvider:
         self._redirect_uri = redirect_uri
 
     def get_authorization_url(self, state: str) -> str:
+        # prompt=login: 카카오 세션이 남아있어도 매번 로그인/계정선택 화면을 강제.
+        # 공유 기기에서 다른 사용자가 본인 계정으로 로그인하거나, provider-collision
+        # 알림이 무한 재노출되는 것을 방지한다.
         params = {
             "response_type": "code",
             "client_id": self._client_id,
             "redirect_uri": self._redirect_uri,
             "state": state,
             "scope": "account_email",
+            "prompt": "login",
         }
         return f"{_AUTHORIZE_URL}?{urlencode(params)}"
 
