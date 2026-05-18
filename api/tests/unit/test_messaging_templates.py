@@ -10,10 +10,10 @@ from api.src.integrations.messaging.templates import (
     render_sms_body,
 )
 
-# 스토리 AC-2에서 명시한 최소 세트
+# 스토리 AC-2 최소 세트 — 2026-05-18 고객 검수 v4 반영:
+# `billing.auto_renew_success`(1-2) / `billing.retry_success`(1-3)는 고객 삭제 요청으로 폐기.
 REQUIRED_TEMPLATE_CODES = [
     "billing.first_charge_success",
-    "billing.auto_renew_success",
     "billing.retry_failed_1",
     "billing.retry_failed_2",
     "billing.retry_failed_3",
@@ -24,12 +24,25 @@ REQUIRED_TEMPLATE_CODES = [
     "notice.generic",
 ]
 
+# 2026-05-18 고객 검수 v4 — 폐기 처리된 템플릿 코드 (회귀 가드)
+DEPRECATED_TEMPLATE_CODES = [
+    "billing.auto_renew_success",
+    "billing.retry_success",
+]
+
 
 class TestTemplateCatalog:
     def test_all_required_templates_exist(self):
         """AC-2 최소 템플릿 세트가 TEMPLATE_CATALOG에 존재한다."""
         for code in REQUIRED_TEMPLATE_CODES:
             assert code in TEMPLATE_CATALOG, f"필수 템플릿 없음: {code}"
+
+    def test_deprecated_templates_are_absent(self):
+        """고객 v4 검수에서 삭제된 템플릿은 카탈로그에서 제거되어 있다."""
+        for code in DEPRECATED_TEMPLATE_CODES:
+            assert code not in TEMPLATE_CATALOG, (
+                f"폐기 템플릿이 아직 존재합니다: {code}"
+            )
 
     def test_billing_templates_have_billing_category(self):
         """billing.* 템플릿은 모두 BILLING 카테고리다."""
@@ -94,15 +107,25 @@ class TestGetTemplate:
 
 class TestRenderSmsBody:
     def test_render_with_valid_variables(self):
-        t = get_template("billing.first_charge_success")
-        body = render_sms_body(t, {"amount_krw": "9,900", "next_charge_at": "2026-05-23"})
-        assert "9,900" in body
-        assert "2026-05-23" in body
+        # 2026-05-18 v4 — first_charge_success는 변수 0개로 변경. 대신 refund_success로 검증.
+        t = get_template("billing.refund_success")
+        body = render_sms_body(
+            t,
+            {
+                "refund_reason_label": "전액 환불",
+                "amount_krw": "30,000",
+                "refund_amount_krw": "30,000",
+                "effective_at": "2026년 5월 18일",
+            },
+        )
+        assert "전액 환불" in body
+        assert "30,000" in body
+        assert "2026년 5월 18일" in body
 
     def test_render_missing_variable_raises(self):
-        t = get_template("billing.first_charge_success")
+        t = get_template("billing.refund_success")
         with pytest.raises(ValueError, match="템플릿 변수 누락"):
-            render_sms_body(t, {"amount_krw": "9,900"})  # next_charge_at 누락
+            render_sms_body(t, {"refund_reason_label": "전액 환불"})  # 나머지 누락
 
     def test_render_no_variables_template(self):
         t = get_template("billing.retry_failed_1")

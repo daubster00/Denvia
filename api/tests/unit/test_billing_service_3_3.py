@@ -169,9 +169,9 @@ async def test_charge_renewal_success_inserts_payment_and_updates_subscription()
     mock_pg = AsyncMock()
     mock_pg.charge = AsyncMock(return_value=_make_charge_result(True))
 
+    # 2026-05-18 v4: _notify_renewal 함수 자체가 제거되어 patch 불필요.
     with patch("api.src.services.billing_service.get_pg_provider", return_value=mock_pg):
-        with patch("api.src.services.billing_service._notify_renewal", new=AsyncMock()):
-            result = await charge_renewal(sub.id, db)
+        result = await charge_renewal(sub.id, db)
 
     assert result["status"] == "success"
     assert result["subscription_id"] == sub.id
@@ -201,35 +201,16 @@ async def test_charge_renewal_success_next_charge_at_equals_period_end():
     mock_pg = AsyncMock()
     mock_pg.charge = AsyncMock(return_value=_make_charge_result(True))
 
+    # 2026-05-18 v4: _notify_renewal 함수 자체가 제거되어 patch 불필요.
     with patch("api.src.services.billing_service.get_pg_provider", return_value=mock_pg):
-        with patch("api.src.services.billing_service._notify_renewal", new=AsyncMock()):
-            await charge_renewal(sub.id, db)
+        await charge_renewal(sub.id, db)
 
     assert sub.next_charge_at == sub.current_period_end
 
 
-@pytest.mark.asyncio
-async def test_charge_renewal_success_calls_notify_renewal():
-    """성공 시 _notify_renewal 호출 확인."""
-    from api.src.services.billing_service import charge_renewal
-
-    sub = _make_subscription()
-    bk = _make_billing_key()
-
-    db = AsyncMock()
-    db.execute = AsyncMock(side_effect=[_scalar_result(sub), _scalar_result(bk)])
-
-    mock_pg = AsyncMock()
-    mock_pg.charge = AsyncMock(return_value=_make_charge_result(True))
-
-    mock_notify = AsyncMock()
-    with patch("api.src.services.billing_service.get_pg_provider", return_value=mock_pg):
-        with patch("api.src.services.billing_service._notify_renewal", mock_notify):
-            await charge_renewal(sub.id, db)
-
-    mock_notify.assert_called_once()
-    call_args = mock_notify.call_args
-    assert call_args.args[0] == sub.user_id  # user_id
+# 2026-05-18 v4 — `test_charge_renewal_success_calls_notify_renewal` 제거.
+# `_notify_renewal()` 함수와 호출 자체가 코드에서 제거되었음.
+# 회귀 가드: `test_notify_renewal_removed_per_v4_review` 가 부재를 검증.
 
 
 @pytest.mark.asyncio
@@ -252,14 +233,14 @@ async def test_charge_renewal_success_billing_key_not_logged(capfd):
     mock_pg = AsyncMock()
     mock_pg.charge = AsyncMock(return_value=_make_charge_result(True))
 
+    # 2026-05-18 v4: _notify_renewal 함수 자체가 제거되어 patch 불필요.
     with patch("api.src.services.billing_service.get_pg_provider", return_value=mock_pg):
-        with patch("api.src.services.billing_service._notify_renewal", new=AsyncMock()):
-            with patch.object(
-                structlog.get_logger("api.src.services.billing_service"),
-                "info",
-                side_effect=_capture,
-            ):
-                await charge_renewal(sub.id, db)
+        with patch.object(
+            structlog.get_logger("api.src.services.billing_service"),
+            "info",
+            side_effect=_capture,
+        ):
+            await charge_renewal(sub.id, db)
 
     # 어떤 로그 항목에도 billing_key_plain 값이 없어야 함
     for log in captured_logs:
@@ -397,70 +378,19 @@ async def test_charge_renewal_no_active_billing_key():
     assert result["reason"] == "no_active_billing_key"
 
 
-# ── _notify_renewal ───────────────────────────────────────────────────────────
+# ── 자동 갱신 성공 알림 ───────────────────────────────────────────────────────
+# 2026-05-18 — 고객 검수 v4: `billing.auto_renew_success`(1-2) 삭제 요청에 따라
+# `_notify_renewal()` 함수와 알림 발송 자체가 제거되었습니다.
+# 자동 갱신 시점에는 사용자 알림톡 발송이 일어나지 않습니다 (검수 회신본 §1-2).
 
 
-@pytest.mark.asyncio
-async def test_notify_renewal_calls_notification_service():
-    """_notify_renewal: notification_service.send 호출 확인."""
-    from api.src.services.billing_service import _notify_renewal
+def test_notify_renewal_removed_per_v4_review():
+    """`_notify_renewal` 함수가 v4 검수 후 코드에서 제거되었는지 확인."""
+    import api.src.services.billing_service as svc
 
-    now = _now_utc()
-    user_id = 42
-    amount_krw = 9900
-    next_charge_at = now + timedelta(days=30)
-
-    mock_user = MagicMock()
-    mock_user.id = user_id
-    mock_user.phone = "01099998888"
-    mock_user.withdrawn_at = None
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(return_value=_scalar_result(mock_user))
-
-    # async context manager: async_session_factory() 결과
-    mock_cm = AsyncMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-    mock_session_factory = MagicMock(return_value=mock_cm)
-
-    mock_svc = AsyncMock()
-    mock_svc.send = AsyncMock()
-
-    # _notify_renewal 내부에서 from ... import 로 가져오므로 모듈 네임스페이스 patch
-    with patch("api.src.models.base.async_session_factory", mock_session_factory):
-        with patch(
-            "api.src.integrations.messaging.notification_service.get_notification_service",
-            return_value=mock_svc,
-        ):
-            await _notify_renewal(user_id, amount_krw, next_charge_at)
-
-    mock_svc.send.assert_called_once()
-    call_kwargs = mock_svc.send.call_args.kwargs
-    assert call_kwargs["template_code"] == "billing.auto_renew_success"
-    assert call_kwargs["user_id"] == user_id
-
-
-@pytest.mark.asyncio
-async def test_notify_renewal_exception_does_not_propagate():
-    """_notify_renewal 내부에서 예외 발생 시 호출자에게 전파되지 않는다."""
-    from api.src.services.billing_service import _notify_renewal
-
-    now = _now_utc()
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(side_effect=RuntimeError("DB 연결 오류"))
-
-    mock_cm = AsyncMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-    mock_session_factory = MagicMock(return_value=mock_cm)
-
-    with patch("api.src.models.base.async_session_factory", mock_session_factory):
-        # 예외가 전파되지 않아야 함
-        await _notify_renewal(1, 9900, now + timedelta(days=30))
+    assert not hasattr(svc, "_notify_renewal"), (
+        "_notify_renewal 가 아직 남아있음 — 고객 v4 검수 요청에 따라 제거되어야 함."
+    )
 
 
 # ── 중복 결제 방지 ────────────────────────────────────────────────────────────

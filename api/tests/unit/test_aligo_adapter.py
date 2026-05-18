@@ -174,10 +174,12 @@ class TestSendAlimtalk:
         )
         adapter = AligoMessagingAdapter(transport=httpx.MockTransport(handler))
 
+        # 2026-05-18 v4 — `billing.first_charge_success` 본문에 변수가 더 이상 없음
+        # (amount_krw / next_charge_at 제거). 본문 검증은 새 v4 문구로 갱신.
         result = await adapter.send_alimtalk(
             recipient_phone="010-1234-5678",
             template_code="billing.first_charge_success",
-            variables={"amount_krw": "9,900", "next_charge_at": "2026-06-07"},
+            variables={},
         )
 
         assert result["success"] is True
@@ -189,8 +191,8 @@ class TestSendAlimtalk:
         assert form["senderkey"] == "SENDERKEY-001"
         assert form["receiver_1"] == "01012345678"
         assert form["subject_1"] == "첫 구독 결제 완료"
-        assert "9,900원" in form["message_1"]
-        assert "2026-06-07" in form["message_1"]
+        assert "Pro 구독이 시작되었습니다" in form["message_1"]
+        assert "감사합니다" in form["message_1"]
         assert form["testmode_yn"] == "Y"
 
     @pytest.mark.asyncio

@@ -39,41 +39,26 @@ class TemplateDefinition:
 # key 형식: "{category}.{action}" (공급자 콘솔 등록 ID는 ALIMTALK_TEMPLATE_MAP_JSON env로 주입)
 TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     # ── 결제 (billing) ──────────────────────────────────────────────────────
+    # 2026-05-18 — 고객 검수 v4 반영 (Google Docs 회신본):
+    #   • 1-2 billing.auto_renew_success : 삭제 요청 → 카탈로그/호출처 제거
+    #   • 1-3 billing.retry_success      : 삭제 요청 → 카탈로그/호출처 제거
+    #   • 1-1/1-4/1-5/1-6 본문 수정 (인사말 추가·자동 해지 안내 보강)
     "billing.first_charge_success": TemplateDefinition(
         title="첫 구독 결제 완료",
         body=(
             "안녕하세요, Denvia입니다.\n"
-            "Pro 구독이 시작되었습니다.\n"
-            "결제 금액: {amount_krw}원\n"
-            "다음 결제일: {next_charge_at}"
+            "결제가 정상적으로 완료되어 Pro 구독이 시작되었습니다.\n"
+            "문의사항은 앱 내 \"문의작성\"을 통해 언제든 문의해주세요.\n"
+            "감사합니다."
         ),
-        variables=["amount_krw", "next_charge_at"],
-        category=TemplateCategory.BILLING,
-    ),
-    "billing.auto_renew_success": TemplateDefinition(
-        title="구독 자동 갱신 완료",
-        body=(
-            "Denvia Pro 구독이 자동 갱신되었습니다.\n"
-            "결제 금액: {amount_krw}원\n"
-            "다음 결제일: {next_charge_at}"
-        ),
-        variables=["amount_krw", "next_charge_at"],
-        category=TemplateCategory.BILLING,
-    ),
-    "billing.retry_success": TemplateDefinition(
-        title="결제 재시도 성공",
-        body=(
-            "Denvia 구독 결제가 재시도 후 성공했습니다.\n"
-            "결제 금액: {amount_krw}원\n"
-            "다음 결제일: {next_charge_at}"
-        ),
-        variables=["amount_krw", "next_charge_at"],
+        variables=[],
         category=TemplateCategory.BILLING,
     ),
     "billing.retry_failed_1": TemplateDefinition(
         title="결제 실패 안내 (1차)",
         body=(
-            "Denvia 구독 결제에 실패했습니다.\n"
+            "안녕하세요 Denvia 입니다.\n"
+            "pro 구독 정기결제에 실패했습니다.\n"
             "1일 후 자동 재시도됩니다.\n"
             "카드 정보를 확인해주세요."
         ),
@@ -85,7 +70,9 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         body=(
             "Denvia 구독 결제가 다시 실패했습니다.\n"
             "3일 후 마지막으로 재시도됩니다.\n"
-            "카드 정보를 확인하지 않으면 구독이 해지될 수 있습니다."
+            "3일 후 결제 실패가 일어나는 경우 pro 구독은 자동 해지될 수 있습니다.\n"
+            "문의사항은 앱 내 \"문의작성\"을 통해 언제든 문의해주세요.\n"
+            "감사합니다."
         ),
         variables=[],
         category=TemplateCategory.BILLING,
@@ -93,8 +80,8 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     "billing.retry_failed_3": TemplateDefinition(
         title="결제 최종 실패",
         body=(
-            "Denvia 구독 결제가 최종 실패했습니다.\n"
-            "구독이 해지 예정입니다.\n"
+            "pro 구독 결제가 최종 실패했습니다.\n"
+            "pro구독이 해지될 예정입니다.\n"
             "고객센터 문의: {support_url}"
         ),
         variables=["support_url"],
@@ -134,11 +121,16 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         category=TemplateCategory.BILLING,
     ),
     # ── 구독 (subscription) ──────────────────────────────────────────────────
+    # 2026-05-18 — 고객 검수 v4 반영 (2-1·2-2·2-3 본문 수정):
+    #   • 2-1 cancel_requested      : "무료버전 전환" 안내 추가
+    #   • 2-2 canceled_finalized    : user_name + effective_at 신규 변수
+    #   • 2-3 resumed               : next_charge_at 변수 제거 (간결화)
     "subscription.cancel_requested": TemplateDefinition(
         title="구독 해지 예약 완료",
         body=(
-            "Denvia Pro 구독 해지가 예약되었습니다.\n"
-            "{effective_at}까지 서비스를 이용하실 수 있습니다."
+            "Pro 구독 해지가 예약되었습니다.\n"
+            "{effective_at}까지 pro구독 서비스를 이용하실 수 있으며 이후 무료버전으로 전환됩니다.\n"
+            "감사합니다."
         ),
         variables=["effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
@@ -147,18 +139,18 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         title="구독 해지 완료",
         body=(
             "Denvia Pro 구독이 해지되었습니다.\n"
-            "이용해 주셔서 감사합니다."
+            "{user_name} 님은 {effective_at} 일 부터 무료버전으로 전환 됩니다.\n"
+            "감사합니다."
         ),
-        variables=[],
+        # user_name: 사용자 표시 이름 (현재 User 모델에 별도 컬럼 없음 → email local-part로 대체)
+        # effective_at: 무료 전환 효력 발생일 (YYYY-MM-DD)
+        variables=["user_name", "effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
     ),
     "subscription.resumed": TemplateDefinition(
         title="구독 해지 철회 완료",
-        body=(
-            "Denvia Pro 구독 해지가 철회되었습니다.\n"
-            "다음 결제일: {next_charge_at}"
-        ),
-        variables=["next_charge_at"],
+        body="Pro 구독 해지가 철회되었습니다.",
+        variables=[],
         category=TemplateCategory.SUBSCRIPTION,
     ),
     "subscription.extended_due_to_killswitch": TemplateDefinition(
@@ -172,10 +164,12 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         category=TemplateCategory.SUBSCRIPTION,
     ),
     # ── 고객문의 (support) — Story 9.3 ───────────────────────────────────────
+    # 2026-05-18 — 고객 검수 v4 반영 (3-1 본문 수정: 인사말 추가)
     "support.reply_received": TemplateDefinition(
         title="고객문의 답변이 도착했습니다",
         body=(
-            "Denvia 고객문의에 답변이 등록되었습니다.\n"
+            "안녕하세요. Denvia 입니다.\n"
+            "고객문의에 답변이 등록되었습니다.\n"
             "문의 제목: {inquiry_subject}\n"
             "쪽지함에서 자세한 내용을 확인해주세요."
         ),
@@ -244,6 +238,23 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "관리자 페이지에서 답변을 처리해주세요."
         ),
         variables=["user_name", "inquiry_subject"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    # ── 관리자 이상탐지 알림 (2026-05-18 고객 추가요청) ──────────────────────
+    # 사용자 측 보안 알림(5-1~5-6)을 모두 폐기하고, 이상탐지 시 관리자에게만
+    # 단일 채널로 발송. 무료/유료 구분 없음. 운영자가 관리자 페이지에서 기록을
+    # 확인한 뒤 직접 조치(해제/차단) — 차단 시 사용자 안내는 인앱 1:1 쪽지/
+    # 차단 페이지 팝업으로 별도 전달 (알림톡 미사용).
+    "admin.anomaly_detected": TemplateDefinition(
+        title="[Denvia] 이상탐지 발생",
+        body=(
+            "이상탐지내용: {anomaly_type}\n"
+            "이상탐지 계정: {user_identifier}\n"
+            "관리자 페이지에서 확인 필요합니다."
+        ),
+        # anomaly_type: 한국어 사유 라벨 (예: "비밀번호 3회 오류", "동시 로그인", "동일 질문 반복", "IP 중복")
+        # user_identifier: 대상 계정 식별자 (email 또는 user_id)
+        variables=["anomaly_type", "user_identifier"],
         category=TemplateCategory.SYSTEM,
     ),
 }

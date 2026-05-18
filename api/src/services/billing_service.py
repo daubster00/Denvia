@@ -476,11 +476,8 @@ async def charge_renewal(subscription_id: int, db: AsyncSession) -> dict:
             new_period_end=new_period_end.isoformat(),
         )
 
-        # fire-and-forget 알림 — Celery 컨텍스트에서는 ensure_future 대신 await + swallow
-        try:
-            await _notify_renewal(sub.user_id, amount, new_period_end)
-        except Exception:
-            pass
+        # 2026-05-18 고객 검수 v4 — 자동 갱신 성공 알림(1-2)은 발송 안 함.
+        # billing.auto_renew_success 카탈로그 제거에 따라 호출 자체 비활성화.
 
         duration_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
         return {
@@ -533,36 +530,8 @@ async def charge_renewal(subscription_id: int, db: AsyncSession) -> dict:
         }
 
 
-async def _notify_renewal(user_id: int, amount_krw: int, next_charge_at: datetime) -> None:
-    """갱신 성공 알림 fire-and-forget — 실패해도 갱신 결과에 영향 없음."""
-    try:
-        from api.src.models.base import async_session_factory
-
-        async with async_session_factory() as db:
-            result = await db.execute(
-                select(User).where(User.id == user_id, User.withdrawn_at.is_(None))
-            )
-            user = result.scalar_one_or_none()
-            if user is None:
-                return
-
-        from api.src.integrations.messaging.notification_service import (
-            get_notification_service,
-        )
-
-        svc = get_notification_service()
-        await svc.send(
-            user_id=user_id,
-            phone=user.phone or "",
-            template_code="billing.auto_renew_success",
-            variables={
-                "amount_krw": str(amount_krw),
-                "next_charge_at": next_charge_at.strftime("%Y년 %m월 %d일"),
-            },
-            idempotency_key=f"renewal:{user_id}:{int(next_charge_at.timestamp())}",
-        )
-    except Exception:
-        logger.warning("billing.notify_renewal.failed", user_id=user_id)
+# 2026-05-18 고객 검수 v4 — `_notify_renewal()` 제거.
+# 자동 갱신 성공(billing.auto_renew_success) 알림은 고객 요청으로 발송 폐지.
 
 
 # ── Story 3.4 ────────────────────────────────────────────────────────────────
@@ -737,18 +706,7 @@ async def retry_payment(payment_id: int, attempt: int, db: AsyncSession) -> dict
             result="success",
             latency_ms=latency_ms,
         )
-        try:
-            await _notify_retry(
-                user_id=payment.user_id,
-                template_code="billing.retry_success",
-                variables={
-                    "amount_krw": str(amount),
-                    "next_charge_at": sub.next_charge_at.strftime("%Y년 %m월 %d일"),
-                },
-                idempotency_key=f"retry_success:{payment_id}:{attempt}",
-            )
-        except Exception:
-            pass
+        # 2026-05-18 고객 검수 v4 — 재시도 성공 알림(1-3, billing.retry_success)은 발송 안 함.
         return {
             "status": "success",
             "payment_id": payment_id,
@@ -992,12 +950,13 @@ async def cancel_subscription(user: User, reason: str, db: AsyncSession) -> dict
     )
 
     # fire-and-forget 알림 (실패가 응답을 막지 않음)
+    # 2026-05-18 v4: 본문 예시(2026-06-15)에 맞춰 YYYY-MM-DD 포맷으로 통일.
     try:
         await _notify_subscription_event(
             user_id=user.id,
             template_code="subscription.cancel_requested",
             variables={
-                "effective_at": sub.current_period_end.strftime("%Y년 %m월 %d일"),
+                "effective_at": sub.current_period_end.strftime("%Y-%m-%d"),
             },
             idempotency_key=f"cancel_requested:{sub.id}:{int(now.timestamp())}",
         )
@@ -1068,17 +1027,12 @@ async def resume_subscription(user: User, db: AsyncSession) -> dict:
         next_charge_at=sub.next_charge_at.isoformat() if sub.next_charge_at else None,
     )
 
+    # 2026-05-18 v4: 본문이 단일 문장으로 간결화되어 next_charge_at 변수 제거.
     try:
         await _notify_subscription_event(
             user_id=user.id,
             template_code="subscription.resumed",
-            variables={
-                "next_charge_at": (
-                    sub.next_charge_at.strftime("%Y년 %m월 %d일")
-                    if sub.next_charge_at
-                    else "-"
-                ),
-            },
+            variables={},
             idempotency_key=f"resume:{sub.id}:{int(now.timestamp())}",
         )
     except Exception:
@@ -1137,11 +1091,15 @@ async def finalize_cancellations(db: AsyncSession) -> dict:
             current_period_end=s.current_period_end.isoformat(),
         )
 
+        # 2026-05-18 v4: 본문에 {user_name} 님은 {effective_at} 일 부터... 추가.
+        # user_name은 _notify_subscription_event 내부에서 email local-part로 자동 주입됨.
         try:
             await _notify_subscription_event(
                 user_id=s.user_id,
                 template_code="subscription.canceled_finalized",
-                variables={},
+                variables={
+                    "effective_at": s.current_period_end.strftime("%Y-%m-%d"),
+                },
                 idempotency_key=f"canceled_finalized:{s.id}",
             )
         except Exception:
@@ -1352,7 +1310,12 @@ async def _notify_subscription_event(
     variables: dict,
     idempotency_key: str,
 ) -> None:
-    """구독 이벤트 알림 fire-and-forget — 실패해도 상태 전이 결과에 영향 없음."""
+    """구독 이벤트 알림 fire-and-forget — 실패해도 상태 전이 결과에 영향 없음.
+
+    호출 측이 `user_name`을 명시하지 않은 경우, User 모델에 별도 표시 이름 컬럼이
+    없으므로 email의 local-part(@ 앞부분)를 fallback 으로 자동 주입한다.
+    (예: `pro_user@denvia.kr` → `user_name="pro_user"`)
+    """
     try:
         from api.src.models.base import async_session_factory
 
@@ -1364,6 +1327,11 @@ async def _notify_subscription_event(
             if user is None:
                 return
 
+        merged_variables = dict(variables)
+        if "user_name" not in merged_variables:
+            email = user.email or ""
+            merged_variables["user_name"] = email.split("@", 1)[0] or "고객"
+
         from api.src.integrations.messaging.notification_service import (
             get_notification_service,
         )
@@ -1373,7 +1341,7 @@ async def _notify_subscription_event(
             user_id=user_id,
             phone=user.phone or "",
             template_code=template_code,
-            variables=variables,
+            variables=merged_variables,
             idempotency_key=idempotency_key,
         )
     except Exception:

@@ -302,7 +302,7 @@ async def test_retry_payment_no_subscription_id_returns_error():
 
 @pytest.mark.asyncio
 async def test_retry_payment_attempt2_success():
-    """attempt=2 성공: payment 갱신 + 30일 연장 + retry_success 알림."""
+    """attempt=2 성공: payment 갱신 + 30일 연장 (재시도 성공 알림은 v4 검수에서 폐지)."""
     from api.src.models.payment_event import PaymentEvent
     from api.src.services.billing_service import retry_payment
 
@@ -318,6 +318,8 @@ async def test_retry_payment_attempt2_success():
     mock_pg = AsyncMock()
     mock_pg.charge = AsyncMock(return_value=_make_charge_result(True))
 
+    # 2026-05-18 v4 — 재시도 성공 알림(billing.retry_success, 1-3) 폐지.
+    # 알림 호출은 더 이상 일어나지 않지만 mock을 걸어 회귀 가드.
     mock_notify = AsyncMock()
     with patch("api.src.services.billing_service.get_pg_provider", return_value=mock_pg):
         with patch("api.src.services.billing_service._notify_retry", mock_notify):
@@ -342,11 +344,8 @@ async def test_retry_payment_attempt2_success():
     events = [o for o in added_objects if isinstance(o, PaymentEvent)]
     assert any(e.event_type == "charge_success" for e in events)
 
-    # retry_success 알림 호출
-    mock_notify.assert_called_once()
-    call_kwargs = mock_notify.call_args.kwargs
-    assert call_kwargs["template_code"] == "billing.retry_success"
-    assert call_kwargs["user_id"] == payment.user_id
+    # retry_success 알림 — v4 검수에서 폐기 → 호출되지 않아야 함
+    mock_notify.assert_not_called()
 
 
 @pytest.mark.asyncio
