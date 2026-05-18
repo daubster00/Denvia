@@ -82,6 +82,9 @@ _bmad-output*.zip
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 
+# 루트 CLAUDE.md — 로컬 프로젝트 운영 노트 (개인 메모, 추적 제외)
+/CLAUDE.md
+
 # Codex 툴 마커
 .codex
 
