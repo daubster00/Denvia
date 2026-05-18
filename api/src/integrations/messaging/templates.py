@@ -1,4 +1,11 @@
-"""메시징 템플릿 카탈로그 — 공급자 독립적 템플릿 정의 (F-501)."""
+"""메시징 템플릿 카탈로그 — 공급자 독립적 템플릿 정의 (F-501).
+
+본 카탈로그의 본문은 알리고 콘솔 등록본과 글자 단위로 일치해야 한다.
+카카오 알림톡은 등록 템플릿의 고정 텍스트가 발송 본문과 매칭될 때만 통과한다.
+변수 부분(`{변수}`)은 가변 텍스트 영역으로 임의 값 허용.
+
+알리고 등록명·tpl_code 매핑은 docs/ALIMTALK_TEMPLATES.md §5 참조.
+"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -37,28 +44,39 @@ class TemplateDefinition:
 
 # TEMPLATE_CATALOG: template_code → TemplateDefinition
 # key 형식: "{category}.{action}" (공급자 콘솔 등록 ID는 ALIMTALK_TEMPLATE_MAP_JSON env로 주입)
+#
+# 2026-05-18 — 알리고 콘솔 등록본을 SSOT로 채택. 본문은 등록 캡쳐(17/17)와 글자 단위 정렬.
+# 폐기 항목 (회귀 가드: test_messaging_templates.py DEPRECATED_TEMPLATE_CODES):
+#   • billing.refund_denied                   : ADR-0001 편차 #5 — "거부" 개념 자체 폐기 (2026-05-12)
+#   • billing.auto_renew_success              : 고객 검수 v4 (2026-05-18) — 삭제 요청
+#   • billing.retry_success                   : 고객 검수 v4 (2026-05-18) — 삭제 요청
+#   • subscription.extended_due_to_killswitch : 클라이언트 검수서 미포함 → 발송 안 함 (2026-05-18)
 TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     # ── 결제 (billing) ──────────────────────────────────────────────────────
-    # 2026-05-18 — 고객 검수 v4 반영 (Google Docs 회신본):
-    #   • 1-2 billing.auto_renew_success : 삭제 요청 → 카탈로그/호출처 제거
-    #   • 1-3 billing.retry_success      : 삭제 요청 → 카탈로그/호출처 제거
-    #   • 1-1/1-4/1-5/1-6 본문 수정 (인사말 추가·자동 해지 안내 보강)
     "billing.first_charge_success": TemplateDefinition(
-        title="첫 구독 결제 완료",
+        title="Denvia 첫 구독 결제 완료",
         body=(
             "안녕하세요, Denvia입니다.\n"
+            "\n"
             "결제가 정상적으로 완료되어 Pro 구독이 시작되었습니다.\n"
+            "\n"
+            "결제 금액: {amount_krw}원\n"
+            "다음 결제일: {next_charge_at}\n"
+            "\n"
             "문의사항은 앱 내 \"문의작성\"을 통해 언제든 문의해주세요.\n"
+            "\n"
             "감사합니다."
         ),
-        variables=[],
+        variables=["amount_krw", "next_charge_at"],
         category=TemplateCategory.BILLING,
     ),
     "billing.retry_failed_1": TemplateDefinition(
-        title="결제 실패 안내 (1차)",
+        title="Denvia 결제 실패 안내 1차",
         body=(
-            "안녕하세요 Denvia 입니다.\n"
-            "pro 구독 정기결제에 실패했습니다.\n"
+            "안녕하세요, Denvia입니다.\n"
+            "\n"
+            "Pro 구독 정기결제에 실패했습니다.\n"
+            "\n"
             "1일 후 자동 재시도됩니다.\n"
             "카드 정보를 확인해주세요."
         ),
@@ -66,42 +84,52 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         category=TemplateCategory.BILLING,
     ),
     "billing.retry_failed_2": TemplateDefinition(
-        title="결제 실패 안내 (2차)",
+        title="Denvia 결제 실패 안내 2차",
         body=(
-            "Denvia 구독 결제가 다시 실패했습니다.\n"
+            "안녕하세요, Denvia입니다.\n"
+            "\n"
+            "Pro 구독 결제가 다시 실패했습니다.\n"
+            "\n"
             "3일 후 마지막으로 재시도됩니다.\n"
-            "3일 후 결제 실패가 일어나는 경우 pro 구독은 자동 해지될 수 있습니다.\n"
+            "마지막 재시도에서도 결제가 실패할 경우 Pro 구독은 자동 해지될 수 있습니다.\n"
+            "\n"
             "문의사항은 앱 내 \"문의작성\"을 통해 언제든 문의해주세요.\n"
+            "\n"
             "감사합니다."
         ),
         variables=[],
         category=TemplateCategory.BILLING,
     ),
     "billing.retry_failed_3": TemplateDefinition(
-        title="결제 최종 실패",
+        title="Denvia 결제 최종 실패 안내",
         body=(
-            "pro 구독 결제가 최종 실패했습니다.\n"
-            "pro구독이 해지될 예정입니다.\n"
-            "고객센터 문의: {support_url}"
+            "안녕하세요, Denvia입니다.\n"
+            "\n"
+            "Pro 구독 결제가 최종 실패했습니다.\n"
+            "\n"
+            "Pro 구독이 해지될 예정입니다.\n"
+            "고객센터를 통해 문의하실 수 있습니다."
         ),
-        variables=["support_url"],
+        # 알리고 등록본에 support_url 변수 없음 (콘솔 웹링크 버튼으로 대체). 코드도 변수 제거.
+        variables=[],
         category=TemplateCategory.BILLING,
     ),
     "billing.refund_success": TemplateDefinition(
-        title="환불 처리 완료",
+        title="Denvia 환불 처리 완료",
         body=(
             "환불이 완료되었습니다.\n"
+            "\n"
             "처리 유형: {refund_reason_label}\n"
             "결제 원금: {amount_krw}원\n"
             "환불 금액: {refund_amount_krw}원\n"
-            "처리일: {effective_at}\n\n"
+            "처리일: {effective_at}\n"
+            "\n"
             "영업일 3~4일 내 결제 카드로 입금됩니다.\n"
             "문의는 Denvia 1:1 문의 게시판을 이용해주세요."
         ),
         # Story 3.6 v1.1 + Story 9.1 v1.1 공용 단일 템플릿.
         # `refund_reason_label`은 표시용 한국어. 코드 측 enum `refund_reason`
         # (`cooling_off` | `manual_full` | `manual_partial`)에서 매핑되어 입력된다.
-        # docs/ALIMTALK_TEMPLATES.md §7 참조.
         variables=[
             "refund_reason_label",
             "amount_krw",
@@ -110,67 +138,47 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ],
         category=TemplateCategory.BILLING,
     ),
-    "billing.refund_denied": TemplateDefinition(
-        title="환불 요청 거부 안내",
-        body=(
-            "환불 요청이 거부되었습니다.\n"
-            "사유 요약: {reason_summary}\n"
-            "자세한 안내는 쪽지함을 확인해주세요."
-        ),
-        variables=["reason_summary"],
-        category=TemplateCategory.BILLING,
-    ),
     # ── 구독 (subscription) ──────────────────────────────────────────────────
-    # 2026-05-18 — 고객 검수 v4 반영 (2-1·2-2·2-3 본문 수정):
-    #   • 2-1 cancel_requested      : "무료버전 전환" 안내 추가
-    #   • 2-2 canceled_finalized    : user_name + effective_at 신규 변수
-    #   • 2-3 resumed               : next_charge_at 변수 제거 (간결화)
     "subscription.cancel_requested": TemplateDefinition(
-        title="구독 해지 예약 완료",
+        title="Denvia 구독 해지 예약 완료",
         body=(
             "Pro 구독 해지가 예약되었습니다.\n"
-            "{effective_at}까지 pro구독 서비스를 이용하실 수 있으며 이후 무료버전으로 전환됩니다.\n"
+            "\n"
+            "{effective_at}까지 Pro 구독 서비스를 이용하실 수 있으며, 이후 무료 버전으로 전환됩니다.\n"
+            "\n"
             "감사합니다."
         ),
         variables=["effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
     ),
     "subscription.canceled_finalized": TemplateDefinition(
-        title="구독 해지 완료",
+        title="Denvia 구독 해지 완료",
         body=(
             "Denvia Pro 구독이 해지되었습니다.\n"
-            "{user_name} 님은 {effective_at} 일 부터 무료버전으로 전환 됩니다.\n"
+            "\n"
+            "{user_name}님은 {effective_at}부터 무료 버전으로 전환됩니다.\n"
+            "\n"
             "감사합니다."
         ),
-        # user_name: 사용자 표시 이름 (현재 User 모델에 별도 컬럼 없음 → email local-part로 대체)
-        # effective_at: 무료 전환 효력 발생일 (YYYY-MM-DD)
+        # user_name: 호출 측이 생략하면 billing_service._notify_subscription_event 내부에서
+        # email local-part로 자동 주입(없으면 "고객").
         variables=["user_name", "effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
     ),
     "subscription.resumed": TemplateDefinition(
-        title="구독 해지 철회 완료",
+        title="Denvia 구독 해지 철회 완료",
         body="Pro 구독 해지가 철회되었습니다.",
         variables=[],
         category=TemplateCategory.SUBSCRIPTION,
     ),
-    "subscription.extended_due_to_killswitch": TemplateDefinition(
-        title="[Denvia] 구독 기간 자동 연장 안내",
-        body=(
-            "서비스 일시 중단으로 회원님의 구독 기간이 {duration_hours}시간만큼 자동 연장되었습니다.\n"
-            "변경된 만료일: {extended_to}\n"
-            "이용에 불편을 드려 죄송합니다."
-        ),
-        variables=["duration_hours", "extended_to"],
-        category=TemplateCategory.SUBSCRIPTION,
-    ),
     # ── 고객문의 (support) — Story 9.3 ───────────────────────────────────────
-    # 2026-05-18 — 고객 검수 v4 반영 (3-1 본문 수정: 인사말 추가)
     "support.reply_received": TemplateDefinition(
-        title="고객문의 답변이 도착했습니다",
+        title="Denvia 고객문의 답변 도착",
         body=(
-            "안녕하세요. Denvia 입니다.\n"
             "고객문의에 답변이 등록되었습니다.\n"
+            "\n"
             "문의 제목: {inquiry_subject}\n"
+            "\n"
             "쪽지함에서 자세한 내용을 확인해주세요."
         ),
         variables=["inquiry_subject"],
@@ -178,50 +186,63 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     ),
     # ── 공지 (notice) ────────────────────────────────────────────────────────
     "notice.generic": TemplateDefinition(
-        title="Denvia 공지사항",
+        title="Denvia 공지사항 안내",
         body="{title}\n\n{body}",
         variables=["title", "body"],
         category=TemplateCategory.NOTICE,
     ),
     # ── 시스템 (system) ──────────────────────────────────────────────────────────
     "system.rag_rebuild_complete": TemplateDefinition(
-        title="RAG 재빌드 완료",
+        title="Denvia RAG 재빌드 완료",
         body="Denvia RAG 재빌드가 완료되었습니다.\n활성 청크 수: {chunk_count}",
         variables=["chunk_count"],
         category=TemplateCategory.SYSTEM,
     ),
     "system.rag_rebuild_failed": TemplateDefinition(
-        title="RAG 재빌드 실패",
+        title="Denvia RAG 재빌드 실패",
         body="Denvia RAG 재빌드가 실패했습니다.\n오류: {error}",
         variables=["error"],
         category=TemplateCategory.SYSTEM,
     ),
     # ── 관리자 예산 경고 (Story 5.2) ─────────────────────────────────────────
+    # 알리고 등록본은 본문 첫 줄에 [Denvia] 제목을 중복 포함. 코드도 동일하게 작성.
+    # spent_usd / limit_usd 값은 호출처에서 "$" prefix 포함해 넘긴다 (예: "$82.30").
     "admin.budget_warning.80": TemplateDefinition(
-        title="[Denvia] 월 예산 80% 도달",
+        title="Denvia 월 예산 80% 도달",
         body=(
+            "[Denvia] 월 예산 80% 도달\n"
+            "\n"
             "이번 달 OpenAI API 비용이 월 예산의 {percent}%에 도달했습니다.\n"
-            "현재 사용액: ${spent_usd}\n"
-            "월 한도: ${limit_usd}\n"
+            "\n"
+            "현재 사용액: {spent_usd}\n"
+            "월 한도: {limit_usd}\n"
+            "\n"
             "관리자 대시보드에서 사용 패턴을 점검해주세요."
         ),
         variables=["percent", "spent_usd", "limit_usd"],
         category=TemplateCategory.SYSTEM,
     ),
     "admin.budget_warning.95": TemplateDefinition(
-        title="[Denvia] 월 예산 95% 도달 — 경고",
+        title="Denvia 월 예산 95% 도달 안내",
         body=(
+            "[Denvia] 월 예산 95% 도달 안내\n"
+            "\n"
             "이번 달 OpenAI API 비용이 월 예산의 {percent}%에 도달했습니다.\n"
+            "\n"
             "100% 도달 시 무료 질의가 자동 차단됩니다.\n"
-            "현재 사용액: ${spent_usd} / ${limit_usd}"
+            "\n"
+            "현재 사용액: {spent_usd} / {limit_usd}"
         ),
         variables=["percent", "spent_usd", "limit_usd"],
         category=TemplateCategory.SYSTEM,
     ),
     "admin.budget_hard_cap_reached": TemplateDefinition(
-        title="[Denvia] 월 예산 소진 — 무료 질의 자동 차단",
+        title="Denvia 월 예산 소진 안내",
         body=(
-            "월 예산 ${limit_usd}이 소진되어 무료 사용자 질의가 일시 차단되었습니다.\n"
+            "[Denvia] 월 예산 소진 안내\n"
+            "\n"
+            "월 예산 {limit_usd}이 소진되어 무료 사용자 질의가 일시 차단되었습니다.\n"
+            "\n"
             "유료 사용자는 영향 없습니다.\n"
             "다음 달 1일 자동 해제 또는 예산 상향 시 즉시 재개됩니다."
         ),
@@ -230,11 +251,15 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     ),
     # ── 관리자 고객문의 신규 접수 (Story 9.3 후속) ───────────────────────────
     "admin.support_inquiry_created": TemplateDefinition(
-        title="[Denvia] 새 1:1 문의 접수",
+        title="Denvia 신규 1:1 문의 접수 알림",
         body=(
+            "[Denvia] 새 1:1 문의 접수\n"
+            "\n"
             "새 1:1 문의가 접수되었습니다.\n"
+            "\n"
             "작성자: {user_name}\n"
             "문의 제목: {inquiry_subject}\n"
+            "\n"
             "관리자 페이지에서 답변을 처리해주세요."
         ),
         variables=["user_name", "inquiry_subject"],
@@ -242,15 +267,16 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     ),
     # ── 관리자 이상탐지 알림 (2026-05-18 고객 추가요청) ──────────────────────
     # 사용자 측 보안 알림(5-1~5-6)을 모두 폐기하고, 이상탐지 시 관리자에게만
-    # 단일 채널로 발송. 무료/유료 구분 없음. 운영자가 관리자 페이지에서 기록을
-    # 확인한 뒤 직접 조치(해제/차단) — 차단 시 사용자 안내는 인앱 1:1 쪽지/
-    # 차단 페이지 팝업으로 별도 전달 (알림톡 미사용).
+    # 단일 채널로 발송. 무료/유료 구분 없음. 발송 연결은 Story 6.2 후속.
     "admin.anomaly_detected": TemplateDefinition(
-        title="[Denvia] 이상탐지 발생",
+        title="Denvia 이상탐지 관리자 알림",
         body=(
-            "이상탐지내용: {anomaly_type}\n"
+            "[Denvia] 이상탐지 알림\n"
+            "\n"
+            "이상탐지 내용: {anomaly_type}\n"
             "이상탐지 계정: {user_identifier}\n"
-            "관리자 페이지에서 확인 필요합니다."
+            "\n"
+            "관리자 페이지에서 확인이 필요합니다."
         ),
         # anomaly_type: 한국어 사유 라벨 (예: "비밀번호 3회 오류", "동시 로그인", "동일 질문 반복", "IP 중복")
         # user_identifier: 대상 계정 식별자 (email 또는 user_id)

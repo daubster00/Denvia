@@ -24,10 +24,15 @@ REQUIRED_TEMPLATE_CODES = [
     "notice.generic",
 ]
 
-# 2026-05-18 고객 검수 v4 — 폐기 처리된 템플릿 코드 (회귀 가드)
+# 폐기 처리된 템플릿 코드 (회귀 가드)
+# - billing.refund_denied: 2026-05-12 ADR-0001 편차 #5 ("거부" 개념 폐기)
+# - billing.auto_renew_success / billing.retry_success: 2026-05-18 고객 검수 v4
+# - subscription.extended_due_to_killswitch: 2026-05-18 클라이언트 검수서 미포함
 DEPRECATED_TEMPLATE_CODES = [
+    "billing.refund_denied",
     "billing.auto_renew_success",
     "billing.retry_success",
+    "subscription.extended_due_to_killswitch",
 ]
 
 

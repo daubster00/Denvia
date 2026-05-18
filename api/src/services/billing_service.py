@@ -1159,7 +1159,6 @@ async def extend_active_subscriptions(
         deactivated_at = deactivated_at.replace(tzinfo=UTC)
     duration: timedelta = deactivated_at - activated_at
     duration_seconds = int(duration.total_seconds())
-    duration_hours = max(1, round(duration_seconds / 3600))
 
     # 연장 대상 SELECT — active + cancel_pending, 정지 종료 시점까지 살아있던 구독.
     targets_result = await db.execute(
@@ -1208,8 +1207,6 @@ async def extend_active_subscriptions(
             if s.next_charge_at is not None:
                 s.next_charge_at = s.next_charge_at + duration
 
-            extended_to_iso = s.current_period_end.astimezone(UTC).date().isoformat()
-
             db.add(
                 AuditLog(
                     actor_user_id=None,  # 시스템 actor
@@ -1225,34 +1222,10 @@ async def extend_active_subscriptions(
             )
             extended_count += 1
 
-            # 알림톡 발송 — idempotency_key로 워커 재시도 시 중복 차단.
-            try:
-                user_row = (await db.execute(
-                    select(User).where(User.id == s.user_id)
-                )).scalar_one_or_none()
-                if user_row is not None and user_row.phone:
-                    from api.src.integrations.messaging.notification_service import (
-                        get_notification_service,
-                    )
-                    svc = get_notification_service()
-                    await svc.send(
-                        user_id=user_row.id,
-                        phone=user_row.phone,
-                        template_code="subscription.extended_due_to_killswitch",
-                        variables={
-                            "duration_hours": str(duration_hours),
-                            "extended_to": extended_to_iso,
-                        },
-                        idempotency_key=f"killswitch:{killswitch_state_id}:sub:{s.id}",
-                    )
-            except Exception:
-                logger.warning(
-                    "billing.extend_subscriptions.notify_failed",
-                    subscription_id=s.id,
-                    killswitch_state_id=killswitch_state_id,
-                    exc_info=True,
-                )
-                # 알림 실패 시에도 row 갱신은 commit (NotificationService 큐로 deferred 처리됨).
+            # 2026-05-18 — `subscription.extended_due_to_killswitch` 알림톡 발송 폐지.
+            # 클라이언트 v4 검수서(Google Docs 2026-05-15)에 미포함 → 발송 안 함.
+            # 킬스위치 발동 시 구독 기간 연장 자체는 그대로 수행하되,
+            # 사용자 안내는 인앱 공지·1:1 쪽지 등 별도 채널로 대체.
 
         await db.commit()
         # 부하 분산 — chunk 사이 50ms sleep.

@@ -174,12 +174,12 @@ class TestSendAlimtalk:
         )
         adapter = AligoMessagingAdapter(transport=httpx.MockTransport(handler))
 
-        # 2026-05-18 v4 — `billing.first_charge_success` 본문에 변수가 더 이상 없음
-        # (amount_krw / next_charge_at 제거). 본문 검증은 새 v4 문구로 갱신.
+        # 2026-05-18 — 알리고 등록본 SSOT 정렬: `billing.first_charge_success`는
+        # 알리고 v1(변수 2개: amount_krw, next_charge_at)로 복원됨.
         result = await adapter.send_alimtalk(
             recipient_phone="010-1234-5678",
             template_code="billing.first_charge_success",
-            variables={},
+            variables={"amount_krw": "9,900", "next_charge_at": "2026년 7월 15일"},
         )
 
         assert result["success"] is True
@@ -190,8 +190,10 @@ class TestSendAlimtalk:
         assert form["tpl_code"] == "TX_001"
         assert form["senderkey"] == "SENDERKEY-001"
         assert form["receiver_1"] == "01012345678"
-        assert form["subject_1"] == "첫 구독 결제 완료"
+        assert form["subject_1"] == "Denvia 첫 구독 결제 완료"
         assert "Pro 구독이 시작되었습니다" in form["message_1"]
+        assert "결제 금액: 9,900원" in form["message_1"]
+        assert "다음 결제일: 2026년 7월 15일" in form["message_1"]
         assert "감사합니다" in form["message_1"]
         assert form["testmode_yn"] == "Y"
 

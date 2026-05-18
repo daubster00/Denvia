@@ -65,7 +65,7 @@ async def _check_thresholds_async() -> dict:
                 send_result = await _try_notify(
                     notification, admin_user, admin_phone,
                     "admin.budget_warning.80",
-                    {"percent": f"{percent:.2f}", "spent_usd": f"{spent:.2f}", "limit_usd": f"{limit:.2f}"},
+                    {"percent": f"{percent:.2f}", "spent_usd": f"${spent:.2f}", "limit_usd": f"${limit:.2f}"},
                     f"budget.warn80:{ym}",
                 )
                 if send_result and send_result.status == STATUS_SENT:
@@ -84,7 +84,7 @@ async def _check_thresholds_async() -> dict:
                 send_result = await _try_notify(
                     notification, admin_user, admin_phone,
                     "admin.budget_warning.95",
-                    {"percent": f"{percent:.2f}", "spent_usd": f"{spent:.2f}", "limit_usd": f"{limit:.2f}"},
+                    {"percent": f"{percent:.2f}", "spent_usd": f"${spent:.2f}", "limit_usd": f"${limit:.2f}"},
                     f"budget.warn95:{ym}",
                 )
                 if send_result and send_result.status == STATUS_SENT:
@@ -125,7 +125,7 @@ async def _check_thresholds_async() -> dict:
                 await _try_notify(
                     notification, admin_user, admin_phone,
                     "admin.budget_hard_cap_reached",
-                    {"limit_usd": f"{limit:.2f}"},
+                    {"limit_usd": f"${limit:.2f}"},
                     f"budget.hardcap:{ym}",
                 )
                 await _publish(redis, {

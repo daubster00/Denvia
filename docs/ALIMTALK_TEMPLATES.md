@@ -1,14 +1,20 @@
 # 알림톡 템플릿 카탈로그 (알리고 콘솔 등록용)
 
 > **이 문서의 목적**
-> Denvia에서 사용자/관리자에게 보내는 카카오 **알림톡** 메시지를 한 곳에 모아둔 SSOT(단일 진실 공급원).
-> 알리고 콘솔에서 템플릿을 등록할 때 이 문서의 **제목**과 **본문**을 그대로 옮겨 적으면 됩니다.
-> 코드(`api/src/integrations/messaging/templates.py`)와 항상 동기화되어 있어야 합니다 — 템플릿이 추가/수정되면 이 문서도 즉시 갱신.
+> Denvia에서 사용자/관리자에게 보내는 카카오 **알림톡** 메시지를 한 곳에 모아둔 운영 가이드.
+> §3 변수 표기 규칙, §4 매핑 환경변수, §5 발송 시점 표, §9 운영 체크리스트, §10 변경 이력이 항상 최신.
+> 본문 상세(§6/§7)는 v4 검수 시점 텍스트가 일부 남아있을 수 있으니, **정확한 발송 본문은 코드(`api/src/integrations/messaging/templates.py`) 또는 알리고 콘솔 캡쳐를 직접 참조**하세요.
 
 > **공급자 결정 (2026-05-07 확정)**
 > - 알림톡 + SMS 폴백 모두 **알리고(Aligo)** 사용.
 > - 환경변수: `MESSAGING_PROVIDER=aligo`
 > - 종전 PRD/아키텍처의 HOLD-MSG / AR35 항목은 본 결정으로 해제됨.
+
+> **SSOT 정책 (2026-05-18 확정)**
+> - 본문 SSOT 우선순위: **① 알리고 콘솔 등록본 → ② `templates.py` → ③ 본 문서 §6/§7**.
+> - 카카오 알림톡은 알리고에 등록된 본문의 고정 텍스트가 발송 본문과 글자 단위로 매칭될 때만 통과합니다. 따라서 알리고 등록본이 최종 진실.
+> - 코드(`templates.py`)는 알리고 등록 캡쳐(17/17)와 글자 단위 정렬 완료 (2026-05-18 커밋).
+> - 본 문서 §6/§7의 본문 상세 섹션은 v4 검수 시점 텍스트가 남아있을 수 있으므로 운영 참고 시 코드/알리고 콘솔로 교차 확인.
 
 ---
 
@@ -60,15 +66,35 @@
 
 ## 4. 매핑 환경변수
 
-알리고 콘솔에 18개 등록 대상 템플릿(폐기 3건 제외)을 모두 등록하면 각 템플릿마다 알리고가 부여하는 **`tpl_code`(템플릿 코드)** 가 생깁니다. 이걸 모아서 배포 환경변수로 주입합니다:
+알리고 콘솔에 등록된 17개 알림톡 템플릿의 `tpl_code`(템플릿 코드)를 환경변수로 주입합니다. 2026-05-18 등록 완료 시점 기준 (카카오 심사 진행 중):
 
 ```env
-ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"TX_1234","billing.retry_failed_1":"TX_1236", ...}
+ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.retry_failed_1":"UH_9829","billing.retry_failed_2":"UH_9831","billing.retry_failed_3":"UH_9824","billing.refund_success":"UH_9832","subscription.cancel_requested":"UH_9833","subscription.canceled_finalized":"UH_9834","subscription.resumed":"UH_9836","support.reply_received":"UH_9837","notice.generic":"UH_9838","system.rag_rebuild_complete":"UH_9841","system.rag_rebuild_failed":"UH_9842","admin.budget_warning.80":"UH_9843","admin.budget_warning.95":"UH_9845","admin.budget_hard_cap_reached":"UH_9846","admin.support_inquiry_created":"UH_9848","admin.anomaly_detected":"UH_9849"}
 ```
 
-> **2026-05-18 v4 검수 결과** — `billing.auto_renew_success`(1-2)와 `billing.retry_success`(1-3)는 고객 검수에서 "삭제 요청"으로 회신되었습니다. 알리고 콘솔에 등록하지 않으며, 위 환경변수 매핑에도 키를 포함하지 마세요.
+### 등록 매핑표 (2026-05-18)
 
-콘솔 등록 후 본 문서의 "알리고 tpl_code" 칸을 채워 두면 운영자가 환경변수를 만들 때 그대로 옮겨 쓸 수 있습니다.
+| # | 코드 측 template_code | 알리고 등록명 | `tpl_code` | 카카오 심사 |
+|---|---|---|---|---|
+| 1 | `billing.first_charge_success` | Denvia 첫 구독 결제 완료 | `UH_9828` | 검수중 |
+| 2 | `billing.retry_failed_1` | Denvia 결제 실패 안내 1차 | `UH_9829` | 검수중 |
+| 3 | `billing.retry_failed_2` | Denvia 결제 실패 안내 2차 | `UH_9831` | 검수중 |
+| 4 | `billing.retry_failed_3` | Denvia 결제 최종 실패 안내 | `UH_9824` | 검수중 |
+| 5 | `billing.refund_success` | Denvia 환불 처리 완료 | `UH_9832` | 검수중 |
+| 6 | `subscription.cancel_requested` | Denvia 구독 해지 예약 완료 | `UH_9833` | 검수중 |
+| 7 | `subscription.canceled_finalized` | Denvia 구독 해지 완료 | `UH_9834` | 검수중 |
+| 8 | `subscription.resumed` | Denvia 구독 해지 철회 완료 | `UH_9836` | 검수중 |
+| 9 | `support.reply_received` | Denvia 고객문의 답변 도착 | `UH_9837` | 검수중 |
+| 10 | `notice.generic` | Denvia 공지사항 안내 | `UH_9838` | 검수중 |
+| 11 | `system.rag_rebuild_complete` | Denvia RAG 재빌드 완료 | `UH_9841` | 검수중 |
+| 12 | `system.rag_rebuild_failed` | Denvia RAG 재빌드 실패 | `UH_9842` | 검수중 |
+| 13 | `admin.budget_warning.80` | Denvia 월 예산 80% 도달 | `UH_9843` | 검수중 |
+| 14 | `admin.budget_warning.95` | Denvia 월 예산 95% 도달 안내 | `UH_9845` | 검수중 |
+| 15 | `admin.budget_hard_cap_reached` | Denvia 월 예산 소진 안내 | `UH_9846` | 검수중 |
+| 16 | `admin.support_inquiry_created` | Denvia 신규 1:1 문의 접수 알림 | `UH_9848` | 검수중 |
+| 17 | `admin.anomaly_detected` | Denvia 이상탐지 관리자 알림 | `UH_9849` | 검수중 |
+
+> **폐기 4건** — `billing.refund_denied`(2026-05-12), `billing.auto_renew_success` / `billing.retry_success` / `subscription.extended_due_to_killswitch`(2026-05-18). 알리고 콘솔에 등록하지 않으며, 위 환경변수 매핑에도 키를 포함하지 마세요. 카탈로그/회귀 가드: `templates.py` + `test_messaging_templates.py` DEPRECATED_TEMPLATE_CODES.
 
 ---
 
@@ -96,6 +122,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"TX_1234","billing.re
 | 18 | 시스템 | `admin.budget_hard_cap_reached` | 월 예산 100% 소진 → 무료 질의 자동 차단 | 관리자 | ✅ 코드 반영 |
 | 19 | 시스템 | `admin.support_inquiry_created` | 사용자가 1:1 문의를 등록한 직후 | 관리자 | 🟡 템플릿 정의만 반영 — 발송 연결 미구현 (Story 9.3 후속) |
 | 20 | 시스템 | `admin.anomaly_detected` | 이상탐지(비밀번호 오류·동시 로그인·동일 질문 반복·IP 중복 등) 발생 시 | 관리자 | 🟡 템플릿 정의 반영 — 발송 연결 미구현 (Story 6.2 후속, 2026-05-18 추가) |
+| 21 | ~~구독~~ | ~~`subscription.extended_due_to_killswitch`~~ | ~~킬스위치 발동으로 구독 기간 자동 연장됐을 때~~ | ~~사용자~~ | **❌ 폐기 — 2026-05-18** — 클라이언트 v4 검수서(Google Docs 2026-05-15) 미포함. 카탈로그·호출처·docs 본문 섹션 제거. 킬스위치 시 구독 기간 연장 자체는 유지하되 사용자 안내는 인앱 공지·1:1 쪽지로 대체 |
 
 > SMS OTP(회원가입·아이디찾기·비밀번호찾기 인증번호 발송)와 임시 비밀번호 발송은 **알림톡이 아니라 일반 SMS**로 보냅니다. 알리고 콘솔에서는 별도 템플릿 등록이 필요 없습니다(SMS는 자유 텍스트). 본 문서 제일 아래 §8에 정리합니다.
 
@@ -822,3 +849,4 @@ Denvia RAG 재빌드가 실패했습니다.
 | 2026-05-12 | #19 `admin.support_inquiry_created` 추가 — 사용자가 1:1 문의를 등록한 직후 관리자에게 알림톡. 코드 카탈로그(`templates.py`)에 템플릿 정의만 반영, 라우터 발송 연결은 Story 9.3 후속 작업으로 분리. |
 | 2026-05-12 | **환불 정책 재편 반영 (ADR-0001 편차 #5).** ① #7 `billing.refund_success` 변수 확장 — `amount_krw`(기존, 의미 명확화: 결제 원금) + `refund_amount_krw`(신규, 이번 환불 금액) + `refund_reason_label`(신규, "즉시 해지 및 전액 환불" / "전액 환불" / "부분 환불") + `effective_at`(기존, 형식 "YYYY년 MM월 DD일"). 본문도 4줄 → 6줄로 확장하여 처리 유형·결제 원금·환불 금액을 구분 표시. 청약철회·관리자 전액·관리자 부분 3가지 트리거를 단일 템플릿으로 통합. ② #8 `billing.refund_denied` **폐기** — 새 정책에서 환불 "거부" 개념 자체가 사라짐. 알리고 콘솔 등록분이 있다면 비활성/삭제 처리. ③ 발송 시점 표(§5)도 동일하게 갱신. **알리고 콘솔 재등록 필요** — #7 본문 변경분은 카카오 사전 승인 재요청 필수. 코드 측 `templates.py` 갱신은 Story 3.6 v1.1 Patch-T9 + Story 9.1 v1.1 Patch-T8에서 동시 진행. |
 | 2026-05-18 | **고객 검수 v4 회신 반영.** ① **폐기 2건**: #2 `billing.auto_renew_success`(자동 갱신 알림) + #3 `billing.retry_success`(재시도 성공 알림) — 카탈로그·호출처(`billing_service._notify_renewal` 및 retry_success 발송 블록)·관련 단위 테스트 정리. ② **본문 수정 7건**: #1 first_charge_success / #4 retry_failed_1 / #5 retry_failed_2 / #6 retry_failed_3 / #9 cancel_requested / #10 canceled_finalized / #11 resumed / #12 support.reply_received — 인사말 추가·무료 전환 안내 보강·변수 정리. ③ **변수 변경**: #10 `canceled_finalized` → `user_name`(email local-part fallback) + `effective_at` 신규. #11 `resumed` → `next_charge_at` 변수 제거. #1 `first_charge_success` → 변수 0개로 단순화. ④ **신규 #20 `admin.anomaly_detected`** — 이상탐지(비밀번호 오류·동시 로그인·동일 질문 반복·IP 중복 등) 발생 시 관리자에게만 발송. 사용자에게는 알림톡 미발송(차단 조치 시 1:1 쪽지+팝업으로 별도 전달). 무료/유료 동일. 발송 연결은 Story 6.2 후속. ⑤ **이상탐지 사용자 알림 5종 미도입**: 본 검수에서 사용자 알림(계정 잠금·답변 속도 제한·동시 로그인·반복 질문·이용 제한 해제) 5건은 모두 삭제 요청으로 정리되어 카탈로그에 등록하지 않음. **알리고 콘솔 재등록 필요** — 본문 수정 7건 모두 카카오 사전 승인 재요청 필수. |
+| 2026-05-18 (오후) | **알리고 등록본 SSOT 정렬.** 알리고 콘솔에 17개 알림톡 등록 완료(카카오 심사 진행 중) → 등록 캡쳐 17/17과 코드 `templates.py` 본문 대조 결과 16개에서 차이 발견(인사말·대소문자 Pro/pro·띄어쓰기·본문 첫 줄 [Denvia] 제목 중복·`$` 기호 위치). 알리고 등록본을 SSOT로 채택하고 코드 본문을 등록본으로 정렬. ① `templates.py` 17개 본문 재작성(알리고 캡쳐 글자 단위 일치) — `first_charge_success`는 알리고 v1(변수 2개: `amount_krw`/`next_charge_at`)로 복원, `retry_failed_3`은 `support_url` 변수 제거(콘솔 웹링크 버튼 대체), 관리자 5건은 본문 첫 줄 `[Denvia]` 제목 중복 포함. ② `subscription.extended_due_to_killswitch` **폐기** — 클라이언트 v4 검수서에 미포함. 카탈로그·`billing_service.py` 호출 라인·`unused 변수` 제거. ③ `budget_tasks.py` 호출처 `spent_usd`/`limit_usd`에 `$` prefix 추가(코드 본문에서 `$` 제거 대응). ④ §4 매핑 환경변수에 tpl_code 17개 채워넣음(UH_9824 ~ UH_9849). ⑤ `test_messaging_templates.py` DEPRECATED 회귀가드에 `subscription.extended_due_to_killswitch`·`billing.refund_denied` 추가. **알리고 콘솔 재등록 불필요** — 코드만 알리고에 맞춤. |

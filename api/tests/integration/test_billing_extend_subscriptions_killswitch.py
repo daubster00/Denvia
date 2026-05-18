@@ -2,15 +2,18 @@
 
 manual_total 해제 시 자동 enqueue되는 Celery 태스크의 핵심 분기:
 - killswitch row 미존재/잘못된 mode → skip
-- 활성 구독 N건 + cancel_pending 1건 → 모두 연장 + audit_logs INSERT N+1건 + 알림톡 발송
+- 활성 구독 N건 + cancel_pending 1건 → 모두 연장 + audit_logs INSERT N+1건
 - duration 정확성 (deactivated_at - activated_at)
 - idempotency_key 형식
+
+2026-05-18 — `subscription.extended_due_to_killswitch` 알림톡 발송 폐지에 따라
+알림 발송 검증은 제거. 구독 기간 연장 자체와 audit_logs만 확인.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -50,13 +53,6 @@ def _make_subscription(sub_id: int, user_id: int, status: str = "active"):
     sub.current_period_end = now + timedelta(days=10)
     sub.next_charge_at = now + timedelta(days=10)
     return sub
-
-
-def _make_user(user_id: int = 7):
-    u = MagicMock()
-    u.id = user_id
-    u.phone = "010-1234-5678"
-    return u
 
 
 @pytest.mark.asyncio
@@ -100,8 +96,8 @@ async def test_skip_when_not_yet_deactivated():
 
 
 @pytest.mark.asyncio
-async def test_extends_active_and_cancel_pending_with_audit_log_and_alimtalk():
-    """활성 1건 + cancel_pending 1건 → 모두 연장 + audit_logs INSERT 2건 + 알림 2건."""
+async def test_extends_active_and_cancel_pending_with_audit_log():
+    """활성 1건 + cancel_pending 1건 → 모두 연장 + audit_logs INSERT 2건."""
     from api.src.models.audit_log import AuditLog
     from api.src.services.billing_service import extend_active_subscriptions
 
@@ -111,45 +107,32 @@ async def test_extends_active_and_cancel_pending_with_audit_log_and_alimtalk():
 
     sub_active = _make_subscription(sub_id=101, user_id=7, status="active")
     sub_cancel = _make_subscription(sub_id=102, user_id=8, status="cancel_pending")
-    user_a = _make_user(user_id=7)
-    user_b = _make_user(user_id=8)
 
     db = AsyncMock()
     db.commit = AsyncMock()
     added: list = []
     db.add = MagicMock(side_effect=lambda o: added.append(o))
 
+    # 2026-05-18 — 알림톡 발송 폐지로 user SELECT 단계 제거.
     # execute side_effects 순서:
     # 1. SELECT killswitch
     # 2. SELECT targets (active + cancel_pending 2건)
     # 3. SELECT FOR UPDATE sub_active
     # 4. SELECT AuditLog idempotency check for sub_active → None (미처리)
-    # 5. SELECT user for sub_active (알림)
-    # 6. SELECT FOR UPDATE sub_cancel
-    # 7. SELECT AuditLog idempotency check for sub_cancel → None (미처리)
-    # 8. SELECT user for sub_cancel (알림)
+    # 5. SELECT FOR UPDATE sub_cancel
+    # 6. SELECT AuditLog idempotency check for sub_cancel → None (미처리)
     db.execute = AsyncMock(
         side_effect=[
             _scalar_result(ks),
             _scalars_result([sub_active, sub_cancel]),
             _scalar_result(sub_active),
             _scalar_result(None),       # idempotency check sub_active: 미처리
-            _scalar_result(user_a),
             _scalar_result(sub_cancel),
             _scalar_result(None),       # idempotency check sub_cancel: 미처리
-            _scalar_result(user_b),
         ]
     )
 
-    notify_mock = AsyncMock()
-    svc_mock = MagicMock()
-    svc_mock.send = notify_mock
-
-    with patch(
-        "api.src.integrations.messaging.notification_service.get_notification_service",
-        return_value=svc_mock,
-    ):
-        result = await extend_active_subscriptions(killswitch_state_id=42, db=db)
+    result = await extend_active_subscriptions(killswitch_state_id=42, db=db)
 
     assert result["status"] == "ok"
     assert result["extended_count"] == 2
@@ -168,12 +151,6 @@ async def test_extends_active_and_cancel_pending_with_audit_log_and_alimtalk():
         assert a.target_type == "subscription"
         assert a.diff_json["killswitch_state_id"] == 42
         assert "duration_seconds" in a.diff_json
-
-    # 알림톡 send 2건 (idempotency_key 형식 검증)
-    assert notify_mock.await_count == 2
-    sent_keys = {kwargs.get("idempotency_key") for _, kwargs in notify_mock.await_args_list}
-    assert "killswitch:42:sub:101" in sent_keys
-    assert "killswitch:42:sub:102" in sent_keys
 
 
 @pytest.mark.asyncio
@@ -235,7 +212,6 @@ async def test_new_subscription_extended_but_old_skipped():
 
     sub_a = _make_subscription(sub_id=301, user_id=10, status="active")  # 이미 처리됨
     sub_b = _make_subscription(sub_id=302, user_id=11, status="active")  # 미처리
-    user_b = _make_user(user_id=11)
 
     existing_audit = MagicMock(spec=AuditLog)
 
@@ -243,6 +219,7 @@ async def test_new_subscription_extended_but_old_skipped():
     db.commit = AsyncMock()
     db.add = MagicMock()
 
+    # 2026-05-18 — 알림톡 발송 폐지로 user SELECT 단계 제거.
     # execute 순서:
     # 1. SELECT killswitch
     # 2. SELECT targets (2건)
@@ -250,7 +227,6 @@ async def test_new_subscription_extended_but_old_skipped():
     # 4. SELECT AuditLog for sub_a → existing
     # 5. SELECT FOR UPDATE sub_b → pass
     # 6. SELECT AuditLog for sub_b → None (미처리)
-    # 7. SELECT user_b (알림 발송)
     db.execute = AsyncMock(
         side_effect=[
             _scalar_result(ks),
@@ -259,24 +235,13 @@ async def test_new_subscription_extended_but_old_skipped():
             _scalar_result(existing_audit),   # sub_a 이미 처리됨
             _scalar_result(sub_b),
             _scalar_result(None),             # sub_b 미처리
-            _scalar_result(user_b),           # 알림 발송용 user
         ]
     )
 
-    notify_mock = AsyncMock()
-    svc_mock = MagicMock()
-    svc_mock.send = notify_mock
-
-    with patch(
-        "api.src.integrations.messaging.notification_service.get_notification_service",
-        return_value=svc_mock,
-    ):
-        result = await extend_active_subscriptions(killswitch_state_id=42, db=db)
+    result = await extend_active_subscriptions(killswitch_state_id=42, db=db)
 
     assert result["status"] == "ok"
     assert result["extended_count"] == 1  # sub_b만 연장
     # AuditLog는 sub_b에 대해서만 1건 추가
     audit_rows = [a for a in db.add.call_args_list if isinstance(a[0][0], AuditLog)]
     assert len(audit_rows) == 1
-    # 알림은 sub_b에 대해서만 1번
-    assert notify_mock.await_count == 1
