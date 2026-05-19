@@ -24,7 +24,7 @@ class RuntimeConfigUpdateRequest(BaseModel):
     show_subscribe_button: bool
     free_daily_quota: int = Field(ge=0, le=9999)
     free_delay_enabled: bool
-    free_delay_seconds: int = Field(ge=0, le=30)
+    free_delay_seconds: int = Field(ge=0)
 
 
 class ChatModelConfigResponse(BaseModel):

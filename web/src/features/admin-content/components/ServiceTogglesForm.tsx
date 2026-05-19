@@ -182,14 +182,13 @@ export function ServiceTogglesForm() {
           <div className={styles.rowText}>
             <span className={styles.rowLabel}>답변 지연 시간</span>
             <span className={styles.rowDesc}>
-              위 토글이 ON일 때 적용되는 지연 시간(초)입니다. 0~30초.
+              위 토글이 ON일 때 적용되는 지연 시간(초)입니다. 0초 이상으로 자유롭게 입력하세요.
             </span>
           </div>
           <div className={styles.numberCell}>
             <input
               type="number"
               min={0}
-              max={30}
               step={1}
               className={styles.numberInput}
               value={form.free_delay_seconds}

@@ -14,8 +14,7 @@ export const runtimeConfigFormSchema = z.object({
   free_delay_seconds: z
     .number({ invalid_type_error: "숫자를 입력해주세요" })
     .int("정수만 입력 가능합니다")
-    .min(0, "0 이상이어야 합니다")
-    .max(30, "30 이하여야 합니다"),
+    .min(0, "0 이상이어야 합니다"),
 });
 
 export type RuntimeConfigFormInput = z.infer<typeof runtimeConfigFormSchema>;
