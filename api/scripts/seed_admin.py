@@ -34,54 +34,71 @@ async def _seed_redis_runtime() -> None:
         await redis_runtime.aclose()
 
 
+async def _insert_admin_if_missing(
+    session, *, email: str, password: str, phone: str | None
+) -> None:
+    """이메일 단일 기준 멱등 INSERT — 동일 이메일 admin 이 있으면 skip."""
+    result = await session.execute(
+        text("SELECT id FROM users WHERE email = :email LIMIT 1"),
+        {"email": email},
+    )
+    existing = result.fetchone()
+    if existing:
+        print(
+            f"[seed_admin] {email} 이미 존재합니다 (id={existing[0]}). skip."
+        )
+        return
+
+    password_hash = ph.hash(password)
+    now = datetime.now(UTC)
+    await session.execute(
+        text(
+            """
+            INSERT INTO users
+              (email, password_hash, phone, role, subscription_status,
+               phone_verified, must_reset_password, created_at, updated_at)
+            VALUES
+              (:email, :password_hash, :phone, 'admin', 'free',
+               false, false, :now, :now)
+            """
+        ),
+        {
+            "email": email,
+            "password_hash": password_hash,
+            "phone": phone,
+            "now": now,
+        },
+    )
+    await session.commit()
+    print(f"[seed_admin] admin 계정 생성 완료: {email}")
+
+
 async def seed_admin() -> None:
     admin_email = os.environ.get("DENVIA_ADMIN_EMAIL", settings.denvia_admin_email)
     admin_password = os.environ.get(
         "DENVIA_ADMIN_INITIAL_PASSWORD", settings.denvia_admin_initial_password
     )
+    admin_phone = os.environ.get("DENVIA_ADMIN_PHONE", settings.denvia_admin_phone)
 
     engine = create_async_engine(settings.database_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with session_factory() as session:
-        # 이미 admin 계정이 존재하면 skip
-        result = await session.execute(
-            text("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+        # 기본 관리자
+        await _insert_admin_if_missing(
+            session,
+            email=admin_email,
+            password=admin_password,
+            phone=admin_phone,
         )
-        existing = result.fetchone()
-        if existing:
-            print(  # noqa: E501
-                f"[seed_admin] admin 계정이 이미 존재합니다 (id={existing[0]}). skip."
-            )
-            await engine.dispose()
-            await _seed_redis_runtime()
-            return
-
-        # argon2id 해시 생성
-        password_hash = ph.hash(admin_password)
-        now = datetime.now(UTC)
-        admin_phone = os.environ.get("DENVIA_ADMIN_PHONE", settings.denvia_admin_phone)
-
-        await session.execute(
-            text(
-                """
-                INSERT INTO users
-                  (email, password_hash, phone, role, subscription_status,
-                   phone_verified, must_reset_password, created_at, updated_at)
-                VALUES
-                  (:email, :password_hash, :phone, 'admin', 'free',
-                   false, false, :now, :now)
-                """
-            ),
-            {
-                "email": admin_email,
-                "password_hash": password_hash,
-                "phone": admin_phone,
-                "now": now,
-            },
+        # btmdesign 마스터 계정 — 수정요청 게시판 상태 변경 권한 보유
+        # (api/src/services/admin_board_service.py: BTMDESIGN_EMAIL 과 동기)
+        await _insert_admin_if_missing(
+            session,
+            email="btmdesign@naver.com",
+            password="Btm6853!",
+            phone=None,
         )
-        await session.commit()
-        print(f"[seed_admin] admin 계정 생성 완료: {admin_email}")
 
     await engine.dispose()
     await _seed_redis_runtime()

@@ -3,7 +3,6 @@
   flex-direction: column;
   border: 1px solid var(--color-neutral-300, #d4d4d8);
   border-radius: 8px;
-  overflow: hidden;
   background: #fff;
 }
 
@@ -14,7 +13,8 @@
   padding: 8px;
   background: var(--color-neutral-50, #fafafa);
   border-bottom: 1px solid var(--color-neutral-200, #e4e4e7);
-  overflow-x: auto;
+  border-top-left-radius: 7px;
+  border-top-right-radius: 7px;
 }
 
 .btn,
@@ -46,6 +46,8 @@
   min-height: 240px;
   max-height: 480px;
   overflow-y: auto;
+  border-bottom-left-radius: 7px;
+  border-bottom-right-radius: 7px;
 }
 
 .editorContent :global(.ProseMirror) {
@@ -77,8 +79,201 @@
   border-radius: 4px;
 }
 
-@media (max-width: 768px) {
-  .toolbar {
-    flex-wrap: nowrap;
-  }
+.hiddenFileInput {
+  display: none;
 }
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbarDivider {
+  display: inline-block;
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--color-neutral-200, #e4e4e7);
+}
+
+.fontSizeLabel {
+  display: inline-flex;
+  align-items: center;
+}
+
+.fontSizeSelect {
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 13px;
+  color: var(--color-neutral-900, #18181b);
+  cursor: pointer;
+}
+
+.fontSizeSelect:focus {
+  outline: 2px solid var(--color-brand-500, #3b82f6);
+  outline-offset: 1px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.colorPicker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.colorPickerButton {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-neutral-900, #18181b);
+}
+
+.colorPickerButton:hover {
+  background: var(--color-neutral-200, #e4e4e7);
+}
+
+.colorPickerButton[aria-expanded="true"] {
+  background: var(--color-neutral-200, #e4e4e7);
+  border-color: var(--color-neutral-300, #d4d4d8);
+}
+
+.colorPickerIcon {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.colorPickerUnderline {
+  display: block;
+  width: 18px;
+  height: 3px;
+  border-radius: 1px;
+  background-color: currentColor;
+}
+
+.colorPickerUnderline[data-color="#18181b"] {
+  color: #18181b;
+}
+.colorPickerUnderline[data-color="#6b7280"] {
+  color: #6b7280;
+}
+.colorPickerUnderline[data-color="#dc2626"] {
+  color: #dc2626;
+}
+.colorPickerUnderline[data-color="#ea580c"] {
+  color: #ea580c;
+}
+.colorPickerUnderline[data-color="#ca8a04"] {
+  color: #ca8a04;
+}
+.colorPickerUnderline[data-color="#16a34a"] {
+  color: #16a34a;
+}
+.colorPickerUnderline[data-color="#2563eb"] {
+  color: #2563eb;
+}
+.colorPickerUnderline[data-color="#7c3aed"] {
+  color: #7c3aed;
+}
+
+.colorPopover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, 24px);
+  grid-auto-rows: 24px;
+  justify-items: center;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.colorSwatch {
+  display: block;
+  width: 24px;
+  height: 24px;
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  border-radius: 50%;
+  cursor: pointer;
+  background-color: currentColor;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.colorSwatch[data-color="#18181b"] {
+  color: #18181b;
+}
+.colorSwatch[data-color="#6b7280"] {
+  color: #6b7280;
+}
+.colorSwatch[data-color="#dc2626"] {
+  color: #dc2626;
+}
+.colorSwatch[data-color="#ea580c"] {
+  color: #ea580c;
+}
+.colorSwatch[data-color="#ca8a04"] {
+  color: #ca8a04;
+}
+.colorSwatch[data-color="#16a34a"] {
+  color: #16a34a;
+}
+.colorSwatch[data-color="#2563eb"] {
+  color: #2563eb;
+}
+.colorSwatch[data-color="#7c3aed"] {
+  color: #7c3aed;
+}
+
+.colorSwatch:hover {
+  transform: scale(1.15);
+}
+
+.colorSwatchActive {
+  outline: 2px solid var(--color-brand-600, #2563eb);
+  outline-offset: 2px;
+}
+
+.uploadError {
+  margin: 0;
+  padding: 6px 12px;
+  background: #fef2f2;
+  border-bottom: 1px solid var(--color-neutral-200, #e4e4e7);
+  color: #b91c1c;
+  font-size: 12px;
+}
+

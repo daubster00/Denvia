@@ -9,11 +9,10 @@ import {
   IconCircleBlock,
   IconDocument,
   IconStorage,
-  IconCode,
-  IconTag,
   IconCoins,
   IconBubble,
   IconSetting,
+  IconWrite,
   IconChevronRight,
 } from "@wanteddev/wds-icon";
 import styles from "./AdminSidebar.module.css";
@@ -46,9 +45,16 @@ const MENU_ITEMS: MenuItem[] = [
       { label: "공지(쪽지) 관리", href: "/admin/content/notices" },
     ],
   },
-  { icon: IconStorage as IconComponent, label: "RAG 데이터", href: "/admin/rag" },
-  { icon: IconCode as IconComponent, label: "프롬프트", href: "/admin/prompt" },
-  { icon: IconTag as IconComponent, label: "동의어 데이터", href: "/admin/synonyms" },
+  {
+    icon: IconStorage as IconComponent,
+    label: "RAG 데이터 관리",
+    href: "/admin/rag",
+    children: [
+      { label: "동의어", href: "/admin/synonyms" },
+      { label: "코드소스", href: "/admin/rag" },
+      { label: "프롬프트", href: "/admin/prompt" },
+    ],
+  },
   {
     icon: IconCoins as IconComponent,
     label: "재무",
@@ -60,6 +66,7 @@ const MENU_ITEMS: MenuItem[] = [
     ],
   },
   { icon: IconBubble as IconComponent, label: "CS", href: "/admin/cs" },
+  { icon: IconWrite as IconComponent, label: "수정요청", href: "/admin/board" },
   {
     icon: IconSetting as IconComponent,
     label: "설정",
@@ -134,8 +141,10 @@ export function AdminSidebar() {
         <ul className={styles.menu}>
           {MENU_ITEMS.map((item) => {
             const { icon: Icon, label, href, children } = item;
-            const active = isActive(href);
             const hasChildren = !!children && children.length > 0;
+            const childActive =
+              hasChildren && children!.some((c) => isHrefActive(pathname, c.href));
+            const active = isActive(href) || childActive;
             const isHovered = hoveredHref === href;
             // 현재 라우트가 이 부모 밑에 있을 때만 펼침 (호버 시 미리보기 허용)
             const isExpanded = hasChildren && (active || isHovered);

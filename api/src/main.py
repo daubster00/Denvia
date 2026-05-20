@@ -34,6 +34,7 @@ from api.src.routers.admin import finance as admin_finance
 from api.src.routers.admin import payments as admin_payments
 from api.src.routers.admin import killswitch as admin_killswitch
 from api.src.routers.admin import seo as admin_seo
+from api.src.routers.admin import board as admin_board
 from api.src.routers import billing as billing_router
 from api.src.routers import support as support_router
 from api.src.settings import settings
@@ -156,6 +157,7 @@ app.include_router(admin_finance.router, prefix="/api/v1")
 app.include_router(admin_payments.router, prefix="/api/v1")
 app.include_router(admin_killswitch.router, prefix="/api/v1")
 app.include_router(admin_seo.router, prefix="/api/v1")
+app.include_router(admin_board.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")
 app.include_router(support_router.router)
 
@@ -187,4 +189,24 @@ app.mount(
     "/static/inquiry-images",
     StaticFiles(directory=str(INQUIRY_IMAGE_DIR)),
     name="inquiry-images",
+)
+
+# 정적 자산 — CS 답변 본문 에디터 업로드 이미지. 첫 업로드 시 자동 생성됨.
+from api.src.services.admin_support_service import SUPPORT_REPLY_IMAGE_DIR  # noqa: E402
+
+SUPPORT_REPLY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/static/support-reply-images",
+    StaticFiles(directory=str(SUPPORT_REPLY_IMAGE_DIR)),
+    name="support-reply-images",
+)
+
+# 정적 자산 — 관리자 수정요청 게시판 본문 이미지 (0040). 첫 업로드 시 자동 생성됨.
+from api.src.services.admin_board_service import BOARD_IMAGE_DIR  # noqa: E402
+
+BOARD_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/static/admin-board-images",
+    StaticFiles(directory=str(BOARD_IMAGE_DIR)),
+    name="admin-board-images",
 )

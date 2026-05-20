@@ -25,3 +25,5 @@ from api.src.models.inbox_message import InboxMessage  # noqa: F401
 from api.src.models.customer_inquiry import CustomerInquiry  # noqa: F401
 from api.src.models.inquiry_reply import InquiryReply  # noqa: F401
 from api.src.models.inquiry_attachment import InquiryAttachment  # noqa: F401
+from api.src.models.admin_board_post import AdminBoardPost  # noqa: F401
+from api.src.models.admin_board_comment import AdminBoardComment  # noqa: F401
