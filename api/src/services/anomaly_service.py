@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -38,6 +39,26 @@ ANOMALY_STATUSES: tuple[str, ...] = ("new", "reviewed", "actioned")
 _HIGH_SEVERITY_TYPES: frozenset[str] = frozenset(
     {"repeated_question", "concurrent_ip_login"}
 )
+
+# 관리자 알림톡(admin.anomaly_detected, UH_9849) 본문에 노출할 한국어 라벨.
+# 알리고 등록본은 자유 텍스트 변수이므로 카카오 심사에 영향 없음.
+_ANOMALY_TYPE_LABEL_KO: dict[str, str] = {
+    "login_brute_force": "비밀번호 다회 오류",
+    "rapid_questions": "동일 사용자 분당 다회 질의",
+    "concurrent_ip_login": "동일 IP 다수 계정 동시 로그인",
+    "repeated_question": "동일 질문 반복",
+    "recovery_abuse": "계정 복구 다회 시도",
+}
+
+
+def _mask_email_for_alimtalk(email: str | None) -> str | None:
+    """앞 1자 + ** + @도메인 (anomaly_service._mask_email 와 동일 규칙)."""
+    if email is None or "@" not in email:
+        return email
+    local, _, domain = email.partition("@")
+    if len(local) <= 1:
+        return email
+    return f"{local[0]}**@{domain}"
 
 
 # ── List + filter ──────────────────────────────────────────────────────────────
@@ -266,6 +287,13 @@ async def check_concurrent_ip_login(
             anomaly_id=event.id,
         )
 
+        schedule_admin_anomaly_alimtalk(
+            anomaly_event_id=event.id,
+            anomaly_type="concurrent_ip_login",
+            target_user_id=None,
+            ip=ip,
+        )
+
         if redis_pubsub is not None:
             await _publish_anomaly_alert(
                 redis_pubsub,
@@ -338,7 +366,14 @@ async def check_rapid_questions(
             count_in_window=int(rapid_count),
             anomaly_id=event.id,
         )
-        # rapid_questions는 severity='medium' — publish skip (편차 6)
+
+        schedule_admin_anomaly_alimtalk(
+            anomaly_event_id=event.id,
+            anomaly_type="rapid_questions",
+            target_user_id=user_id,
+        )
+        # rapid_questions는 severity='medium' — SSE publish skip (편차 6).
+        # 알림톡은 카카오 검수 통과 시 즉시 발송 (severity 와 무관).
     except Exception:
         logger.error("anomaly.rapid_questions.hook_failed", exc_info=True)
 
@@ -433,4 +468,122 @@ __all__ = [
     "mark_anomaly_actioned",
     "check_concurrent_ip_login",
     "check_rapid_questions",
+    "schedule_admin_anomaly_alimtalk",
 ]
+
+
+# ── Admin alimtalk (admin.anomaly_detected, UH_9849) ──────────────────────────
+
+
+def schedule_admin_anomaly_alimtalk(
+    *,
+    anomaly_event_id: int,
+    anomaly_type: str,
+    target_user_id: int | None = None,
+    ip: str | None = None,
+    phone_tail: str | None = None,
+) -> None:
+    """이상탐지 이벤트 INSERT 직후 호출. 관리자 알림톡을 fire-and-forget 예약.
+
+    asyncio.create_task 로 띄워 호출 흐름(로그인·QA 등) 지연을 막는다. 이벤트 루프 외부
+    호출(예: 동기 테스트 setup)은 silent.
+
+    멱등키: ``anomaly:{anomaly_event_id}`` — 동일 event 재발송 차단.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(
+        _send_admin_anomaly_alimtalk(
+            anomaly_event_id=anomaly_event_id,
+            anomaly_type=anomaly_type,
+            target_user_id=target_user_id,
+            ip=ip,
+            phone_tail=phone_tail,
+        )
+    )
+
+
+def _build_user_identifier(
+    *,
+    email: str | None,
+    target_user_id: int | None,
+    ip: str | None,
+    phone_tail: str | None,
+) -> str:
+    parts: list[str] = []
+    if email:
+        parts.append(_mask_email_for_alimtalk(email) or email)
+    elif phone_tail:
+        parts.append(f"phone ****{phone_tail}")
+    elif target_user_id is not None:
+        parts.append(f"user_id {target_user_id}")
+    if ip:
+        parts.append(f"IP {ip}")
+    if not parts:
+        return "unknown"
+    return " · ".join(parts)
+
+
+async def _send_admin_anomaly_alimtalk(
+    *,
+    anomaly_event_id: int,
+    anomaly_type: str,
+    target_user_id: int | None,
+    ip: str | None,
+    phone_tail: str | None,
+) -> None:
+    """관리자 단일 발송 — 실패는 모두 swallow + warning 로그."""
+    try:
+        from api.src.integrations.messaging.admin_recipient import (
+            resolve_admin_target,
+        )
+        from api.src.integrations.messaging.notification_service import (
+            get_notification_service,
+        )
+        from api.src.models.base import async_session_factory
+
+        async with async_session_factory() as db:
+            admin, admin_phone = await resolve_admin_target(db)
+            if admin is None or not admin_phone:
+                logger.info(
+                    "anomaly.admin_notify_skipped",
+                    reason="admin_phone_missing",
+                    anomaly_event_id=anomaly_event_id,
+                    anomaly_type=anomaly_type,
+                )
+                return
+            user_email: str | None = None
+            if target_user_id is not None:
+                user_email = (
+                    await db.execute(
+                        select(User.email).where(User.id == target_user_id)
+                    )
+                ).scalar_one_or_none()
+
+        identifier = _build_user_identifier(
+            email=user_email,
+            target_user_id=target_user_id,
+            ip=ip,
+            phone_tail=phone_tail,
+        )
+        svc = get_notification_service()
+        await svc.send(
+            user_id=admin.id,
+            phone=admin_phone,
+            template_code="admin.anomaly_detected",
+            variables={
+                "anomaly_type": _ANOMALY_TYPE_LABEL_KO.get(
+                    anomaly_type, anomaly_type
+                ),
+                "user_identifier": identifier,
+            },
+            idempotency_key=f"anomaly:{anomaly_event_id}",
+        )
+    except Exception:
+        logger.warning(
+            "anomaly.admin_notify_failed",
+            anomaly_event_id=anomaly_event_id,
+            anomaly_type=anomaly_type,
+        )

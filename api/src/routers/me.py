@@ -14,8 +14,7 @@ from sqlalchemy import desc, func, select
 
 from api.src.deps.auth import get_current_user, get_current_user_allow_blocked
 from api.src.deps.redis import get_redis_quota, get_redis_runtime
-from api.src.integrations.messaging.adapters.stub import StubMessagingAdapter
-from api.src.integrations.messaging.port import MessagingProvider
+from api.src.integrations.messaging.adapters import get_adapter as _get_messaging
 from api.src.models.base import get_session
 from api.src.models.billing_key import BillingKey
 from api.src.models.payment import Payment
@@ -29,8 +28,11 @@ from api.src.schemas.inbox import (
     UnreadCountResponse,
 )
 from api.src.schemas.me import (
+    PasswordChangeWithCurrentRequest,
     PaymentHistoryItem,
     PaymentHistoryResponse,
+    ProfileResponse,
+    ProfileUpdateRequest,
     QuotaResponse,
     UsageSummaryResponse,
     WithdrawOtpSendResponse,
@@ -41,6 +43,7 @@ from api.src.schemas.me import (
 from api.src.services import auth_service, inbox_service, runtime_config_service
 from api.src.services.auth_service import (
     send_sms_otp_flow,
+    verify_phone_change_token,
     verify_sms_otp_flow,
     verify_withdraw_token,
 )
@@ -52,7 +55,7 @@ from api.src.services.qa_service import (
     _resolve_delay,
     _today_key_kst,
 )
-from api.src.settings import settings
+from api.src.settings import REDIS_DB_RATE_LIMIT, settings
 from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_session_jwt
 
@@ -412,14 +415,6 @@ async def get_active_popups(
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _get_messaging() -> MessagingProvider:
-    """탈퇴 SMS OTP용 메시징 어댑터 — auth 라우터와 동일 분기."""
-    if settings.messaging_provider == "stub":
-        return StubMessagingAdapter()
-    # HOLD-MSG: 실 어댑터는 벤더 결정 후 구현 (auth.py:_get_messaging와 동기화 필수)
-    return StubMessagingAdapter()
-
-
 def _is_secure_env() -> bool:
     return settings.environment.lower() in {"production", "staging"}
 
@@ -682,7 +677,25 @@ async def change_password(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
-    """임시 비밀번호 → 신규 비밀번호 변경. JWT 및 CSRF 쿠키를 재발급한다."""
+    """비밀번호 신규 설정 — 두 가지 경로만 통과:
+
+    1) 소셜 가입자(`password_hash IS NULL`) → 최초 비밀번호 설정
+    2) 임시 비밀번호 발급 직후(`must_reset_password=True`) → 정식 비밀번호로 교체
+
+    그 외 평범한 이메일 가입자는 기존 비밀번호 확인이 필요한 `/me/password/change`로
+    유도(403 PASSWORD_ALREADY_SET) — old-PW 검증 없이 덮어쓰는 경로를 차단한다.
+
+    JWT 및 CSRF 쿠키를 재발급한다.
+    """
+    if current_user.password_hash is not None and not current_user.must_reset_password:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PASSWORD_ALREADY_SET",
+                "message": "기존 비밀번호가 있는 계정은 비밀번호 변경 경로를 사용해주세요.",
+            },
+        )
+
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_reset_password = False
     current_user.updated_at = datetime.now(tz=timezone.utc)
@@ -714,4 +727,262 @@ async def change_password(
 
     logger.info("auth.password.reset_completed", user_id=current_user.id)
 
+    return {"ok": True}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 회원정보(My Profile) — GET/PATCH /me/profile, POST /me/password/change
+# ────────────────────────────────────────────────────────────────────────────
+
+# 비밀번호 변경 브루트포스 방어 — user_id 기반(이미 인증된 세션이므로 email이 아닌
+# user_id 기준). login_user(이메일 기반)와 동일한 5분 락아웃 / 3회 임계치를 사용.
+_PW_CHANGE_FAIL_KEY = "pw_change_fail:{user_id}"
+_PW_CHANGE_LOCKOUT_KEY = "pw_change_lockout:{user_id}"
+_PW_CHANGE_LOCKOUT_TTL = 300
+_PW_CHANGE_FAIL_WINDOW = 300
+_PW_CHANGE_BRUTE_THRESHOLD = 3
+
+
+def _make_pw_rl_redis() -> AsyncRedis:
+    return AsyncRedis.from_url(
+        f"{settings.redis_url}/{REDIS_DB_RATE_LIMIT}",
+        decode_responses=True,
+    )
+
+
+@router.get("/me/profile", response_model=ProfileResponse)
+async def get_me_profile(
+    current_user: User = Depends(get_current_user),
+) -> ProfileResponse:
+    """마이페이지 회원정보 — 이메일·이름·휴대폰·주소를 한 번에 반환.
+
+    `/me`(세션 부트스트랩)는 빈번히 호출되므로 PII를 섞지 않는다.
+    이 엔드포인트는 `/my/profile` 페이지 마운트 시 1회 호출된다.
+    """
+    return ProfileResponse(
+        email=current_user.email,
+        name=current_user.name,
+        phone=current_user.phone,
+        phone_verified=current_user.phone_verified,
+        is_social=current_user.password_hash is None,
+        postcode=current_user.postcode,
+        address_road=current_user.address_road,
+        address_detail=current_user.address_detail,
+        gender=current_user.gender,
+        birthdate=current_user.birthdate,
+        marketing_consent=current_user.marketing_consent_at is not None,
+        marketing_consent_at=(
+            current_user.marketing_consent_at.isoformat()
+            if current_user.marketing_consent_at
+            else None
+        ),
+        segment=current_user.segment,
+        years_of_experience=current_user.years_of_experience,
+    )
+
+
+@router.patch("/me/profile", status_code=204)
+async def patch_me_profile(
+    body: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """마이페이지 회원정보 부분 수정.
+
+    - 이름·주소(우편번호·도로명·상세): 즉시 갱신
+    - 휴대폰: `body.phone`이 현재 값과 다르면 `phone_verification_token` 필수
+      (SMS OTP `purpose=phone_change`로 발급된 토큰), 충돌 검사 통과 시
+      `phone_verified=True` 갱신
+    - 빈 문자열은 Pydantic validator에서 None으로 정규화됨
+    - 이메일은 변경 불가(요청 본문에 포함되지 않음)
+    """
+    # PATCH 의미 — 클라이언트가 명시적으로 보낸 키만 갱신한다(`exclude_unset`).
+    # 빈 문자열은 validator에서 None으로 정규화되므로 "필드를 비우는" 요청과
+    # "필드를 건드리지 않는" 요청을 구분할 수 있다.
+    sent_fields = body.model_fields_set
+    changed = False
+
+    if "name" in sent_fields and body.name != current_user.name:
+        current_user.name = body.name
+        changed = True
+
+    if "postcode" in sent_fields and body.postcode != current_user.postcode:
+        current_user.postcode = body.postcode
+        changed = True
+
+    if "address_road" in sent_fields and body.address_road != current_user.address_road:
+        current_user.address_road = body.address_road
+        changed = True
+
+    if (
+        "address_detail" in sent_fields
+        and body.address_detail != current_user.address_detail
+    ):
+        current_user.address_detail = body.address_detail
+        changed = True
+
+    if "gender" in sent_fields and body.gender != current_user.gender:
+        current_user.gender = body.gender
+        changed = True
+
+    if "birthdate" in sent_fields and body.birthdate != current_user.birthdate:
+        current_user.birthdate = body.birthdate
+        changed = True
+
+    if "marketing_consent" in sent_fields and body.marketing_consent is not None:
+        # 단일 토글 — True면 동의 시각 기록, False면 동의 해제 + 철회 시각 박제.
+        # 이미 동일 상태면 시각을 덮어쓰지 않는다(불필요한 audit 노이즈 방지).
+        currently_consented = current_user.marketing_consent_at is not None
+        if body.marketing_consent and not currently_consented:
+            current_user.marketing_consent_at = datetime.now(tz=timezone.utc)
+            changed = True
+        elif not body.marketing_consent and currently_consented:
+            current_user.marketing_consent_at = None
+            current_user.marketing_withdrawn_at = datetime.now(tz=timezone.utc)
+            changed = True
+
+    if "phone" in sent_fields and body.phone != current_user.phone:
+        if body.phone is None:
+            # 휴대폰은 가입 시 필수이므로 마이페이지에서 비울 수 없다.
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "PHONE_REQUIRED",
+                    "message": "휴대폰 번호는 비울 수 없습니다.",
+                },
+            )
+        if not body.phone_verification_token:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "SMS_TOKEN_INVALID",
+                    "message": "휴대폰 인증이 필요합니다.",
+                },
+            )
+        # 활성 다른 계정과 휴대폰 중복 — signup_user 패턴과 동일
+        existing = await db.execute(
+            select(User).where(
+                User.phone == body.phone,
+                User.withdrawn_at.is_(None),
+                User.id != current_user.id,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "ACCOUNT_PHONE_DUPLICATE",
+                    "message": "이미 사용 중인 휴대폰 번호입니다.",
+                },
+            )
+
+        await verify_phone_change_token(
+            phone_verification_token=body.phone_verification_token,
+            expected_phone=body.phone,
+            redis_url=settings.redis_url,
+        )
+        current_user.phone = body.phone
+        current_user.phone_verified = True
+        changed = True
+
+    if changed:
+        current_user.updated_at = datetime.now(tz=timezone.utc)
+        await db.commit()
+        logger.info("me.profile.updated", user_id=current_user.id)
+
+    return Response(status_code=204)
+
+
+@router.post("/me/password/change", status_code=200)
+async def change_password_with_current(
+    body: PasswordChangeWithCurrentRequest,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """기존 비밀번호 확인이 필요한 정규 비밀번호 변경.
+
+    - 소셜 가입자(`password_hash IS NULL`) → 403 NO_PASSWORD_SET
+      (`/me/password`로 최초 설정 유도)
+    - argon2 검증 실패 → 401 AUTH_INVALID_CREDENTIALS + 실패 카운터 증가
+    - 3회 실패 → 5분 락아웃, 429 AUTH_TEMPORARILY_LOCKED
+      (login_user와 동일 정책. 키는 user_id 기준)
+    - 성공 시 JWT/CSRF 쿠키 재발급(NFR-S4)
+    """
+    if current_user.password_hash is None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "NO_PASSWORD_SET",
+                "message": "소셜 가입 계정은 비밀번호를 먼저 설정해주세요.",
+            },
+        )
+
+    fail_key = _PW_CHANGE_FAIL_KEY.format(user_id=current_user.id)
+    lockout_key = _PW_CHANGE_LOCKOUT_KEY.format(user_id=current_user.id)
+
+    async with _make_pw_rl_redis() as r:
+        if await r.exists(lockout_key):
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "AUTH_TEMPORARILY_LOCKED",
+                    "message": "잠시 후 다시 시도해주세요.",
+                },
+            )
+
+    if not verify_password(body.current_password, current_user.password_hash):
+        async with _make_pw_rl_redis() as r:
+            count_raw = await r.get(fail_key)
+            count = int(count_raw) + 1 if count_raw else 1
+            await r.set(fail_key, str(count), ex=_PW_CHANGE_FAIL_WINDOW)
+            if count >= _PW_CHANGE_BRUTE_THRESHOLD:
+                await r.set(lockout_key, "1", ex=_PW_CHANGE_LOCKOUT_TTL)
+                logger.warning(
+                    "auth.password.change_brute_force",
+                    user_id=current_user.id,
+                    attempt_count=count,
+                )
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "AUTH_INVALID_CREDENTIALS",
+                "message": "현재 비밀번호가 일치하지 않습니다.",
+            },
+        )
+
+    # 성공 — 카운터 초기화 + 해시 갱신 + 쿠키 재발급
+    async with _make_pw_rl_redis() as r:
+        await r.delete(fail_key)
+
+    current_user.password_hash = hash_password(body.new_password)
+    current_user.must_reset_password = False
+    current_user.updated_at = datetime.now(tz=timezone.utc)
+    await db.commit()
+
+    token = encode_session_jwt(
+        user_id=current_user.id,
+        role=current_user.role,
+        subscription_status=current_user.subscription_status,
+        persist=False,
+    )
+    response.set_cookie(
+        key="denvia_session",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=3600,
+    )
+    csrf_token = _secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="denvia_csrf",
+        value=csrf_token,
+        httponly=False,
+        secure=True,
+        samesite="strict",
+        max_age=3600,
+    )
+
+    logger.info("auth.password.changed", user_id=current_user.id)
     return {"ok": True}

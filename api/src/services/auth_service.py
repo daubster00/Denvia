@@ -393,12 +393,25 @@ async def login_user(
                         created_at=now,
                     )
                     db.add(event)
+                    committed = False
                     try:
                         await db.commit()
+                        committed = True
                     except Exception:
                         await db.rollback()
 
                     await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
+
+                    if committed:
+                        from api.src.services.anomaly_service import (
+                            schedule_admin_anomaly_alimtalk,
+                        )
+                        schedule_admin_anomaly_alimtalk(
+                            anomaly_event_id=event.id,
+                            anomaly_type="login_brute_force",
+                            target_user_id=user.id,
+                            ip=ip,
+                        )
 
             raise HTTPException(
                 status_code=409,
@@ -438,8 +451,10 @@ async def login_user(
                     created_at=now,
                 )
                 db.add(event)
+                committed = False
                 try:
                     await db.commit()
+                    committed = True
                 except Exception:
                     await db.rollback()
 
@@ -452,6 +467,17 @@ async def login_user(
                     attempt_count=count,
                     ip=ip,
                 )
+
+                if committed:
+                    from api.src.services.anomaly_service import (
+                        schedule_admin_anomaly_alimtalk,
+                    )
+                    schedule_admin_anomaly_alimtalk(
+                        anomaly_event_id=event.id,
+                        anomaly_type="login_brute_force",
+                        target_user_id=user.id if user else None,
+                        ip=ip,
+                    )
 
         raise HTTPException(
             status_code=401,
@@ -515,10 +541,24 @@ async def _check_recovery_abuse(
                 created_at=now,
             )
             db.add(event)
+            flushed = False
             try:
                 await db.flush()
+                flushed = True
             except Exception:
                 await db.rollback()
+
+            if flushed:
+                from api.src.services.anomaly_service import (
+                    schedule_admin_anomaly_alimtalk,
+                )
+                schedule_admin_anomaly_alimtalk(
+                    anomaly_event_id=event.id,
+                    anomaly_type="recovery_abuse",
+                    target_user_id=None,
+                    ip=ip,
+                    phone_tail=phone[-4:],
+                )
 
 
 async def request_password_reset(
@@ -958,6 +998,30 @@ async def verify_withdraw_token(
 
     Raises:
         400 SMS_TOKEN_INVALID — 토큰이 없거나 휴대폰이 일치하지 않음
+    """
+    token_key = _TOKEN_KEY.format(token=phone_verification_token)
+    async with _make_redis(redis_url) as r:
+        stored_phone = await r.get(token_key)
+        if stored_phone is None or stored_phone != expected_phone:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "SMS_TOKEN_INVALID", "message": "휴대폰 인증이 필요합니다."},
+            )
+        await r.delete(token_key)
+
+
+async def verify_phone_change_token(
+    phone_verification_token: str,
+    expected_phone: str,
+    redis_url: str,
+) -> None:
+    """마이페이지 휴대폰 변경용 phone_verification_token 검증 + 1회용 소진.
+
+    `verify_withdraw_token`과 동일한 `phone_token:{token}` Redis 키 패턴을 공유한다
+    (purpose는 OTP 발송/검증 단계에서만 분리되며, 발급된 token은 purpose-agnostic).
+
+    Raises:
+        400 SMS_TOKEN_INVALID — 토큰이 없거나 새 휴대폰 번호가 일치하지 않음
     """
     token_key = _TOKEN_KEY.format(token=phone_verification_token)
     async with _make_redis(redis_url) as r:

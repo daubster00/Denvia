@@ -1,9 +1,9 @@
 """User SQLAlchemy ORM 모델."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Integer, Numeric, SmallInteger, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, Integer, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -22,6 +22,19 @@ class User(Base):
     )
     segment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     years_of_experience: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # 회원정보 — 마이페이지 회원정보 수정에서 사용. 모두 nullable(기존 가입자 호환).
+    name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    postcode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    address_road: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_detail: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 인구통계 — 마이페이지 선택 입력. 'male'|'female'|NULL.
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    birthdate: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # 마케팅 활용 동의 — 알림톡·SMS·이메일 통합 단일 동의.
+    # NULL = 미동의(또는 한 번도 동의한 적 없음). timestamp = 마지막 동의 시각.
+    # 철회 시 marketing_consent_at = NULL, marketing_withdrawn_at = now (이력 보존).
+    marketing_consent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    marketing_withdrawn_at: Mapped[datetime | None] = mapped_column(nullable=True)
     phone_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     must_reset_password: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False

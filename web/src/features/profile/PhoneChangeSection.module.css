@@ -1,0 +1,74 @@
+/* 휴대폰 번호 변경 섹션 — /my/profile 페이지 내 인라인 OTP 흐름 */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.phoneCol {
+  flex: 1;
+}
+
+.actionBtn {
+  height: 40px;
+  padding: 0 16px;
+  background: #f3f0ff;
+  color: #7c3aed;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.actionBtn:disabled {
+  background: #f3f4f6;
+  color: #aeb0b6;
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+}
+
+.savingBtn {
+  height: 40px;
+  padding: 0 16px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.savingBtn:disabled {
+  background: #e1e2e4;
+  color: #aeb0b6;
+  cursor: not-allowed;
+}
+
+.help {
+  font-size: 13px;
+  color: #5a5c63;
+  margin: 0;
+}
+
+.verified {
+  color: #16a34a;
+  font-size: 13px;
+  margin: 0;
+}
+
+.debugCode {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+}

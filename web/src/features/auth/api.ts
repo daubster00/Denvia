@@ -17,7 +17,7 @@ export interface SmsSendResult {
   debug_code?: string | null;
 }
 
-export async function sendSmsOtp(phone: string, purpose: "signup" | "find_id" | "find_password") {
+export async function sendSmsOtp(phone: string, purpose: "signup" | "find_id" | "find_password" | "phone_change") {
   return apiFetch<SmsSendResult>(
     "/api/v1/auth/sms/send",
     { method: "POST", body: JSON.stringify({ phone, purpose }) }
@@ -25,7 +25,7 @@ export async function sendSmsOtp(phone: string, purpose: "signup" | "find_id" | 
 }
 
 /** SMS OTP 검증 */
-export async function verifySmsOtp(phone: string, code: string, purpose: "signup" | "find_id" | "find_password") {
+export async function verifySmsOtp(phone: string, code: string, purpose: "signup" | "find_id" | "find_password" | "phone_change") {
   return apiFetch<{ phone_verification_token: string }>(
     "/api/v1/auth/sms/verify",
     { method: "POST", body: JSON.stringify({ phone, code, purpose }) }

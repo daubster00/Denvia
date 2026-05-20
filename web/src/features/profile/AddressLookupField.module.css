@@ -1,0 +1,78 @@
+/* 주소 검색 — 우편번호 + 도로명/지번 + 상세주소 3단 입력 + Daum 우편번호 다이얼로그 */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.postcodeRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.postcodeInput {
+  flex: 0 0 140px;
+}
+
+.lookupBtn {
+  height: 40px;
+  padding: 0 16px;
+  background: #f3f0ff;
+  color: #7c3aed;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dimmer {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 23, 25, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 500px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialogTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  color: #171719;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.postcodeFrame {
+  height: 420px;
+}

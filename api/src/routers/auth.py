@@ -19,8 +19,7 @@ from api.src.integrations.auth_providers.base import (
     ProviderName,
 )
 from api.src.integrations.auth_providers.factory import get_provider
-from api.src.integrations.messaging.adapters.stub import StubMessagingAdapter
-from api.src.integrations.messaging.port import MessagingProvider
+from api.src.integrations.messaging.adapters import get_adapter as _get_messaging
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.auth import (
@@ -54,14 +53,6 @@ from api.src.utils.jwt import encode_session_jwt
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-
-
-def _get_messaging() -> MessagingProvider:
-    """메시징 어댑터 팩토리 — MESSAGING_PROVIDER 환경변수로 선택."""
-    if settings.messaging_provider == "stub":
-        return StubMessagingAdapter()
-    # HOLD-MSG: 실 어댑터는 벤더 결정 후 구현
-    return StubMessagingAdapter()
 
 
 def _is_secure_env() -> bool:

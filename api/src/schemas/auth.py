@@ -24,7 +24,7 @@ class SessionUserResponse(BaseModel):
 
 class SmsSendRequest(BaseModel):
     phone: str
-    purpose: Literal["signup", "find_id", "find_password"]
+    purpose: Literal["signup", "find_id", "find_password", "phone_change"]
 
     @field_validator("phone")
     @classmethod
@@ -45,7 +45,7 @@ class SmsSendResponse(BaseModel):
 class SmsVerifyRequest(BaseModel):
     phone: str
     code: str
-    purpose: Literal["signup", "find_id", "find_password"]
+    purpose: Literal["signup", "find_id", "find_password", "phone_change"]
 
     @field_validator("phone")
     @classmethod

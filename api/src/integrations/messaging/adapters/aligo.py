@@ -59,6 +59,10 @@ class AligoMessagingAdapter:
 
     async def send_sms_otp(self, phone: str, code: str) -> None:
         body = _OTP_BODY_TEMPLATE.format(code=code)
+        # WebOTP API: Android Chrome 자동 입력을 위해 본문 끝에 `@<origin> #<code>` 라인 부착.
+        # iOS Safari는 본문 어디든 6자리 숫자만 있으면 OS가 인식하므로 별도 처리 불필요.
+        if settings.webotp_bound_origin:
+            body = f"{body}\n\n@{settings.webotp_bound_origin} #{code}"
         await self._send_sms_request(phone, body, log_event="send_sms_otp")
 
     async def send_sms(self, phone: str, body: str) -> None:

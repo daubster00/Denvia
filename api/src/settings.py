@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     aligo_sms_base_url: str = "https://apis.aligo.in"
     aligo_alimtalk_base_url: str = "https://kakaoapi.aligo.in"
 
+    # WebOTP API — Android Chrome SMS 자동 입력용 도메인 바운드 (예: "denvia.com"). 비우면 마커 라인 미부착.
+    webotp_bound_origin: str = ""
+
     # RAG 통합 (Story 2.1)
     faiss_current_path: str = "data/faiss/current"
     faiss_index_a_path: str = "data/faiss/index_a"

@@ -14,7 +14,10 @@ interface SMSCodeInputProps {
 
 /**
  * SMS 6자리 OTP 입력 — 개별 칸, 자동 커서 이동, Paste 지원, 쿨다운 타이머 (UX-DR7).
- * iOS: autocomplete="one-time-code"
+ * 자동 입력 통로:
+ *   - iOS Safari: 첫 칸의 autocomplete="one-time-code" 만으로 키보드 위에 SMS 제안 표시 (OS 레벨).
+ *   - Android Chrome: navigator.credentials.get({otp}) WebOTP API — SMS 본문 끝의
+ *     "@<origin> #<code>" 라인과 매칭되면 사용자 1탭으로 자동 채워짐.
  */
 export function SMSCodeInput({
   length = 6,
@@ -29,6 +32,37 @@ export function SMSCodeInput({
   const [resending, setResending] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Android Chrome WebOTP API — SMS 도착 시 OS가 코드 추출, 사용자 동의 후 자동 채움.
+  // 미지원 브라우저(iOS·구버전·데스크톱)에서는 try/catch로 조용히 fallback.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    type OtpCredential = Credential & { code: string };
+    type OtpCredReq = CredentialRequestOptions & {
+      otp?: { transport: ReadonlyArray<"sms"> };
+    };
+    const creds = navigator.credentials as
+      | (CredentialsContainer & { get(opts?: OtpCredReq): Promise<Credential | null> })
+      | undefined;
+    if (!creds || !("OTPCredential" in window)) return;
+
+    const ac = new AbortController();
+    creds
+      .get({ otp: { transport: ["sms"] }, signal: ac.signal } as OtpCredReq)
+      .then((cred) => {
+        if (!cred) return;
+        const code = (cred as OtpCredential).code ?? "";
+        const cleaned = code.replace(/\D/g, "").slice(0, length);
+        if (cleaned.length !== length) return;
+        const next = cleaned.split("");
+        while (next.length < length) next.push("");
+        setDigits(next);
+      })
+      .catch(() => {
+        // AbortError 또는 미지원 — 무시.
+      });
+    return () => ac.abort();
+  }, [length]);
 
   // 쿨다운 시작
   const startCooldown = useCallback(() => {
