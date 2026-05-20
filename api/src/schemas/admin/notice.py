@@ -58,3 +58,24 @@ class InboxPreviewConfigResponse(BaseModel):
 
 class InboxPreviewConfigUpdateRequest(BaseModel):
     max_count: int = Field(ge=1, le=5)
+
+
+class NoticeRecipientItem(BaseModel):
+    user_id: int
+    email: str
+    name: str | None
+    segment: str | None
+    is_read: bool
+    delivered_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NoticeRecipientsResponse(BaseModel):
+    items: list[NoticeRecipientItem]
+    page: int
+    per_page: int
+    total: int
+    read_count: int
+    unread_count: int
+    status: Literal["read", "unread"]

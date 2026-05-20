@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
@@ -10,14 +12,13 @@ import {
   togglePopupActive,
 } from "@/features/admin-content/api/popup";
 import { PopupListTable } from "@/features/admin-content/components/PopupListTable";
-import { PopupEditDialog } from "@/features/admin-content/components/PopupEditDialog";
 import { ConfirmDialog } from "@/components/layout/ConfirmDialog";
 import styles from "./page.module.css";
 
 export default function AdminPopupsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [deletingItem, setDeletingItem] = useState<PopupListItem | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -70,13 +71,9 @@ export default function AdminPopupsPage() {
             서비스 메인에 노출되는 팝업을 생성·편집·활성/비활성·삭제합니다.
           </p>
         </div>
-        <button
-          type="button"
-          className={styles.newBtn}
-          onClick={() => setEditingId("new")}
-        >
+        <Link href="/admin/content/popups/new" className={styles.newBtn}>
           + 새 팝업 작성
-        </button>
+        </Link>
       </header>
 
       <section className={styles.tableWrap}>
@@ -96,7 +93,7 @@ export default function AdminPopupsPage() {
                 ? (toggleMutation.variables?.id ?? null)
                 : null
             }
-            onEdit={(id) => setEditingId(id)}
+            onEdit={(id) => router.push(`/admin/content/popups/${id}`)}
             onToggle={(id, isActive) =>
               toggleMutation.mutate({ id, isActive })
             }
@@ -128,17 +125,6 @@ export default function AdminPopupsPage() {
             다음
           </button>
         </nav>
-      ) : null}
-
-      {editingId !== null ? (
-        <PopupEditDialog
-          mode={editingId === "new" ? "create" : "edit"}
-          popupId={editingId === "new" ? undefined : editingId}
-          onClose={() => setEditingId(null)}
-          onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ["admin", "popups"] });
-          }}
-        />
       ) : null}
 
       <ConfirmDialog

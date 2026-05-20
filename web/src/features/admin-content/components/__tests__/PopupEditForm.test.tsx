@@ -60,7 +60,7 @@ vi.mock("@/features/admin-content/api/popup", async () => {
   };
 });
 
-import { PopupEditDialog } from "../PopupEditDialog";
+import { PopupEditForm } from "../PopupEditForm";
 import { ApiError } from "@/features/admin-content/api/popup";
 
 function fillValid() {
@@ -78,7 +78,7 @@ function fillValid() {
   });
 }
 
-describe("PopupEditDialog", () => {
+describe("PopupEditForm", () => {
   beforeEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -86,9 +86,9 @@ describe("PopupEditDialog", () => {
 
   it("작성 모드 — 제목이 비면 인라인 에러", async () => {
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={() => {}}
+        onCancel={() => {}}
         onSaved={() => {}}
       />,
     );
@@ -103,9 +103,9 @@ describe("PopupEditDialog", () => {
 
   it("종료일 <= 시작일이면 display_end 인라인 에러", async () => {
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={() => {}}
+        onCancel={() => {}}
         onSaved={() => {}}
       />,
     );
@@ -132,9 +132,9 @@ describe("PopupEditDialog", () => {
 
   it("link_url이 https가 아니면 인라인 에러", async () => {
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={() => {}}
+        onCancel={() => {}}
         onSaved={() => {}}
       />,
     );
@@ -150,14 +150,14 @@ describe("PopupEditDialog", () => {
     });
   });
 
-  it("정상 입력 → createPopup 호출 + onSaved + onClose", async () => {
+  it("정상 입력 → createPopup 호출 + onSaved", async () => {
     mocks.createPopup.mockResolvedValue({ id: 1 });
     const onSaved = vi.fn();
-    const onClose = vi.fn();
+    const onCancel = vi.fn();
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={onClose}
+        onCancel={onCancel}
         onSaved={onSaved}
       />,
     );
@@ -167,7 +167,6 @@ describe("PopupEditDialog", () => {
       expect(mocks.createPopup).toHaveBeenCalledTimes(1);
     });
     expect(onSaved).toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalled();
   });
 
   it("백엔드 422 POPUP_DISPLAY_RANGE_INVALID → display_end 필드 에러 매핑", async () => {
@@ -175,9 +174,9 @@ describe("PopupEditDialog", () => {
       new ApiError("종료일은 시작일보다 늦어야 합니다.", 422, "POPUP_DISPLAY_RANGE_INVALID"),
     );
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={() => {}}
+        onCancel={() => {}}
         onSaved={() => {}}
       />,
     );
@@ -199,9 +198,9 @@ describe("PopupEditDialog", () => {
       ),
     );
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={() => {}}
+        onCancel={() => {}}
         onSaved={() => {}}
       />,
     );
@@ -236,10 +235,10 @@ describe("PopupEditDialog", () => {
       updated_at: "2026-04-30T00:00:00+00:00",
     });
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="edit"
         popupId={42}
-        onClose={() => {}}
+        onCancel={() => {}}
         onSaved={() => {}}
       />,
     );
@@ -251,16 +250,30 @@ describe("PopupEditDialog", () => {
     expect(mocks.fetchPopupDetail).toHaveBeenCalledWith(42);
   });
 
-  it("취소 버튼 클릭 → onClose 호출", () => {
-    const onClose = vi.fn();
+  it("취소 버튼 클릭 → onCancel 호출", () => {
+    const onCancel = vi.fn();
     render(
-      <PopupEditDialog
+      <PopupEditForm
         mode="create"
-        onClose={onClose}
+        onCancel={onCancel}
         onSaved={() => {}}
       />,
     );
     fireEvent.click(screen.getByText("취소"));
-    expect(onClose).toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("미리보기 버튼 클릭 전엔 미리보기가 없고, 클릭 시 모달로 노출된다", () => {
+    render(
+      <PopupEditForm
+        mode="create"
+        onCancel={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByText("미리보기"));
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(screen.getByLabelText("팝업 미리보기")).toBeDefined();
   });
 });

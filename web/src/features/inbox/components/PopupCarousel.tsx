@@ -10,15 +10,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { sanitizeNoticeHtml } from "@/lib/sanitize";
-import type { ActivePopup } from "../types";
+import type { ActivePopup, PopupDisplayPosition } from "../types";
 import { useActivePopups } from "../hooks/useActivePopup";
 import {
+  detectDevice,
   dismissForToday,
   isDismissedForToday,
   isSeenInSession,
   markSeenInSession,
 } from "../lib/popup-dismissal";
 import styles from "./PopupCarousel.module.css";
+
+const POSITION_CLASS: Record<PopupDisplayPosition, string> = {
+  center: styles.dialogCenter,
+  top: styles.dialogTop,
+  bottom: styles.dialogBottom,
+  bottom_left: styles.dialogBottomLeft,
+  bottom_right: styles.dialogBottomRight,
+};
 
 function safeExternalHref(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -74,6 +83,12 @@ export function PopupCarousel() {
   const current = visiblePopups[activeIndex];
   const safeLink = safeExternalHref(current.link_url);
   const showNav = total > 1;
+  // 모바일은 화면이 좁아 항상 가운데 고정 — display_position을 무시한다.
+  const device = detectDevice();
+  const positionClass =
+    device === "mobile"
+      ? styles.dialogCenter
+      : POSITION_CLASS[current.display_position] ?? styles.dialogCenter;
 
   function handleClose() {
     setClosed(true);
@@ -112,7 +127,7 @@ export function PopupCarousel() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="popup-carousel-title"
-        className={styles.dialog}
+        className={`${styles.dialog} ${positionClass}`}
       >
         <div className={styles.header}>
           <h2 id="popup-carousel-title" className={styles.title}>

@@ -1,0 +1,300 @@
+/* PopupPositionPreview — 사용자 페이지 노출 형식·위치 시뮬레이션. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 디바이스 탭 -------------------------------------------------------------- */
+
+.deviceTabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  background: var(--color-neutral-100, #f3f4f6);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.deviceTab {
+  background: transparent;
+  border: none;
+  padding: 6px 18px;
+  font-size: 13px;
+  color: var(--color-neutral-600, #525252);
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.deviceTab:hover {
+  color: var(--color-neutral-900, #18181b);
+}
+
+.deviceTabActive {
+  background: #ffffff;
+  color: var(--color-neutral-900, #18181b);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-500, #737373);
+  line-height: 1.5;
+}
+
+/* 가짜 브라우저 / 폰 프레임 ---------------------------------------------- */
+
+.viewportPc {
+  border: 1px solid var(--color-neutral-200, #e4e4e7);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.viewportMobile {
+  border: 1px solid var(--color-neutral-200, #e4e4e7);
+  border-radius: 24px;
+  overflow: hidden;
+  background: #fafafa;
+  width: min(320px, 100%);
+  margin: 0 auto;
+}
+
+.viewportBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #ececec;
+  border-bottom: 1px solid #d4d4d8;
+}
+
+.viewportDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c4c4c4;
+}
+
+.viewportLabel {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #737373;
+}
+
+.viewportStage {
+  position: relative;
+  height: 420px;
+  background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%);
+  overflow: hidden;
+}
+
+.viewportMobile .viewportStage {
+  height: 520px;
+}
+
+/* 페이지 가짜 콘텐츠 (실제 페이지 위에 겹친다는 인상을 주기 위함) -------- */
+
+.pageMock {
+  position: absolute;
+  inset: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  opacity: 0.55;
+}
+
+.pageMockHeader {
+  height: 24px;
+  border-radius: 4px;
+  background: #e5e7eb;
+  width: 60%;
+}
+
+.pageMockBlock {
+  height: 80px;
+  border-radius: 6px;
+  background: #e5e7eb;
+}
+
+.pageMockBlockNarrow {
+  height: 40px;
+  border-radius: 6px;
+  background: #e5e7eb;
+  width: 75%;
+}
+
+/* 오버레이 + 다이얼로그 (PopupCarousel 동등) ------------------------------ */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.dialog {
+  position: absolute;
+  width: min(72%, 320px);
+  max-height: calc(100% - 32px);
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.viewportMobile .dialog {
+  width: calc(100% - 32px);
+}
+
+.dialogCenter {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.dialogTop {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dialogBottom {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dialogBottomLeft {
+  bottom: 16px;
+  left: 16px;
+}
+
+.dialogBottomRight {
+  bottom: 16px;
+  right: 16px;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.dialogCloseMock {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1;
+}
+
+.dialogContent {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.imageSlide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: #f9fafb;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.dialogBody {
+  padding: 10px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #1f2937;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dialogBody p {
+  margin: 0 0 8px;
+}
+
+.dialogBody a {
+  color: #6d28d9;
+  text-decoration: underline;
+}
+
+.dialogBody img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.linkRow {
+  padding: 6px 14px 8px;
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.linkBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #ede9fe;
+  color: #6d28d9;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dialogFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  border-top: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.footerBtn {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+@media (max-width: 768px) {
+  .viewportStage {
+    height: 360px;
+  }
+  .viewportMobile .viewportStage {
+    height: 460px;
+  }
+}

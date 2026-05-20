@@ -12,6 +12,7 @@ function makeItem(overrides: Partial<PopupListItem> = {}): PopupListItem {
     target_segment: "all",
     target_device: "both",
     popup_type: "editor",
+    display_position: "center",
     image_url: null,
     sort_order: 0,
     is_active: true,

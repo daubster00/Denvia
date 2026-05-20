@@ -29,6 +29,13 @@ export const popupFormSchema = z
     display_start: z.string().min(1, "노출 시작 시각을 입력해주세요"),
     display_end: z.string().min(1, "노출 종료 시각을 입력해주세요"),
     target_segment: z.enum(["all", "doctor", "hygienist", "student_other"]),
+    display_position: z.enum([
+      "center",
+      "top",
+      "bottom",
+      "bottom_left",
+      "bottom_right",
+    ]),
     sort_order: z
       .number()
       .int()
@@ -66,6 +73,12 @@ export type PopupFormInput = z.infer<typeof popupFormSchema>;
 export type TargetSegment = "all" | "doctor" | "hygienist" | "student_other";
 export type TargetDevice = "pc" | "mobile" | "both";
 export type PopupType = "image" | "editor";
+export type PopupDisplayPosition =
+  | "center"
+  | "top"
+  | "bottom"
+  | "bottom_left"
+  | "bottom_right";
 
 export interface PopupListItem {
   id: number;
@@ -75,6 +88,7 @@ export interface PopupListItem {
   target_segment: TargetSegment;
   target_device: TargetDevice;
   popup_type: PopupType;
+  display_position: PopupDisplayPosition;
   image_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -170,6 +184,7 @@ function toRequestBody(input: PopupFormInput) {
     title: input.title,
     popup_type: input.popup_type,
     target_device: input.target_device,
+    display_position: input.display_position,
     body_html,
     image_url,
     link_url: input.link_url === "" ? null : (input.link_url ?? null),

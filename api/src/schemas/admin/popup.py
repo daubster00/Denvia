@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PopupTargetDevice = Literal["pc", "mobile", "both"]
 PopupType = Literal["image", "editor"]
+PopupDisplayPosition = Literal[
+    "center", "top", "bottom", "bottom_left", "bottom_right"
+]
 
 
 class PopupBase(BaseModel):
@@ -25,6 +28,7 @@ class PopupBase(BaseModel):
     target_segment: Literal["all", "doctor", "hygienist", "student_other"] = "all"
     target_device: PopupTargetDevice = "both"
     popup_type: PopupType = "editor"
+    display_position: PopupDisplayPosition = "center"
     sort_order: int = Field(default=0, ge=0, le=999)
     is_active: bool = True
 
@@ -59,6 +63,7 @@ class PopupListItem(BaseModel):
     target_segment: str
     target_device: PopupTargetDevice
     popup_type: PopupType
+    display_position: PopupDisplayPosition
     image_url: str | None
     sort_order: int
     is_active: bool

@@ -44,6 +44,7 @@ def _popup_row(
     target_segment: str = "all",
     target_device: str = "both",
     popup_type: str = "editor",
+    display_position: str = "center",
     sort_order: int = 0,
     is_active: bool = True,
     deleted_at: datetime | None = None,
@@ -61,6 +62,7 @@ def _popup_row(
     popup.target_segment = target_segment
     popup.target_device = target_device
     popup.popup_type = popup_type
+    popup.display_position = display_position
     popup.sort_order = sort_order
     popup.is_active = is_active
     popup.deleted_at = deleted_at
@@ -80,6 +82,7 @@ def _make_create_request(
     target_segment: str = "all",
     target_device: str = "both",
     popup_type: str = "editor",
+    display_position: str = "center",
     sort_order: int = 0,
     days_offset: int = 7,
 ) -> PopupCreateRequest:
@@ -94,6 +97,7 @@ def _make_create_request(
         target_segment=target_segment,
         target_device=target_device,
         popup_type=popup_type,
+        display_position=display_position,
         sort_order=sort_order,
         is_active=is_active,
     )

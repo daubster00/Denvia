@@ -36,14 +36,18 @@ class UnreadCountResponse(BaseModel):
 
 
 class ActivePopupResponse(BaseModel):
-    """GET /api/v1/me/popups/active items[i] — Story 7.2 v2.
+    """GET /api/v1/me/popups/active items[i] — Story 7.2 v2/v3.
 
     캐러셀 배열의 한 슬라이드. popup_type에 따라 image_url/body_html_safe 중 하나가 채워짐.
+    display_position은 PC에서만 의미가 있고, 모바일 클라이언트는 무시한다.
     """
 
     popup_id: int
     title: str
     popup_type: Literal["image", "editor"]
+    display_position: Literal[
+        "center", "top", "bottom", "bottom_left", "bottom_right"
+    ]
     image_url: str | None
     body_html_safe: str | None
     link_url: str | None

@@ -203,6 +203,7 @@ async def create_popup(
         target_segment=req.target_segment,
         target_device=req.target_device,
         popup_type=req.popup_type,
+        display_position=req.display_position,
         sort_order=req.sort_order,
         is_active=req.is_active,
         created_by_admin_id=admin.id,
@@ -217,6 +218,7 @@ async def create_popup(
             "target_segment": popup.target_segment,
             "target_device": popup.target_device,
             "popup_type": popup.popup_type,
+            "display_position": popup.display_position,
             "sort_order": popup.sort_order,
             "display_start": popup.display_start.isoformat(),
             "display_end": popup.display_end.isoformat(),
@@ -234,6 +236,7 @@ async def create_popup(
         popup_id=popup.id,
         popup_type=popup.popup_type,
         target_device=popup.target_device,
+        display_position=popup.display_position,
     )
     return PopupDetailResponse.model_validate(popup)
 
@@ -256,6 +259,7 @@ async def update_popup(
         "target_segment": popup.target_segment,
         "target_device": popup.target_device,
         "popup_type": popup.popup_type,
+        "display_position": popup.display_position,
         "sort_order": popup.sort_order,
         "display_start": popup.display_start.isoformat(),
         "display_end": popup.display_end.isoformat(),
@@ -274,6 +278,7 @@ async def update_popup(
     popup.target_segment = req.target_segment
     popup.target_device = req.target_device
     popup.popup_type = req.popup_type
+    popup.display_position = req.display_position
     popup.sort_order = req.sort_order
     popup.is_active = req.is_active
     request.state.audit_target_type = "popup"
@@ -285,6 +290,7 @@ async def update_popup(
             "target_segment": req.target_segment,
             "target_device": req.target_device,
             "popup_type": req.popup_type,
+            "display_position": req.display_position,
             "sort_order": req.sort_order,
             "display_start": req.display_start.isoformat(),
             "display_end": req.display_end.isoformat(),

@@ -181,6 +181,7 @@ async def get_active_popups(
             popup_id=p.id,
             title=p.title,
             popup_type=p.popup_type,
+            display_position=p.display_position,
             image_url=p.image_url,
             body_html_safe=(
                 sanitize_body_html(p.body_html) if p.body_html else None
@@ -195,17 +196,20 @@ async def get_active_popups(
 async def get_preview_messages(
     db: AsyncSession, user_id: int, max_count: int
 ) -> InboxPreviewResponse:
-    """쪽지함 미리보기 — 미읽음 우선·최신순 N건.
+    """쪽지함 미리보기 — 미읽음만 최신순 N건.
 
-    드롭다운용 경량 페이로드 (body_html 제외). 미읽음이 부족하면 읽은 쪽지로 채운다
-    (운영 초기에 보낸 쪽지가 있어도 신규 사용자가 빈 미리보기를 보지 않게).
+    드롭다운용 경량 페이로드 (body_html 제외). 한 번 확인한 쪽지(공지·문의 답변 포함)는
+    재접속·새로고침 시 다시 노출하지 않는다 — 미읽음이 0이면 빈 배열로 응답해 아이콘 밑
+    레이어가 뜨지 않도록 한다.
     """
     rows = (
         await db.execute(
             select(InboxMessage)
-            .where(InboxMessage.user_id == user_id)
+            .where(
+                InboxMessage.user_id == user_id,
+                InboxMessage.is_read.is_(False),
+            )
             .order_by(
-                InboxMessage.is_read.asc(),  # FALSE(0)가 먼저 → 미읽음 우선
                 InboxMessage.created_at.desc(),
                 InboxMessage.id.desc(),
             )

@@ -10,6 +10,7 @@
 - POST   /admin/popups/image-upload      이미지 업로드 (Story 7.2 v2)
 - GET    /admin/notices                  공지(쪽지) 목록
 - GET    /admin/notices/{notice_id}      공지 단건 조회
+- GET    /admin/notices/{notice_id}/recipients  수신자 목록 — read/unread 분리 페이지네이션
 - POST   /admin/notices                  공지 작성+즉시 발행 (target_segment fan-out)
 - DELETE /admin/notices/{notice_id}      공지 hard delete (CASCADE로 inbox 회수)
 - GET    /admin/inbox/preview-config     쪽지함 미리보기 동시 노출 최대 개수 조회
@@ -47,6 +48,7 @@ from api.src.schemas.admin.notice import (
     NoticeCreateRequest,
     NoticeDetailResponse,
     NoticeListResponse,
+    NoticeRecipientsResponse,
 )
 from api.src.schemas.admin.popup import (
     PopupCreateRequest,
@@ -261,6 +263,26 @@ async def get_notice_detail(
     """공지 단건 조회."""
     response.headers["Cache-Control"] = "no-store"
     return await notice_service.get_notice_detail(notice_id, admin, db)
+
+
+@router.get(
+    "/notices/{notice_id}/recipients",
+    response_model=NoticeRecipientsResponse,
+)
+async def list_notice_recipients(
+    notice_id: int,
+    response: Response,
+    status: str = Query("unread", pattern="^(read|unread)$"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> NoticeRecipientsResponse:
+    """쪽지 수신자 목록 — read/unread 분리 페이지네이션. 두 그룹의 카운트는 항상 동봉."""
+    response.headers["Cache-Control"] = "no-store"
+    return await notice_service.list_notice_recipients(
+        notice_id, status, page, per_page, admin, db
+    )
 
 
 @router.post("/notices", response_model=NoticeDetailResponse, status_code=201)

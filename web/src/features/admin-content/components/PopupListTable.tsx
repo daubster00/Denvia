@@ -106,7 +106,15 @@ export function PopupListTable({
           const isToggling = togglingId === item.id;
           return (
             <tr key={item.id}>
-              <td className={styles.titleCell}>{item.title}</td>
+              <td className={styles.titleCell}>
+                <button
+                  type="button"
+                  className={styles.titleLink}
+                  onClick={() => onEdit(item.id)}
+                >
+                  {item.title}
+                </button>
+              </td>
               <td>{formatRange(item.display_start, item.display_end)}</td>
               <td>
                 <span className={`${styles.segmentBadge} ${segmentClass}`}>

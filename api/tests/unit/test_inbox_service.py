@@ -150,6 +150,7 @@ async def test_get_active_popups_strips_unsafe_link_url(unsafe_link: str) -> Non
     popup.body_html = "<p>x</p>"
     popup.image_url = None
     popup.popup_type = "editor"
+    popup.display_position = "center"
     popup.link_url = unsafe_link
     popup.display_end = datetime(2026, 12, 31, tzinfo=timezone.utc)
 

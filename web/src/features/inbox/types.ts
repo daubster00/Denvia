@@ -30,11 +30,18 @@ export interface UnreadCountResponse {
 
 export type PopupTargetDevice = "pc" | "mobile" | "both";
 export type PopupType = "image" | "editor";
+export type PopupDisplayPosition =
+  | "center"
+  | "top"
+  | "bottom"
+  | "bottom_left"
+  | "bottom_right";
 
 export interface ActivePopup {
   popup_id: number;
   title: string;
   popup_type: PopupType;
+  display_position: PopupDisplayPosition;
   image_url: string | null;
   body_html_safe: string | null;
   link_url: string | null;

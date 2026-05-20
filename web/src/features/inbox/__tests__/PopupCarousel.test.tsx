@@ -64,6 +64,7 @@ function makePopup(overrides: Record<string, unknown> = {}) {
     popup_id: 1,
     title: "테스트 팝업",
     popup_type: "editor" as const,
+    display_position: "center" as const,
     image_url: null,
     body_html_safe: "<p>본문</p>",
     link_url: null,

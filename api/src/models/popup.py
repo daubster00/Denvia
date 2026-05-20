@@ -74,6 +74,19 @@ class Popup(Base):
         nullable=False,
         server_default="editor",
     )
+    display_position: Mapped[str] = mapped_column(
+        SQLEnum(
+            "center",
+            "top",
+            "bottom",
+            "bottom_left",
+            "bottom_right",
+            name="popup_display_position_enum",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default="center",
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="TRUE"

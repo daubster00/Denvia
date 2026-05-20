@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import structlog
 from fastapi import HTTPException, Request
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.inbox_message import InboxMessage
@@ -24,6 +24,8 @@ from api.src.schemas.admin.notice import (
     NoticeDetailResponse,
     NoticeListItem,
     NoticeListResponse,
+    NoticeRecipientItem,
+    NoticeRecipientsResponse,
 )
 from api.src.utils.html_sanitize import sanitize_body_html
 
@@ -271,9 +273,120 @@ async def delete_notice(
     )
 
 
+async def list_notice_recipients(
+    notice_id: int,
+    status: str,
+    page: int,
+    per_page: int,
+    admin: User,
+    db: AsyncSession,
+) -> NoticeRecipientsResponse:
+    """쪽지 수신자 목록 — read/unread 분리 페이지네이션.
+
+    counts(read_count, unread_count)는 항상 동봉하므로 UI에서 탭 라벨에 즉시 표기 가능.
+    items는 status 파라미터에 해당하는 한쪽만 페이지네이션해서 돌려준다.
+    """
+    if status not in ("read", "unread"):
+        raise HTTPException(
+            422,
+            detail={
+                "code": "INVALID_STATUS",
+                "message": "status는 'read' 또는 'unread'여야 합니다.",
+            },
+        )
+
+    notice = (
+        await db.execute(select(Notice).where(Notice.id == notice_id))
+    ).scalar_one_or_none()
+    if notice is None:
+        raise HTTPException(
+            404,
+            detail={
+                "code": "NOTICE_NOT_FOUND",
+                "message": "해당 쪽지를 찾을 수 없습니다.",
+            },
+        )
+
+    counts_row = (
+        await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case((InboxMessage.is_read.is_(True), 1), else_=0)
+                    ),
+                    0,
+                ).label("read_count"),
+                func.coalesce(
+                    func.sum(
+                        case((InboxMessage.is_read.is_(False), 1), else_=0)
+                    ),
+                    0,
+                ).label("unread_count"),
+            ).where(InboxMessage.notice_id == notice_id)
+        )
+    ).one()
+    read_count = int(counts_row.read_count)
+    unread_count = int(counts_row.unread_count)
+    total = read_count if status == "read" else unread_count
+
+    is_read_value = status == "read"
+    rows = (
+        await db.execute(
+            select(
+                User.id,
+                User.email,
+                User.name,
+                User.segment,
+                InboxMessage.is_read,
+                InboxMessage.created_at,
+            )
+            .join(User, User.id == InboxMessage.user_id)
+            .where(
+                InboxMessage.notice_id == notice_id,
+                InboxMessage.is_read.is_(is_read_value),
+            )
+            .order_by(User.email.asc(), User.id.asc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
+    ).all()
+
+    logger.info(
+        "admin.notice.recipients.listed",
+        actor_user_id=admin.id,
+        notice_id=notice_id,
+        status=status,
+        page=page,
+        per_page=per_page,
+        total=total,
+    )
+
+    items = [
+        NoticeRecipientItem(
+            user_id=r.id,
+            email=r.email,
+            name=r.name,
+            segment=r.segment,
+            is_read=r.is_read,
+            delivered_at=r.created_at,
+        )
+        for r in rows
+    ]
+    return NoticeRecipientsResponse(
+        items=items,
+        page=page,
+        per_page=per_page,
+        total=total,
+        read_count=read_count,
+        unread_count=unread_count,
+        status=status,  # type: ignore[arg-type]
+    )
+
+
 __all__ = [
     "list_notices",
     "get_notice_detail",
+    "list_notice_recipients",
     "create_notice",
     "delete_notice",
 ]

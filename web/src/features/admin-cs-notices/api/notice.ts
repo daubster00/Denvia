@@ -45,6 +45,27 @@ export interface NoticeDetail extends NoticeListItem {
   body_html: string;
 }
 
+export type NoticeRecipientStatus = "read" | "unread";
+
+export interface NoticeRecipient {
+  user_id: number;
+  email: string;
+  name: string | null;
+  segment: NoticeTargetSegment | string | null;
+  is_read: boolean;
+  delivered_at: string;
+}
+
+export interface NoticeRecipientsResponse {
+  items: NoticeRecipient[];
+  page: number;
+  per_page: number;
+  total: number;
+  read_count: number;
+  unread_count: number;
+  status: NoticeRecipientStatus;
+}
+
 export interface InboxPreviewConfig {
   max_count: number;
 }
@@ -77,6 +98,27 @@ export async function fetchNotices(
   perPage = 20,
 ): Promise<NoticeListResponse> {
   const url = `${API_BASE}/api/v1/admin/notices?page=${page}&per_page=${perPage}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+export async function fetchNoticeDetail(id: number): Promise<NoticeDetail> {
+  const url = `${API_BASE}/api/v1/admin/notices/${id}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+export async function fetchNoticeRecipients(
+  id: number,
+  status: NoticeRecipientStatus,
+  page = 1,
+  perPage = 20,
+): Promise<NoticeRecipientsResponse> {
+  const url =
+    `${API_BASE}/api/v1/admin/notices/${id}/recipients` +
+    `?status=${status}&page=${page}&per_page=${perPage}`;
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw await parseError(res);
   return res.json();

@@ -9,9 +9,6 @@
 
 .dialog {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   width: min(520px, calc(100vw - 32px));
   max-height: calc(100vh - 80px);
   background: #fff;
@@ -21,6 +18,34 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.dialogCenter {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.dialogTop {
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dialogBottom {
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dialogBottomLeft {
+  bottom: 24px;
+  left: 24px;
+}
+
+.dialogBottomRight {
+  bottom: 24px;
+  right: 24px;
 }
 
 .header {
@@ -239,5 +264,16 @@
   }
   .dialog {
     width: calc(100vw - 24px);
+  }
+  /* 모바일은 화면이 좁아 항상 가운데 고정 — PC용 위치 변형을 모두 무시. */
+  .dialogTop,
+  .dialogBottom,
+  .dialogBottomLeft,
+  .dialogBottomRight {
+    top: 50%;
+    left: 50%;
+    bottom: auto;
+    right: auto;
+    transform: translate(-50%, -50%);
   }
 }

@@ -1,0 +1,287 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem 1.75rem 3rem;
+  max-width: 1300px;
+  margin-left: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 0.8125rem;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.invalidBox {
+  padding: 2.5rem 0;
+  text-align: center;
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+.summaryCard {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.summaryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  font-size: 0.8125rem;
+  color: #475569;
+}
+
+.summaryMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.summaryMetaLabel {
+  color: #94a3b8;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.4;
+}
+
+.body {
+  font-size: 0.9375rem;
+  color: #1f2937;
+  line-height: 1.6;
+}
+
+.body p {
+  margin: 0 0 0.5rem;
+}
+
+.body :global(a) {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.statCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.875rem;
+}
+
+.statCard {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.statValueRead {
+  color: #047857;
+}
+
+.statValueUnread {
+  color: #b45309;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.tab {
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tab:hover {
+  color: #0f172a;
+}
+
+.tabActive {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+.badge {
+  margin-left: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.25rem;
+  padding: 0 0.4rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #475569;
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.tabActive .badge {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.tableWrap {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table thead {
+  background: #f8fafc;
+}
+
+.table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.table td {
+  padding: 0.75rem 1rem;
+  color: #0f172a;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.loading,
+.errorBox,
+.empty {
+  margin: 0;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+}
+
+.loading {
+  color: #64748b;
+}
+
+.errorBox {
+  color: #b91c1c;
+}
+
+.empty {
+  color: #94a3b8;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.pagination button {
+  padding: 0.4rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pagination button:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.pagination button:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 0.8125rem;
+  color: #475569;
+}
+
+.segmentTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 1rem;
+  }
+
+  .statCards {
+    grid-template-columns: 1fr;
+  }
+}

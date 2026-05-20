@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   togglePopupActive: vi.fn(),
   deletePopup: vi.fn(),
   fetchPopupDetail: vi.fn(),
+  routerPush: vi.fn(),
 }));
 
 vi.mock("@/features/admin-content/api/popup", async () => {
@@ -28,19 +29,8 @@ vi.mock("@/features/admin-content/api/popup", async () => {
   };
 });
 
-// PopupEditDialog 자체는 별도 테스트 파일에서 다룸 — 페이지 테스트는 mount 여부만.
-vi.mock("@/features/admin-content/components/PopupEditDialog", () => ({
-  PopupEditDialog: ({
-    mode,
-    popupId,
-  }: {
-    mode: "create" | "edit";
-    popupId?: number;
-  }) => (
-    <div data-testid="edit-dialog">
-      mode={mode} popupId={popupId ?? "new"}
-    </div>
-  ),
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mocks.routerPush }),
 }));
 
 import AdminPopupsPage from "../page";
@@ -76,7 +66,7 @@ describe("AdminPopupsPage", () => {
     });
   });
 
-  it("'새 팝업 작성' 버튼 클릭 → PopupEditDialog가 mode=create로 렌더된다", async () => {
+  it("'새 팝업 작성' 링크는 /admin/content/popups/new 로 이동한다", async () => {
     mocks.fetchPopups.mockResolvedValue({
       items: [],
       page: 1,
@@ -87,9 +77,9 @@ describe("AdminPopupsPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/등록된 팝업이/)).toBeDefined();
     });
-    fireEvent.click(screen.getByRole("button", { name: /새 팝업 작성/ }));
-    expect(screen.getByTestId("edit-dialog").textContent).toContain(
-      "mode=create",
+    const link = screen.getByRole("link", { name: /새 팝업 작성/ });
+    expect((link as HTMLAnchorElement).getAttribute("href")).toBe(
+      "/admin/content/popups/new",
     );
   });
 
@@ -118,5 +108,40 @@ describe("AdminPopupsPage", () => {
       expect(screen.getByText("5월 프로모션")).toBeDefined();
     });
     expect(screen.getByLabelText("페이지네이션")).toBeDefined();
+  });
+
+  it("팝업 제목 클릭 → /admin/content/popups/[id] 로 라우팅된다", async () => {
+    mocks.fetchPopups.mockResolvedValue({
+      items: [
+        {
+          id: 42,
+          title: "팝업 A",
+          display_start: "2026-05-01T00:00:00+09:00",
+          display_end: "2026-05-31T23:59:00+09:00",
+          target_segment: "all",
+          target_device: "both",
+          popup_type: "editor",
+          display_position: "center",
+          image_url: null,
+          sort_order: 0,
+          is_active: true,
+          link_url: null,
+          created_by_admin_id: 1,
+          created_at: "2026-04-30T10:00:00+09:00",
+          updated_at: "2026-04-30T10:00:00+09:00",
+        },
+      ],
+      page: 1,
+      per_page: 20,
+      total: 1,
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("팝업 A")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("팝업 A"));
+    expect(mocks.routerPush).toHaveBeenCalledWith(
+      "/admin/content/popups/42",
+    );
   });
 });

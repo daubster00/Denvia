@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { NoticeCreateDialog } from "@/features/admin-cs-notices/components/NoticeCreateDialog";
@@ -39,6 +40,7 @@ function formatKoreanDate(iso: string | null): string {
 }
 
 export default function AdminCsNoticesPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -185,28 +187,46 @@ export default function AdminCsNoticesPage() {
               </tr>
             </thead>
             <tbody>
-              {noticesQuery.data!.items.map((item) => (
-                <tr key={item.id}>
-                  <td className={styles.cellTitle}>{item.title}</td>
-                  <td>{SEGMENT_LABEL[item.target_segment]}</td>
-                  <td>{formatKoreanDate(item.published_at)}</td>
-                  <td className={styles.cellNumeric}>
-                    {item.delivered_user_count.toLocaleString("ko-KR")}
-                  </td>
-                  <td className={styles.cellAction}>
-                    <button
-                      type="button"
-                      className={styles.deleteBtn}
-                      onClick={() => {
-                        setDeleteError(null);
-                        setDeletingItem(item);
-                      }}
-                    >
-                      삭제
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {noticesQuery.data!.items.map((item) => {
+                const goToDetail = () =>
+                  router.push(`/admin/content/notices/${item.id}`);
+                return (
+                  <tr
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${item.title} 상세 보기`}
+                    className={styles.clickableRow}
+                    onClick={goToDetail}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        goToDetail();
+                      }
+                    }}
+                  >
+                    <td className={styles.cellTitle}>{item.title}</td>
+                    <td>{SEGMENT_LABEL[item.target_segment]}</td>
+                    <td>{formatKoreanDate(item.published_at)}</td>
+                    <td className={styles.cellNumeric}>
+                      {item.delivered_user_count.toLocaleString("ko-KR")}
+                    </td>
+                    <td className={styles.cellAction}>
+                      <button
+                        type="button"
+                        className={styles.deleteBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteError(null);
+                          setDeletingItem(item);
+                        }}
+                      >
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
