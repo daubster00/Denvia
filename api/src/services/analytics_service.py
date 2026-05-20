@@ -432,6 +432,8 @@ async def get_feedback_items(
             QALog.answer_text,
             QAFeedback.rating,
             User.segment,
+            QALog.user_id,
+            User.email,
             QAFeedback.created_at,
         )
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
@@ -444,7 +446,16 @@ async def get_feedback_items(
     )).all()
 
     result = []
-    for qa_log_id, question_text, answer_text, rating, segment, created_at in rows:
+    for (
+        qa_log_id,
+        question_text,
+        answer_text,
+        rating,
+        segment,
+        user_id,
+        email,
+        created_at,
+    ) in rows:
         if created_at.tzinfo is None:
             from datetime import timezone
             created_at = created_at.replace(tzinfo=timezone.utc)
@@ -455,6 +466,8 @@ async def get_feedback_items(
             "answer_text": answer_text,
             "rating": rating,
             "segment": segment,
+            "user_id": user_id,
+            "email": email,
             "created_at": kst_dt.isoformat(),
         })
     return result
@@ -480,6 +493,8 @@ async def get_feedback_export_rows(
             QALog.answer_text,
             QAFeedback.rating,
             User.segment,
+            QALog.user_id,
+            User.email,
             QAFeedback.created_at,
         )
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
@@ -494,7 +509,16 @@ async def get_feedback_export_rows(
     rows = rows[:max_rows]
 
     result = []
-    for qa_log_id, question_text, answer_text, rating, segment, created_at in rows:
+    for (
+        qa_log_id,
+        question_text,
+        answer_text,
+        rating,
+        segment,
+        user_id,
+        email,
+        created_at,
+    ) in rows:
         if created_at.tzinfo is None:
             from datetime import timezone
             created_at = created_at.replace(tzinfo=timezone.utc)
@@ -505,6 +529,8 @@ async def get_feedback_export_rows(
             "answer_text": answer_text,
             "rating": rating,
             "segment": segment,
+            "user_id": user_id,
+            "email": email,
             "created_at_kst": kst_dt.strftime("%Y-%m-%d %H:%M:%S"),
         })
     return result, truncated

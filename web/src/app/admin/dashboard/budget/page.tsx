@@ -6,6 +6,7 @@ import { fetchBudgetCurrentMonth } from "@/features/admin-dashboard/api/budget";
 import { BudgetGauge } from "@/features/admin-dashboard/components/BudgetGauge";
 import { KPICard } from "@/features/admin-dashboard/components/KPICard";
 import { useAdminEventsStore } from "@/stores/admin-events-store";
+import { formatKRW } from "@/lib/format-currency";
 import styles from "./page.module.css";
 
 export default function BudgetPage() {
@@ -39,9 +40,9 @@ export default function BudgetPage() {
     );
   }
 
-  const limit = Number(data.monthly_limit_usd);
-  const spent = Number(data.spent_usd);
-  const remaining = Math.max(limit - spent, 0);
+  const limitKrw = data.monthly_limit_krw;
+  const spentKrw = data.spent_krw;
+  const remainingKrw = Math.max(limitKrw - spentKrw, 0);
 
   return (
     <section className={styles.page}>
@@ -53,15 +54,15 @@ export default function BudgetPage() {
       </header>
 
       <div className={styles.kpis}>
-        <KPICard label="당월 토큰 비용" value={`$ ${spent.toFixed(2)}`} />
-        <KPICard label="월 예산" value={`$ ${limit.toFixed(2)}`} />
-        <KPICard label="남은 예산" value={`$ ${remaining.toFixed(2)}`} />
+        <KPICard label="당월 토큰 비용" value={formatKRW(spentKrw)} />
+        <KPICard label="월 예산" value={formatKRW(limitKrw)} />
+        <KPICard label="남은 예산" value={formatKRW(remainingKrw)} />
       </div>
 
       <div className={styles.gaugeSection}>
         <BudgetGauge
-          current={spent}
-          max={limit}
+          current={spentKrw}
+          max={limitKrw}
           killswitchActive={data.killswitch_active}
           killswitchMode={data.killswitch_mode}
         />

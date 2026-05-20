@@ -301,3 +301,34 @@ export async function deleteInquiryReply(
   }
   return res.json() as Promise<InquiryDetailResponse>;
 }
+
+export interface ReplyImageUploadResponse {
+  image_url: string;
+  size_bytes: number;
+  mime_type: string;
+}
+
+/**
+ * CS 답변 본문 에디터에서 로컬 컴퓨터 이미지를 골라 서버에 업로드한다.
+ * 응답의 image_url 을 Tiptap 본문 <img src="..."> 에 삽입한다.
+ */
+export async function uploadReplyImage(
+  file: File,
+): Promise<ReplyImageUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const headers = _withCsrf({});
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/support/reply-image-upload`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: formData,
+    },
+  );
+  if (!res.ok) {
+    throw await _toError(res, "이미지 업로드에 실패했습니다.");
+  }
+  return res.json() as Promise<ReplyImageUploadResponse>;
+}

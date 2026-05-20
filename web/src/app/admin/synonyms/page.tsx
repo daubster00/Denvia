@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/layout/ConfirmDialog";
 import {
   createSynonymGroup,
   fetchSynonyms,
+  type SynonymGroup,
   type SynonymGroupInput,
 } from "@/features/admin-rag/api/synonyms";
 import { SynonymGroupForm } from "@/features/admin-rag/components/SynonymGroupForm";
@@ -18,36 +23,48 @@ const PAGE_SIZE = 20;
 export default function SynonymsPage() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [confirmCreate, setConfirmCreate] = useState<SynonymGroupInput | null>(null);
   const qc = useQueryClient();
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // 250ms debounce
   useEffect(() => {
     const t = setTimeout(() => {
       setQ(qInput.trim());
-      setPage(1);
     }, 250);
     return () => clearTimeout(t);
   }, [qInput]);
 
-  const listQuery = useQuery({
-    queryKey: ["admin-rag-synonyms", { q, page }],
-    queryFn: () => fetchSynonyms({ q: q || undefined, page, size: PAGE_SIZE }),
+  const listQuery = useInfiniteQuery({
+    queryKey: ["admin-rag-synonyms", { q }],
+    queryFn: ({ pageParam }) =>
+      fetchSynonyms({ q: q || undefined, page: pageParam, size: PAGE_SIZE }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const loaded = lastPage.page * lastPage.size;
+      return loaded < lastPage.total ? lastPage.page + 1 : undefined;
+    },
     staleTime: 30_000,
   });
 
+  const groups: SynonymGroup[] = useMemo(
+    () => listQuery.data?.pages.flatMap((p) => p.groups) ?? [],
+    [listQuery.data],
+  );
+
+  const total = listQuery.data?.pages[0]?.total ?? 0;
+
   const occupiedTerms = useMemo(() => {
     const m = new Map<string, { id: number; canonicalTerm: string }>();
-    for (const g of listQuery.data?.groups ?? []) {
+    for (const g of groups) {
       m.set(g.canonical_term, { id: g.id, canonicalTerm: g.canonical_term });
       for (const s of g.synonyms) {
         if (!m.has(s)) m.set(s, { id: g.id, canonicalTerm: g.canonical_term });
       }
     }
     return m;
-  }, [listQuery.data]);
+  }, [groups]);
 
   const createMut = useMutation({
     mutationFn: (data: SynonymGroupInput) => createSynonymGroup(data),
@@ -58,9 +75,22 @@ export default function SynonymsPage() {
     },
   });
 
-  const totalPages = listQuery.data
-    ? Math.max(1, Math.ceil(listQuery.data.total / PAGE_SIZE))
-    : 1;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = listQuery;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
     <div className={styles.page}>
@@ -123,35 +153,22 @@ export default function SynonymsPage() {
         {listQuery.isError && (
           <p className={styles.errorText}>목록을 불러오지 못했습니다.</p>
         )}
-        {listQuery.data?.groups.length === 0 && (
+        {!listQuery.isLoading && groups.length === 0 && (
           <p className={styles.statusText}>검색 결과가 없습니다.</p>
         )}
-        {listQuery.data?.groups.map((g) => (
+        {groups.map((g) => (
           <SynonymGroupRow key={g.id} group={g} occupiedTerms={occupiedTerms} />
         ))}
       </div>
 
-      {listQuery.data && listQuery.data.total > PAGE_SIZE && (
-        <div className={styles.pagination}>
-          <button
-            type="button"
-            className={styles.pageBtn}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >
-            이전
-          </button>
-          <span className={styles.pageInfo}>
-            {page} / {totalPages} (총 {listQuery.data.total}개)
-          </span>
-          <button
-            type="button"
-            className={styles.pageBtn}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-          >
-            다음
-          </button>
+      {groups.length > 0 && (
+        <div ref={sentinelRef} className={styles.sentinel} aria-hidden>
+          {isFetchingNextPage && (
+            <p className={styles.statusText}>더 불러오는 중...</p>
+          )}
+          {!hasNextPage && !isFetchingNextPage && (
+            <p className={styles.endText}>총 {total}개 · 끝</p>
+          )}
         </div>
       )}
 

@@ -32,6 +32,7 @@ import {
   RevenueSummaryWidget,
   REVENUE_SUMMARY_KEY,
 } from "@/features/admin-dashboard/components/RevenueSummaryWidget";
+import { formatKRW } from "@/lib/format-currency";
 import styles from "./dashboardHome.module.css";
 
 const BUDGET_KEY = ["admin", "dashboard", "budget-current"] as const;
@@ -137,11 +138,7 @@ export default function AdminDashboardPage() {
         />
         <KPICard
           label="비용 TOP 사용자"
-          value={
-            topCostUser
-              ? `$ ${Number(topCostUser.total_cost_usd).toFixed(4)}`
-              : "—"
-          }
+          value={topCostUser ? formatKRW(topCostUser.total_cost_krw) : "—"}
         />
         <KPICard
           label="재빌드 대기 변경"

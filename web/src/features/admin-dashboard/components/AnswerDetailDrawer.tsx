@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback } from "react";
+import Link from "next/link";
 import type { FeedbackItem } from "../api/analytics";
 import styles from "./AnswerDetailDrawer.module.css";
 
@@ -75,6 +76,22 @@ export function AnswerDetailDrawer({ item, onClose }: AnswerDetailDrawerProps) {
                 }`}
               >
                 {ratingLabel}
+              </dd>
+            </div>
+            <div className={styles.metaRow}>
+              <dt className={styles.metaLabel}>계정</dt>
+              <dd className={styles.metaValue}>
+                {item.user_id !== null && item.email ? (
+                  <Link
+                    href={`/admin/users/${item.user_id}`}
+                    className={styles.accountLink}
+                    title={`${item.email} 고객 관리 페이지로 이동`}
+                  >
+                    {item.email}
+                  </Link>
+                ) : (
+                  <span className={styles.accountAnon}>비회원</span>
+                )}
               </dd>
             </div>
             <div className={styles.metaRow}>

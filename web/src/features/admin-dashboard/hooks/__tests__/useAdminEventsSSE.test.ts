@@ -75,7 +75,7 @@ describe("useAdminEventsSSE", () => {
     const es = MockEventSource.instances[0];
     es.dispatchEvent(
       "budget_warning",
-      JSON.stringify({ threshold: 95, spent_usd: 9.5, percent: 95 })
+      JSON.stringify({ threshold: 95, spent_krw: 13_300, percent: 95 })
     );
     expect(useAdminEventsStore.getState().budgetWarning?.threshold).toBe(95);
   });

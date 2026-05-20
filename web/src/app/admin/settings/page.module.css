@@ -182,6 +182,14 @@
   font-size: 0.8125rem;
   color: #6b7280;
   margin: 0;
+  line-height: 1.55;
+}
+
+.unitNote {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #9ca3af;
+  margin-left: 0.25rem;
 }
 
 .errorText {

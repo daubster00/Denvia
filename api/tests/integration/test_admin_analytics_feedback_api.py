@@ -80,7 +80,9 @@ _DEFAULT_ITEMS = [
         "question_text": "임플란트 보철물 선택 기준은?",
         "answer_text": "임플란트 보철물은 …",
         "rating": "good",
-        "segment": "dentist",
+        "segment": "doctor",
+        "user_id": 42,
+        "email": "doctor@denvia.test",
         "created_at": "2026-04-15T10:23:00+09:00",
     }
 ]
@@ -196,7 +198,7 @@ class TestFeedbackEndpoint:
 
     async def test_feedback_rating_filter_good(self):
         """rating_filter=good 파라미터 전달 확인."""
-        items_good = [{"qa_log_id": 1, "question_text": "Q", "answer_text": "A", "rating": "good", "segment": None, "created_at": "2026-04-01T10:00:00+09:00"}]
+        items_good = [{"qa_log_id": 1, "question_text": "Q", "answer_text": "A", "rating": "good", "segment": None, "user_id": None, "email": None, "created_at": "2026-04-01T10:00:00+09:00"}]
         patches = [
             patch("api.src.routers.admin.analytics.get_feedback_summary", new=AsyncMock(return_value=_DEFAULT_SUMMARY)),
             patch("api.src.routers.admin.analytics.get_feedback_series", new=AsyncMock(return_value=[])),
@@ -210,7 +212,7 @@ class TestFeedbackEndpoint:
         assert all(item["rating"] == "good" for item in data["items"])
 
     async def test_feedback_rating_filter_bad(self):
-        items_bad = [{"qa_log_id": 2, "question_text": "Q", "answer_text": "A", "rating": "bad", "segment": None, "created_at": "2026-04-01T10:00:00+09:00"}]
+        items_bad = [{"qa_log_id": 2, "question_text": "Q", "answer_text": "A", "rating": "bad", "segment": None, "user_id": None, "email": None, "created_at": "2026-04-01T10:00:00+09:00"}]
         patches = [
             patch("api.src.routers.admin.analytics.get_feedback_summary", new=AsyncMock(return_value=_DEFAULT_SUMMARY)),
             patch("api.src.routers.admin.analytics.get_feedback_series", new=AsyncMock(return_value=[])),
@@ -234,7 +236,7 @@ class TestFeedbackEndpoint:
 
     async def test_feedback_anonymous_user_included(self):
         """user_id=NULL 행(segment=None) items 포함."""
-        anon_item = {"qa_log_id": 999, "question_text": "Q", "answer_text": None, "rating": "bad", "segment": None, "created_at": "2026-04-01T10:00:00+09:00"}
+        anon_item = {"qa_log_id": 999, "question_text": "Q", "answer_text": None, "rating": "bad", "segment": None, "user_id": None, "email": None, "created_at": "2026-04-01T10:00:00+09:00"}
         patches = [
             patch("api.src.routers.admin.analytics.get_feedback_summary", new=AsyncMock(return_value=_DEFAULT_SUMMARY)),
             patch("api.src.routers.admin.analytics.get_feedback_series", new=AsyncMock(return_value=[])),
@@ -324,7 +326,9 @@ class TestFeedbackExport:
                 "question_text": "Q1",
                 "answer_text": "A1",
                 "rating": "good",
-                "segment": "dentist",
+                "segment": "doctor",
+                "user_id": 42,
+                "email": "doctor@denvia.test",
                 "created_at_kst": "2026-04-15 10:23:00",
             }
         ]

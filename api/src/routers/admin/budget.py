@@ -2,12 +2,14 @@
 
 from decimal import Decimal
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import require_admin
+from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_BUDGET_LIMIT_UPDATE,
     audit_action,
@@ -16,6 +18,7 @@ from api.src.models.base import get_session
 from api.src.models.budget_threshold import BudgetThreshold
 from api.src.models.killswitch_state import MODE_MANUAL_TOTAL
 from api.src.models.user import User
+from api.src.services import runtime_config_service
 from api.src.services.budget_service import (
     get_current_month_snapshot,
     kst_month_bounds,
@@ -29,6 +32,11 @@ class BudgetCurrentMonthResponse(BaseModel):
     year_month: str
     monthly_limit_usd: Decimal
     spent_usd: Decimal
+    # Story: 전체 시스템 KRW 통일 — UI 표시용 환산 보조 필드.
+    # DB 원본은 USD 유지(OpenAI 청구가 USD), API 응답 시점에만 환율로 환산해 부착.
+    monthly_limit_krw: int
+    spent_krw: int
+    usd_to_krw: int
     percent: float
     status: str
     killswitch_active: bool
@@ -50,16 +58,28 @@ class UpdateMonthlyLimitRequest(BaseModel):
 
 
 async def _build_response(
-    response: Response, db: AsyncSession
+    response: Response,
+    db: AsyncSession,
+    redis_runtime: aioredis.Redis,
 ) -> BudgetCurrentMonthResponse:
     snap = await get_current_month_snapshot(db)
     await db.commit()
     modes = await get_active_modes(db)
+    usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
+    monthly_limit_krw = int(
+        (snap.monthly_limit_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
+    spent_krw = int(
+        (snap.spent_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
     response.headers["Cache-Control"] = "no-store"
     return BudgetCurrentMonthResponse(
         year_month=snap.year_month,
         monthly_limit_usd=snap.monthly_limit_usd,
         spent_usd=snap.spent_usd,
+        monthly_limit_krw=monthly_limit_krw,
+        spent_krw=spent_krw,
+        usd_to_krw=usd_to_krw,
         percent=snap.percent,
         status=snap.status,
         killswitch_active=bool(modes),
@@ -76,8 +96,9 @@ async def current_month(
     response: Response,
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_runtime: aioredis.Redis = Depends(get_redis_runtime),
 ) -> BudgetCurrentMonthResponse:
-    return await _build_response(response, db)
+    return await _build_response(response, db, redis_runtime)
 
 
 @router.patch("/monthly-limit", response_model=BudgetCurrentMonthResponse)
@@ -88,6 +109,7 @@ async def update_monthly_limit(
     response: Response,
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_runtime: aioredis.Redis = Depends(get_redis_runtime),
 ) -> BudgetCurrentMonthResponse:
     """당월(KST) 예산 한도(monthly_limit_usd) 조정.
 
@@ -122,4 +144,4 @@ async def update_monthly_limit(
             "after": f"{payload.monthly_limit_usd:.2f}",
         },
     }
-    return await _build_response(response, db)
+    return await _build_response(response, db, redis_runtime)

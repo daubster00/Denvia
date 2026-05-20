@@ -55,7 +55,9 @@ const mockData = {
       question_text: "임플란트 선택 기준?",
       answer_text: "크라운·브릿지·틀니 세 종류입니다.",
       rating: "good" as const,
-      segment: "dentist",
+      segment: "doctor",
+      user_id: 42,
+      email: "doctor@denvia.test",
       created_at: "2026-04-15T10:23:00+09:00",
     },
   ],
@@ -117,6 +119,19 @@ describe("FeedbackPage", () => {
     const row = screen.getByRole("row", { name: "피드백 상세 보기" });
     fireEvent.click(row);
     expect(screen.getByRole("dialog", { name: "답변 상세" })).toBeTruthy();
+  });
+
+  it("계정 컬럼이 고객 관리 페이지 링크로 노출", async () => {
+    const { fetchFeedback } = await import(
+      "@/features/admin-dashboard/api/analytics"
+    );
+    (fetchFeedback as ReturnType<typeof vi.fn>).mockResolvedValue(mockData);
+    renderWithQuery(<FeedbackPage />);
+
+    const link = await screen.findByRole("link", {
+      name: /doctor@denvia\.test/,
+    });
+    expect(link.getAttribute("href")).toBe("/admin/users/42");
   });
 
   it("엑셀 버튼 클릭 → 다운로드 iframe 생성", async () => {

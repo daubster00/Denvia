@@ -57,7 +57,7 @@ export function RevenueSummaryWidget() {
             </dd>
           </div>
           <div className={styles.figureItem}>
-            <dt className={styles.figureLabel}>토큰 비용 (KRW)</dt>
+            <dt className={styles.figureLabel}>토큰 비용</dt>
             <dd className={styles.figureValue}>
               {data.token_cost_krw.toLocaleString("ko-KR")}원
             </dd>

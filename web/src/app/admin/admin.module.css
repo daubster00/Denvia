@@ -39,7 +39,7 @@
   line-height: 1.45;
 }
 
-.adminShell :global(button),
+.adminShell :global(button:not([data-no-admin-height])),
 .adminShell :global(input),
 .adminShell :global(select) {
   min-height: var(--admin-control-height);

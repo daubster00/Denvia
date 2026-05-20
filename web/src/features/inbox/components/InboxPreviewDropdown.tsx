@@ -6,7 +6,8 @@
  * - 로그인 후 마운트 시 자동으로 펼침. 같은 세션에서 X로 닫으면 다시 자동으로 뜨지 않음
  *   (sessionStorage `inbox_preview_dismissed` 플래그). 새 탭/세션에서는 재노출.
  * - 카드 클릭 → /inbox 로 이동(해당 메시지로 스크롤은 ?focus=<id>).
- * - 항목 0건이면 렌더 안 함(아이콘만 노출).
+ * - 미읽음 0건이면 렌더 안 함(아이콘만 노출). 한 번 확인한 쪽지는 새로고침/재접속해도
+ *   다시 자동 노출되지 않는다(백엔드 SSOT — 프론트는 안전망으로 한 번 더 필터).
  */
 
 import { useEffect, useState } from "react";
@@ -42,12 +43,14 @@ export function InboxPreviewDropdown() {
   const [open, setOpen] = useState(false);
   const { data, isPending, isError } = useInboxPreview();
 
+  const unreadItems = data?.items.filter((it) => !it.is_read) ?? [];
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (sessionStorage.getItem(SESSION_KEY) === "1") return;
-    if (!data || data.items.length === 0) return;
+    if (unreadItems.length === 0) return;
     setOpen(true);
-  }, [data]);
+  }, [unreadItems.length]);
 
   function handleClose() {
     setOpen(false);
@@ -57,7 +60,7 @@ export function InboxPreviewDropdown() {
   }
 
   if (isPending || isError) return null;
-  if (!data || data.items.length === 0) return null;
+  if (unreadItems.length === 0) return null;
   if (!open) return null;
 
   return (
@@ -78,7 +81,7 @@ export function InboxPreviewDropdown() {
         </button>
       </header>
       <ul className={styles.list}>
-        {data.items.map((item) => (
+        {unreadItems.map((item) => (
           <li key={item.message_id}>
             <Link
               href={`/inbox?focus=${item.message_id}`}

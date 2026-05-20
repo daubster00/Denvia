@@ -3,6 +3,7 @@
 // Story 9.2 — 자동 무료 차단 모드 카드 (읽기 전용).
 
 import Link from "next/link";
+import { formatKRW } from "@/lib/format-currency";
 import type { AutoFreeOnlyStatus } from "../api/killswitch";
 import styles from "./AutoModeCard.module.css";
 
@@ -69,12 +70,16 @@ export function AutoModeCard({ status }: AutoModeCardProps) {
           </span>
         </li>
         <li className={styles.metaRow}>
-          <span className={styles.metaLabel}>한도 (USD)</span>
-          <span className={styles.metaValue}>${status.monthly_limit_usd}</span>
+          <span className={styles.metaLabel}>월 한도</span>
+          <span className={styles.metaValue}>
+            {formatKRW(status.monthly_limit_krw)}
+          </span>
         </li>
         <li className={styles.metaRow}>
-          <span className={styles.metaLabel}>지출 (USD)</span>
-          <span className={styles.metaValue}>${status.spent_usd}</span>
+          <span className={styles.metaLabel}>당월 지출</span>
+          <span className={styles.metaValue}>
+            {formatKRW(status.spent_krw)}
+          </span>
         </li>
         {status.active && status.activated_at && (
           <li className={styles.metaRow}>

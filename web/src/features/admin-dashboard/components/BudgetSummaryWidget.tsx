@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchBudgetCurrentMonth } from "../api/budget";
 import { useAdminEventsStore } from "@/stores/admin-events-store";
+import { formatKRW } from "@/lib/format-currency";
 import { BudgetGauge } from "./BudgetGauge";
 import {
   DashboardWidget,
@@ -54,9 +55,9 @@ function BudgetSummaryBody({
 }: {
   data: Awaited<ReturnType<typeof fetchBudgetCurrentMonth>>;
 }) {
-  const limit = Number(data.monthly_limit_usd);
-  const spent = Number(data.spent_usd);
-  const remaining = Math.max(limit - spent, 0);
+  const limitKrw = data.monthly_limit_krw;
+  const spentKrw = data.spent_krw;
+  const remainingKrw = Math.max(limitKrw - spentKrw, 0);
   const valueClass =
     data.status === "critical"
       ? styles.figureValueDanger
@@ -67,8 +68,8 @@ function BudgetSummaryBody({
   return (
     <div className={styles.summary}>
       <BudgetGauge
-        current={spent}
-        max={limit}
+        current={spentKrw}
+        max={limitKrw}
         killswitchActive={data.killswitch_active}
         killswitchMode={data.killswitch_mode}
       />
@@ -76,16 +77,16 @@ function BudgetSummaryBody({
         <div className={styles.figureItem}>
           <dt className={styles.figureLabel}>당월 비용</dt>
           <dd className={`${styles.figureValue} ${valueClass}`}>
-            $ {spent.toFixed(2)}
+            {formatKRW(spentKrw)}
           </dd>
         </div>
         <div className={styles.figureItem}>
           <dt className={styles.figureLabel}>월 한도</dt>
-          <dd className={styles.figureValue}>$ {limit.toFixed(2)}</dd>
+          <dd className={styles.figureValue}>{formatKRW(limitKrw)}</dd>
         </div>
         <div className={styles.figureItem}>
           <dt className={styles.figureLabel}>남은 예산</dt>
-          <dd className={styles.figureValue}>$ {remaining.toFixed(2)}</dd>
+          <dd className={styles.figureValue}>{formatKRW(remainingKrw)}</dd>
         </div>
         <div className={styles.figureItem}>
           <dt className={styles.figureLabel}>대상 월</dt>

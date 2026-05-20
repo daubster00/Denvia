@@ -26,6 +26,8 @@ function makeRow(overrides: Partial<{
   total_input_tokens: number;
   total_output_tokens: number;
   total_cost_usd: string;
+  total_cost_krw: number;
+  avg_cost_per_question_krw: number;
   question_count: number;
   segment: string | null;
   avg_cost_per_question: string;
@@ -37,6 +39,8 @@ function makeRow(overrides: Partial<{
     total_input_tokens: 1000,
     total_output_tokens: 500,
     total_cost_usd: "0.1234",
+    total_cost_krw: 173,
+    avg_cost_per_question_krw: 35,
     question_count: 5,
     avg_cost_per_question: "0.0247",
     ...overrides,
@@ -63,6 +67,7 @@ describe("TokenTopUsersWidget", () => {
       total: 5,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
 
     renderWithQuery(<TokenTopUsersWidget />);
@@ -85,6 +90,7 @@ describe("TokenTopUsersWidget", () => {
       total: 0,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
     renderWithQuery(<TokenTopUsersWidget />);
     expect(await screen.findByText("이번 기간에 질의 기록이 없습니다.")).toBeTruthy();
@@ -99,6 +105,7 @@ describe("TokenTopUsersWidget", () => {
       total: 1,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
     const { container } = renderWithQuery(<TokenTopUsersWidget />);
     await screen.findByText("z@x.com");

@@ -9,6 +9,10 @@ export interface AutoFreeOnlyStatus {
   current_percent: number;
   monthly_limit_usd: string;
   spent_usd: string;
+  // 전체 시스템 KRW 통일 — 응답 시점 환율로 환산된 보조 필드.
+  monthly_limit_krw: number;
+  spent_krw: number;
+  usd_to_krw: number;
 }
 
 export interface ManualTotalStatus {

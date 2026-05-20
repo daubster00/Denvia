@@ -27,6 +27,10 @@ class AutoFreeOnlyStatus(BaseModel):
     current_percent: float
     monthly_limit_usd: Decimal
     spent_usd: Decimal
+    # 전체 시스템 KRW 통일 — UI 표시용 환산 보조 필드 (API 응답 시점 환율로 환산).
+    monthly_limit_krw: int
+    spent_krw: int
+    usd_to_krw: int
 
     model_config = ConfigDict()
 

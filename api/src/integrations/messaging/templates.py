@@ -206,7 +206,9 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
     ),
     # ── 관리자 예산 경고 (Story 5.2) ─────────────────────────────────────────
     # 알리고 등록본은 본문 첫 줄에 [Denvia] 제목을 중복 포함. 코드도 동일하게 작성.
-    # spent_usd / limit_usd 값은 호출처에서 "$" prefix 포함해 넘긴다 (예: "$82.30").
+    # spent_krw / limit_krw 값은 호출처에서 "₩" prefix + 콤마 구분 포함해 넘긴다 (예: "₩115,220").
+    # 전체 시스템 KRW 통일에 따라 USD 변수(spent_usd/limit_usd) → KRW 변수로 교체.
+    # 알리고 콘솔에 등록된 템플릿도 동일하게 재등록 + 카카오 재심사 필요 (자료/Denvia_카카오_알림톡_메시지_안내서.docx 동기화).
     "admin.budget_warning.80": TemplateDefinition(
         title="Denvia 월 예산 80% 도달",
         body=(
@@ -214,12 +216,12 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "\n"
             "이번 달 OpenAI API 비용이 월 예산의 {percent}%에 도달했습니다.\n"
             "\n"
-            "현재 사용액: {spent_usd}\n"
-            "월 한도: {limit_usd}\n"
+            "현재 사용액: {spent_krw}\n"
+            "월 한도: {limit_krw}\n"
             "\n"
             "관리자 대시보드에서 사용 패턴을 점검해주세요."
         ),
-        variables=["percent", "spent_usd", "limit_usd"],
+        variables=["percent", "spent_krw", "limit_krw"],
         category=TemplateCategory.SYSTEM,
     ),
     "admin.budget_warning.95": TemplateDefinition(
@@ -231,9 +233,9 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "\n"
             "100% 도달 시 무료 질의가 자동 차단됩니다.\n"
             "\n"
-            "현재 사용액: {spent_usd} / {limit_usd}"
+            "현재 사용액: {spent_krw} / {limit_krw}"
         ),
-        variables=["percent", "spent_usd", "limit_usd"],
+        variables=["percent", "spent_krw", "limit_krw"],
         category=TemplateCategory.SYSTEM,
     ),
     "admin.budget_hard_cap_reached": TemplateDefinition(
@@ -241,12 +243,12 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         body=(
             "[Denvia] 월 예산 소진 안내\n"
             "\n"
-            "월 예산 {limit_usd}이 소진되어 무료 사용자 질의가 일시 차단되었습니다.\n"
+            "월 예산 {limit_krw}이 소진되어 무료 사용자 질의가 일시 차단되었습니다.\n"
             "\n"
             "유료 사용자는 영향 없습니다.\n"
             "다음 달 1일 자동 해제 또는 예산 상향 시 즉시 재개됩니다."
         ),
-        variables=["limit_usd"],
+        variables=["limit_krw"],
         category=TemplateCategory.SYSTEM,
     ),
     # ── 관리자 고객문의 신규 접수 (Story 9.3 후속) ───────────────────────────

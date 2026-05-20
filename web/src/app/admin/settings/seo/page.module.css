@@ -180,23 +180,6 @@
   min-width: 16rem;
 }
 
-.assetUrlInput {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  color: #111827;
-  background: #ffffff;
-  font-family: inherit;
-}
-
-.assetUrlInput:focus {
-  outline: none;
-  border-color: #7c3aed;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
-}
-
 .uploadRow {
   display: flex;
   gap: 0.5rem;

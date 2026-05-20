@@ -20,6 +20,9 @@ const inactivePayload: KillswitchStatusResponse = {
     current_percent: 5.5,
     monthly_limit_usd: "100.00",
     spent_usd: "5.50",
+    monthly_limit_krw: 140_000,
+    spent_krw: 7_700,
+    usd_to_krw: 1400,
   },
   manual_total: {
     active: false,

@@ -3,12 +3,22 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { AnswerDetailDrawer } from "../AnswerDetailDrawer";
 import type { FeedbackItem } from "../../api/analytics";
 
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
 const sampleItem: FeedbackItem = {
   qa_log_id: 1001,
   question_text: "임플란트 보철물 선택 기준은 무엇인가요?",
   answer_text: "임플란트 보철물은 크라운·브릿지·틀니 세 종류입니다.",
   rating: "good",
-  segment: "dentist",
+  segment: "doctor",
+  user_id: 42,
+  email: "doctor@denvia.test",
   created_at: "2026-04-15T10:23:00+09:00",
 };
 
@@ -68,5 +78,18 @@ describe("AnswerDetailDrawer", () => {
     const badItem = { ...sampleItem, rating: "bad" as const };
     render(<AnswerDetailDrawer item={badItem} onClose={vi.fn()} />);
     expect(screen.getByText("👎 BAD")).toBeTruthy();
+  });
+
+  it("계정 이메일을 고객 관리 페이지 링크로 노출", () => {
+    render(<AnswerDetailDrawer item={sampleItem} onClose={vi.fn()} />);
+    const link = screen.getByRole("link", { name: /doctor@denvia\.test/ });
+    expect(link.getAttribute("href")).toBe("/admin/users/42");
+  });
+
+  it("비회원(user_id=null)이면 링크 대신 '비회원' 표시", () => {
+    const anon: FeedbackItem = { ...sampleItem, user_id: null, email: null };
+    render(<AnswerDetailDrawer item={anon} onClose={vi.fn()} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("비회원")).toBeTruthy();
   });
 });

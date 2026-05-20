@@ -169,6 +169,9 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
       spent_usd: "30.00",
+      monthly_limit_krw: 140_000,
+      spent_krw: 42_000,
+      usd_to_krw: 1400,
       percent: 30.0,
       status: "normal",
       killswitch_active: false,
@@ -183,6 +186,8 @@ describe("AdminDashboardPage", () => {
           total_input_tokens: 100,
           total_output_tokens: 200,
           total_cost_usd: "0.5000",
+          total_cost_krw: 700,
+          avg_cost_per_question_krw: 88,
           question_count: 8,
           avg_cost_per_question: "0.0625",
         },
@@ -192,6 +197,7 @@ describe("AdminDashboardPage", () => {
       total: 1,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
     (fetchRagStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       pending_changes_count: 0,
@@ -216,7 +222,7 @@ describe("AdminDashboardPage", () => {
     expect(await screen.findByText("30.0%")).toBeTruthy();
     // 질의 수 / 비용 / 대기 건은 위젯 내부에도 노출될 수 있어 length 검증
     expect((await screen.findAllByText("8건")).length).toBeGreaterThanOrEqual(1);
-    expect((await screen.findAllByText("$ 0.5000")).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText("₩700")).length).toBeGreaterThanOrEqual(1);
     expect((await screen.findAllByText("0건")).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -227,6 +233,9 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
       spent_usd: "30.00",
+      monthly_limit_krw: 140_000,
+      spent_krw: 42_000,
+      usd_to_krw: 1400,
       percent: 30,
       status: "normal",
       killswitch_active: false,
@@ -239,6 +248,7 @@ describe("AdminDashboardPage", () => {
       total: 0,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
     (fetchRagStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       pending_changes_count: 0,
@@ -259,6 +269,9 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
       spent_usd: "0.00",
+      monthly_limit_krw: 140_000,
+      spent_krw: 0,
+      usd_to_krw: 1400,
       percent: 0,
       status: "normal",
       killswitch_active: false,
@@ -271,6 +284,7 @@ describe("AdminDashboardPage", () => {
       total: 0,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
     (fetchRagStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
       pending_changes_count: 0,
@@ -339,6 +353,9 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
       spent_usd: "10.00",
+      monthly_limit_krw: 140_000,
+      spent_krw: 14_000,
+      usd_to_krw: 1400,
       percent: 10,
       status: "normal",
       killswitch_active: false,
@@ -351,14 +368,15 @@ describe("AdminDashboardPage", () => {
       total: 0,
       range: "month",
       year_month: "2026-04",
+      usd_to_krw: 1400,
     });
     (fetchRagStatus as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("rag fail"),
     );
 
     renderWithQuery(<AdminDashboardPage />);
-    // 다른 위젯의 데이터/링크는 정상 렌더
-    expect(await screen.findByText("$ 10.00")).toBeTruthy();
+    // 다른 위젯의 데이터/링크는 정상 렌더 (10 USD × 1400 = ₩14,000)
+    expect(await screen.findByText("₩14,000")).toBeTruthy();
     // RAG 위젯은 alert 렌더
     expect(await screen.findByRole("alert")).toBeTruthy();
   });

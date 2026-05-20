@@ -16,6 +16,8 @@ const sampleRows: UserTokensRow[] = [
     total_input_tokens: 15000,
     total_output_tokens: 8000,
     total_cost_usd: "0.245100",
+    total_cost_krw: 343,
+    avg_cost_per_question_krw: 20,
     question_count: 17,
     avg_cost_per_question: "0.014418",
   },
@@ -26,6 +28,8 @@ const sampleRows: UserTokensRow[] = [
     total_input_tokens: 3000,
     total_output_tokens: 1500,
     total_cost_usd: "0.050000",
+    total_cost_krw: 70,
+    avg_cost_per_question_krw: 14,
     question_count: 5,
     avg_cost_per_question: "0.010000",
   },
@@ -47,7 +51,7 @@ describe("UserTokensTable", () => {
     ).toBeTruthy();
   });
 
-  it("행 렌더 — 이메일, 총 비용 4자리 표시", () => {
+  it("행 렌더 — 이메일, KRW 환산 비용 표시", () => {
     render(
       <UserTokensTable
         items={sampleRows}
@@ -59,8 +63,7 @@ describe("UserTokensTable", () => {
     );
     expect(screen.getByText("alice@example.com")).toBeTruthy();
     expect(screen.getByText("bob@example.com")).toBeTruthy();
-    // toFixed(4) → "0.2451"
-    expect(screen.getByText("0.2451")).toBeTruthy();
+    expect(screen.getByText("₩343")).toBeTruthy();
   });
 
   it("이전/다음 페이지 버튼 aria-label", () => {

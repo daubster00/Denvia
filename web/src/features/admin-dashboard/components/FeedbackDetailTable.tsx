@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { IconDownload } from "@wanteddev/wds-icon";
 import type { FeedbackItem } from "../api/analytics";
 import styles from "./FeedbackDetailTable.module.css";
@@ -64,7 +65,7 @@ export function FeedbackDetailTable({
               <th scope="col" className={styles.thQuestion}>질문</th>
               <th scope="col" className={styles.thAnswer}>답변</th>
               <th scope="col" className={styles.thRating}>피드백</th>
-              <th scope="col" className={styles.thSegment}>가입유형</th>
+              <th scope="col" className={styles.thSegment}>계정</th>
               <th scope="col" className={styles.thDate}>제출일시</th>
             </tr>
           </thead>
@@ -104,7 +105,20 @@ export function FeedbackDetailTable({
                     {item.rating === "good" ? "👍 GOOD" : "👎 BAD"}
                   </span>
                 </td>
-                <td className={styles.td}>{item.segment ?? "—"}</td>
+                <td className={styles.td}>
+                  {item.user_id !== null && item.email ? (
+                    <Link
+                      href={`/admin/users/${item.user_id}`}
+                      className={styles.accountLink}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`${item.email} 고객 관리 페이지로 이동`}
+                    >
+                      {item.email}
+                    </Link>
+                  ) : (
+                    <span className={styles.accountAnon}>비회원</span>
+                  )}
+                </td>
                 <td className={styles.td}>{formatKst(item.created_at)}</td>
               </tr>
             ))}

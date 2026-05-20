@@ -22,8 +22,10 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import redis.asyncio as aioredis
+
 from api.src.deps.auth import require_admin
-from api.src.deps.redis import get_redis_client
+from api.src.deps.redis import get_redis_client, get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_KILLSWITCH_MANUAL_TOTAL_ACTIVATE,
     AUDIT_KILLSWITCH_MANUAL_TOTAL_DEACTIVATE,
@@ -78,9 +80,10 @@ async def get_killswitch_status(
     response: Response,
     admin: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_session)],
+    redis_runtime: Annotated[aioredis.Redis, Depends(get_redis_runtime)],
 ) -> KillswitchStatusResponse:
     """auto/manual 두 모드 통합 상태 조회 — Cache-Control: no-store."""
-    payload = await get_status(db)
+    payload = await get_status(db, redis_runtime)
     await db.commit()
     response.headers["Cache-Control"] = "no-store"
     logger.info(

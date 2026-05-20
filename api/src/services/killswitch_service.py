@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
+import redis.asyncio as aioredis
 import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +24,7 @@ from api.src.models.killswitch_state import (
     MODE_MANUAL_TOTAL,
 )
 from api.src.models.user import User
+from api.src.services import runtime_config_service
 from api.src.services.budget_service import get_current_month_snapshot
 
 logger = structlog.get_logger(__name__)
@@ -79,14 +82,30 @@ class DeactivationResult:
     duration_seconds: int
 
 
-async def get_status(session: AsyncSession) -> dict[str, Any]:
+async def get_status(
+    session: AsyncSession,
+    redis_runtime: aioredis.Redis | None = None,
+) -> dict[str, Any]:
     """auto_free_only / manual_total 두 모드의 현재 상태를 조합해 반환한다.
 
     - auto_free_only: budget_service.get_current_month_snapshot 결합 (percent / limit / spent).
+      redis_runtime 주입 시 USD→KRW 환산 보조 필드(monthly_limit_krw, spent_krw, usd_to_krw)도
+      포함한다 (전체 시스템 KRW 통일). 미주입 시 기본 환율(1400) 사용.
     - manual_total: activated_by_admin_email은 _mask_email 마스킹.
     비활성 모드의 시각·사유 필드는 모두 None.
     """
     snapshot = await get_current_month_snapshot(session)
+
+    if redis_runtime is not None:
+        usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
+    else:
+        usd_to_krw = runtime_config_service.DEFAULT_USD_TO_KRW
+    monthly_limit_krw = int(
+        (snapshot.monthly_limit_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
+    spent_krw = int(
+        (snapshot.spent_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
 
     auto_row = (await session.execute(
         select(KillswitchState).where(
@@ -111,6 +130,9 @@ async def get_status(session: AsyncSession) -> dict[str, Any]:
             "current_percent": snapshot.percent,
             "monthly_limit_usd": snapshot.monthly_limit_usd,
             "spent_usd": snapshot.spent_usd,
+            "monthly_limit_krw": monthly_limit_krw,
+            "spent_krw": spent_krw,
+            "usd_to_krw": usd_to_krw,
         }
     else:
         auto_block = {
@@ -121,6 +143,9 @@ async def get_status(session: AsyncSession) -> dict[str, Any]:
             "current_percent": snapshot.percent,
             "monthly_limit_usd": snapshot.monthly_limit_usd,
             "spent_usd": snapshot.spent_usd,
+            "monthly_limit_krw": monthly_limit_krw,
+            "spent_krw": spent_krw,
+            "usd_to_krw": usd_to_krw,
         }
 
     manual_block: dict[str, Any]

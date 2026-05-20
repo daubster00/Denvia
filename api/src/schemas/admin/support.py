@@ -163,6 +163,17 @@ class SupportCountsResponse(BaseModel):
     pending_refunds: int
 
 
+class ReplyImageUploadResponse(BaseModel):
+    """POST /api/v1/admin/support/reply-image-upload 응답.
+
+    Tiptap 본문에 <img src="image_url"> 로 그대로 삽입.
+    """
+
+    image_url: str
+    size_bytes: int
+    mime_type: str
+
+
 __all__ = [
     "InquiryStatus",
     "InquiryType",
@@ -179,4 +190,5 @@ __all__ = [
     "InquiryReplyResponse",
     "InquiryReplyEditRequest",
     "SupportCountsResponse",
+    "ReplyImageUploadResponse",
 ]

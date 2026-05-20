@@ -34,10 +34,11 @@ describe("useAdminEventsStore", () => {
   it("setBudgetWarning이 budgetWarning을 업데이트한다", () => {
     useAdminEventsStore
       .getState()
-      .setBudgetWarning({ threshold: 80, spent_usd: 8.0, percent: 80 });
+      .setBudgetWarning({ threshold: 80, spent_krw: 11_200, percent: 80 });
     const state = useAdminEventsStore.getState();
     expect(state.budgetWarning?.threshold).toBe(80);
     expect(state.budgetWarning?.percent).toBe(80);
+    expect(state.budgetWarning?.spent_krw).toBe(11_200);
   });
 
   it("setKillswitchStatus가 killswitchStatus를 업데이트한다", () => {

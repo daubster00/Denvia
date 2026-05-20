@@ -13,7 +13,7 @@ export interface RebuildProgress {
 
 interface BudgetWarning {
   threshold: 80 | 95;
-  spent_usd: number;
+  spent_krw: number;
   percent: number;
 }
 

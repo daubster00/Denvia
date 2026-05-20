@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 import redis.asyncio as aioredis
 import structlog
 from fastapi import HTTPException, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import collate, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.synonym_group import SynonymGroup
@@ -77,7 +77,13 @@ async def list_groups(
             stmt = stmt.where(cond)
             count_stmt = count_stmt.where(cond)
 
-    stmt = stmt.order_by(SynonymGroup.canonical_term.asc()).limit(size).offset(offset)
+    # COLLATE "C" → UTF-8 codepoint 순. Hangul 음절(U+AC00–U+D7A3)은
+    # 자모(초성/중성/종성) 순으로 배치돼 있어 ㄱ,ㄴ,ㄷ... 한글 자모 순 정렬과 일치.
+    stmt = (
+        stmt.order_by(collate(SynonymGroup.canonical_term, "C").asc())
+        .limit(size)
+        .offset(offset)
+    )
 
     rows = (await db.execute(stmt)).scalars().all()
     total = int((await db.execute(count_stmt)).scalar() or 0)
@@ -523,7 +529,9 @@ async def export_csv(db: AsyncSession) -> bytes:
     """canonical_term ASC + UTF-8 BOM CSV 바이트."""
     rows = (
         await db.execute(
-            select(SynonymGroup).order_by(SynonymGroup.canonical_term.asc())
+            select(SynonymGroup).order_by(
+                collate(SynonymGroup.canonical_term, "C").asc()
+            )
         )
     ).scalars().all()
 

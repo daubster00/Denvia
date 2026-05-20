@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { formatKRW } from "@/lib/format-currency";
 import { UserTokensRow } from "../api/analytics";
 import styles from "./UserTokensTable.module.css";
 
@@ -42,9 +43,9 @@ export function UserTokensTable({
               <th scope="col">세그먼트</th>
               <th scope="col">입력 토큰</th>
               <th scope="col">출력 토큰</th>
-              <th scope="col">총 비용 ($)</th>
+              <th scope="col">총 비용</th>
               <th scope="col">질의 수</th>
-              <th scope="col">평균 비용 ($)</th>
+              <th scope="col">평균 비용</th>
             </tr>
           </thead>
           <tbody>
@@ -58,9 +59,9 @@ export function UserTokensTable({
                 <td>{row.segment ?? "—"}</td>
                 <td>{row.total_input_tokens.toLocaleString()}</td>
                 <td>{row.total_output_tokens.toLocaleString()}</td>
-                <td>{Number(row.total_cost_usd).toFixed(4)}</td>
+                <td>{formatKRW(row.total_cost_krw)}</td>
                 <td>{row.question_count}</td>
-                <td>{Number(row.avg_cost_per_question).toFixed(4)}</td>
+                <td>{formatKRW(row.avg_cost_per_question_krw)}</td>
               </tr>
             ))}
           </tbody>

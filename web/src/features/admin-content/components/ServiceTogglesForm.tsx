@@ -144,11 +144,12 @@ export function ServiceTogglesForm() {
               max={9999}
               step={1}
               className={styles.numberInput}
-              value={form.free_daily_quota}
+              value={form.free_daily_quota === 0 ? "" : form.free_daily_quota}
+              placeholder="0"
               onChange={(e) =>
                 setForm((p) => ({
                   ...p,
-                  free_daily_quota: Number(e.target.value),
+                  free_daily_quota: e.target.value === "" ? 0 : Number(e.target.value),
                 }))
               }
               aria-label="1일 무료 질문 횟수"
@@ -191,12 +192,13 @@ export function ServiceTogglesForm() {
               min={0}
               step={1}
               className={styles.numberInput}
-              value={form.free_delay_seconds}
+              value={form.free_delay_seconds === 0 ? "" : form.free_delay_seconds}
+              placeholder="0"
               disabled={!form.free_delay_enabled}
               onChange={(e) =>
                 setForm((p) => ({
                   ...p,
-                  free_delay_seconds: Number(e.target.value),
+                  free_delay_seconds: e.target.value === "" ? 0 : Number(e.target.value),
                 }))
               }
               aria-label="답변 지연 시간 (초)"

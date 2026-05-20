@@ -8,7 +8,10 @@ import type {
   InquiryStatus,
   RecentQAExcerpt,
 } from "@/features/admin-support/api/inquiries";
-import { InquiryUpdateError } from "@/features/admin-support/api/inquiries";
+import {
+  InquiryUpdateError,
+  uploadReplyImage,
+} from "@/features/admin-support/api/inquiries";
 import {
   formatInquiryStatus,
   formatInquiryType,
@@ -445,6 +448,10 @@ export function InquiryDetailDrawer({
                               value={editingHtml}
                               onChange={setEditingHtml}
                               ariaLabel="답변 수정 본문"
+                              onImageUpload={async (file) => {
+                                const res = await uploadReplyImage(file);
+                                return res.image_url;
+                              }}
                             />
                             <div className={styles.replyEditActions}>
                               <button
@@ -533,6 +540,10 @@ export function InquiryDetailDrawer({
                   value={replyHtml}
                   onChange={setReplyHtml}
                   ariaLabel="문의 답변 본문"
+                  onImageUpload={async (file) => {
+                    const res = await uploadReplyImage(file);
+                    return res.image_url;
+                  }}
                 />
                 <div className={styles.replyControls}>
                   <label className={styles.replyControlsLabel}>

@@ -41,6 +41,7 @@ from api.src.services.analytics_service import (
     get_signups_buckets,
     get_subscriber_counts,
 )
+from api.src.services import runtime_config_service
 from api.src.services.budget_service import KST, kst_month_bounds
 from api.src.services.finance_service import _excel_safe_cell
 
@@ -56,6 +57,9 @@ class UserTokensRow(BaseModel):
     total_input_tokens: int
     total_output_tokens: int
     total_cost_usd: Decimal
+    # 전체 시스템 KRW 통일 — UI 표시용 환산 보조 필드.
+    total_cost_krw: int
+    avg_cost_per_question_krw: int
     question_count: int
     avg_cost_per_question: Decimal
 
@@ -67,6 +71,8 @@ class UserTokensListResponse(BaseModel):
     total: int
     range: str
     year_month: str | None
+    # 응답 시점에 적용된 USD→KRW 환율 (보조 표시용).
+    usd_to_krw: int
 
 
 @router.get("/user-tokens", response_model=UserTokensListResponse)
@@ -79,6 +85,7 @@ async def user_tokens(
     per_page: int = Query(50, ge=1, le=200),
     actor: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
 ) -> UserTokensListResponse:
     start, end, ym = _resolve_window(range, year_month, from_, to)
 
@@ -117,20 +124,26 @@ async def user_tokens(
         )).scalars().all()
         users_by_id = {u.id: u for u in users}
 
+    usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
+    rate_dec = Decimal(usd_to_krw)
+
     items: list[UserTokensRow] = []
     for r in rows:
         u = users_by_id.get(r.user_id)
         email = u.email if u else f"user#{r.user_id}"
         if u and getattr(u, "withdrawn_at", None) is not None:
             email = f"{email} (탈퇴)"
-        avg = (Decimal(str(r.cost)) / r.q_cnt) if r.q_cnt > 0 else Decimal("0")
+        cost_dec = Decimal(str(r.cost))
+        avg = (cost_dec / r.q_cnt) if r.q_cnt > 0 else Decimal("0")
         items.append(UserTokensRow(
             user_id=r.user_id,
             email=email,
             segment=(u.segment if u else None),
             total_input_tokens=int(r.in_t),
             total_output_tokens=int(r.out_t),
-            total_cost_usd=Decimal(str(r.cost)),
+            total_cost_usd=cost_dec,
+            total_cost_krw=int((cost_dec * rate_dec).quantize(Decimal("1"))),
+            avg_cost_per_question_krw=int((avg * rate_dec).quantize(Decimal("1"))),
             question_count=int(r.q_cnt),
             avg_cost_per_question=avg,
         ))
@@ -150,6 +163,7 @@ async def user_tokens(
         total=total,
         range=range,
         year_month=(ym if range == "month" else None),
+        usd_to_krw=usd_to_krw,
     )
 
 
@@ -275,6 +289,8 @@ class FeedbackItem(BaseModel):
     answer_text: str | None
     rating: str
     segment: str | None
+    user_id: int | None = None
+    email: str | None = None
     created_at: str
 
 
@@ -404,13 +420,24 @@ async def feedback_export(
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "피드백"
-    ws.append(["qa_log_id", "질문", "답변", "피드백", "가입유형", "제출일시(KST)"])
+    ws.append([
+        "qa_log_id",
+        "질문",
+        "답변",
+        "피드백",
+        "계정(이메일)",
+        "user_id",
+        "가입유형",
+        "제출일시(KST)",
+    ])
     for row in rows:
         ws.append([
             row["qa_log_id"],
             row["question_text"],
             row["answer_text"] or "",
             row["rating"],
+            row.get("email") or "",
+            row.get("user_id") if row.get("user_id") is not None else "",
             row["segment"] or "",
             row["created_at_kst"],
         ])

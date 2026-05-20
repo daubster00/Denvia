@@ -18,11 +18,15 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import require_admin
+from api.src.middleware.audit_actions import (
+    AUDIT_SUPPORT_REPLY_IMAGE_UPLOAD,
+    audit_action,
+)
 from api.src.middleware.rate_limit import limiter
 from api.src.models.base import get_session
 from api.src.models.user import User
@@ -34,6 +38,7 @@ from api.src.schemas.admin.support import (
     InquiryReplyResponse,
     InquiryStatus,
     InquiryUpdateRequest,
+    ReplyImageUploadResponse,
     SupportCountsResponse,
 )
 from api.src.services import admin_support_service
@@ -355,6 +360,25 @@ async def remove_reply(
         trace_id=str(getattr(request.state, "trace_id", "")),
     )
     return detail
+
+
+@router.post(
+    "/reply-image-upload",
+    response_model=ReplyImageUploadResponse,
+    status_code=201,
+)
+@limiter.limit("30/minute", key_func=_admin_user_id_key)
+@audit_action(AUDIT_SUPPORT_REPLY_IMAGE_UPLOAD)
+async def upload_reply_image(
+    request: Request,
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+) -> ReplyImageUploadResponse:
+    """CS 답변 본문 에디터(Tiptap) 이미지 업로드.
+
+    PNG·JPG·WEBP, 5MB 이하. 응답의 image_url 을 본문에 <img src="..."> 로 삽입.
+    """
+    return await admin_support_service.upload_reply_image(request, file, admin.id)
 
 
 async def _notify_inquiry_reply(

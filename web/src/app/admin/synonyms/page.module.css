@@ -123,36 +123,19 @@
   padding: 16px;
 }
 
-.pagination {
+.sentinel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  min-height: 40px;
   padding: 16px 0;
 }
 
-.pageBtn {
-  padding: 6px 14px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #fff;
+.endText {
   font-size: 13px;
-  color: #374151;
-  cursor: pointer;
-}
-
-.pageBtn:hover:not(:disabled) {
-  background: #f9fafb;
-}
-
-.pageBtn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.pageInfo {
-  font-size: 13px;
-  color: #6b7280;
+  color: #9ca3af;
+  margin: 0;
+  text-align: center;
 }
 
 @media (max-width: 768px) {

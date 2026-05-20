@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { formatKRW } from "@/lib/format-currency";
 import { fetchUserTokens, type UserTokensRow } from "../api/analytics";
 import {
   DashboardWidget,
@@ -45,17 +46,19 @@ export function TokenTopUsersWidget() {
 }
 
 function TopUsersList({ items }: { items: UserTokensRow[] }) {
-  const maxCost = items.reduce(
-    (acc, row) => Math.max(acc, Number(row.total_cost_usd)),
+  const maxCostKrw = items.reduce(
+    (acc, row) => Math.max(acc, row.total_cost_krw),
     0,
   );
 
   return (
     <ol className={styles.list}>
       {items.map((row, idx) => {
-        const cost = Number(row.total_cost_usd);
+        const costKrw = row.total_cost_krw;
         const widthPct =
-          maxCost > 0 ? Math.max(Math.min((cost / maxCost) * 100, 100), 4) : 0;
+          maxCostKrw > 0
+            ? Math.max(Math.min((costKrw / maxCostKrw) * 100, 100), 4)
+            : 0;
         const tokens = row.total_input_tokens + row.total_output_tokens;
         return (
           <li
@@ -72,7 +75,9 @@ function TopUsersList({ items }: { items: UserTokensRow[] }) {
               <div
                 className={styles.barTrack}
                 role="progressbar"
-                aria-valuenow={Math.round((cost / Math.max(maxCost, 1)) * 100)}
+                aria-valuenow={Math.round(
+                  (costKrw / Math.max(maxCostKrw, 1)) * 100,
+                )}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-label={`${row.email} 비용 비율`}
@@ -87,7 +92,7 @@ function TopUsersList({ items }: { items: UserTokensRow[] }) {
               {row.question_count.toLocaleString()}건
             </span>
             <div className={styles.metrics}>
-              <span className={styles.cost}>$ {cost.toFixed(4)}</span>
+              <span className={styles.cost}>{formatKRW(costKrw)}</span>
               <span className={styles.muted}>
                 {tokens.toLocaleString()} tok
               </span>

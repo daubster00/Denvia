@@ -75,7 +75,7 @@
 .filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: 16px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -124,8 +124,49 @@
   outline-offset: -2px;
 }
 
+.presetToggle {
+  display: inline-flex;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.presetButton,
+.presetButtonActive {
+  background: #ffffff;
+  border: 0;
+  border-right: 1px solid #e5e7eb;
+  padding: 8px 14px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.presetButton:last-child,
+.presetButtonActive:last-child {
+  border-right: 0;
+}
+
+.presetButtonActive {
+  background: #7c3aed;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.presetButton:hover {
+  background: #f9fafb;
+}
+
+.presetButton:focus-visible,
+.presetButtonActive:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: -2px;
+}
+
 .dateRange {
   display: flex;
+  align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -203,6 +244,11 @@
     align-items: stretch;
   }
   .unitToggle {
+    grid-template-columns: repeat(4, 1fr);
+    width: 100%;
+  }
+  .presetToggle {
+    display: grid;
     grid-template-columns: repeat(4, 1fr);
     width: 100%;
   }

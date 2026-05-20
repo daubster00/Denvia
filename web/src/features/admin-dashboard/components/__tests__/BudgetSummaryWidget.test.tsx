@@ -40,6 +40,9 @@ describe("BudgetSummaryWidget", () => {
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
       spent_usd: "42.50",
+      monthly_limit_krw: 140_000,
+      spent_krw: 59_500,
+      usd_to_krw: 1400,
       percent: 42.5,
       status: "normal",
       killswitch_active: false,
@@ -48,9 +51,9 @@ describe("BudgetSummaryWidget", () => {
 
     renderWithQuery(<BudgetSummaryWidget />);
 
-    await screen.findByText("$ 42.50");
-    expect(screen.getByText("$ 100.00")).toBeTruthy();
-    expect(screen.getByText("$ 57.50")).toBeTruthy(); // 남은 예산
+    await screen.findByText("₩59,500");
+    expect(screen.getByText("₩140,000")).toBeTruthy();
+    expect(screen.getByText("₩80,500")).toBeTruthy(); // 남은 예산 = 140000 - 59500
     expect(screen.getByText("2026-04")).toBeTruthy();
     const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe("/admin/dashboard/budget");
@@ -63,13 +66,16 @@ describe("BudgetSummaryWidget", () => {
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
       spent_usd: "85.00",
+      monthly_limit_krw: 140_000,
+      spent_krw: 119_000,
+      usd_to_krw: 1400,
       percent: 85,
       status: "warning",
       killswitch_active: false,
       killswitch_mode: null,
     });
     const { container } = renderWithQuery(<BudgetSummaryWidget />);
-    await screen.findByText("$ 85.00");
+    await screen.findByText("₩119,000");
     const warningClass = container.querySelector('[class*="figureValueWarning"]');
     expect(warningClass).not.toBeNull();
   });

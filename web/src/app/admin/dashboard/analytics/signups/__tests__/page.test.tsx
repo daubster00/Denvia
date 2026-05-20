@@ -48,16 +48,16 @@ beforeEach(() => {
 });
 
 describe("SignupsPage", () => {
-  it("기본 렌더 — month unit 활성, 차트 영역 표시", async () => {
+  it("기본 렌더 — 최근 7일 프리셋, 일 단위 활성, 차트 영역 표시", async () => {
     const { fetchSignups } = await import(
       "@/features/admin-dashboard/api/analytics"
     );
     (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({
-      unit: "month",
-      from: "2025-05-01",
-      to: "2026-04-30",
+      unit: "day",
+      from: "2026-05-12",
+      to: "2026-05-18",
       buckets: [
-        { bucket_start: "2026-04-01", cumulative: 50, active: 40, withdrawn: 10 },
+        { bucket_start: "2026-05-18", cumulative: 50, active: 40, withdrawn: 10 },
       ],
     });
 
@@ -65,18 +65,20 @@ describe("SignupsPage", () => {
 
     expect(screen.getByRole("heading", { name: "가입자 추세" })).toBeTruthy();
     await screen.findByText("50명");
-    const monthBtn = screen.getByRole("button", { name: "월" });
-    expect(monthBtn.getAttribute("aria-pressed")).toBe("true");
+    const dayBtn = screen.getByRole("button", { name: "일" });
+    expect(dayBtn.getAttribute("aria-pressed")).toBe("true");
+    const presetBtn = screen.getByRole("button", { name: "최근 7일" });
+    expect(presetBtn.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("단위 토글(일) 클릭 → fetchSignups가 unit=day로 재호출", async () => {
+  it("단위 토글(월) 클릭 → fetchSignups가 unit=month로 재호출", async () => {
     const { fetchSignups } = await import(
       "@/features/admin-dashboard/api/analytics"
     );
     (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({
-      unit: "month",
-      from: "2025-05-01",
-      to: "2026-04-30",
+      unit: "day",
+      from: "2026-05-12",
+      to: "2026-05-18",
       buckets: [],
     });
 
@@ -84,18 +86,68 @@ describe("SignupsPage", () => {
 
     await waitFor(() =>
       expect(fetchSignups).toHaveBeenCalledWith(
-        expect.objectContaining({ unit: "month" }),
-      ),
-    );
-
-    const dayBtn = screen.getByRole("button", { name: "일" });
-    fireEvent.click(dayBtn);
-
-    await waitFor(() =>
-      expect(fetchSignups).toHaveBeenCalledWith(
         expect.objectContaining({ unit: "day" }),
       ),
     );
+
+    const monthBtn = screen.getByRole("button", { name: "월" });
+    fireEvent.click(monthBtn);
+
+    await waitFor(() =>
+      expect(fetchSignups).toHaveBeenCalledWith(
+        expect.objectContaining({ unit: "month" }),
+      ),
+    );
+  });
+
+  it("기간 프리셋(최근 30일) 클릭 → 30일 범위로 fetchSignups 재호출", async () => {
+    const { fetchSignups } = await import(
+      "@/features/admin-dashboard/api/analytics"
+    );
+    (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({
+      unit: "day",
+      from: "",
+      to: "",
+      buckets: [],
+    });
+
+    renderWithQuery(<SignupsPage />);
+
+    await waitFor(() => expect(fetchSignups).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "최근 30일" }));
+
+    await waitFor(() => {
+      const lastCall = (fetchSignups as ReturnType<typeof vi.fn>).mock.calls.at(
+        -1,
+      )?.[0];
+      expect(lastCall).toBeDefined();
+      const from = new Date(lastCall.from);
+      const to = new Date(lastCall.to);
+      const diffDays = Math.round(
+        (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000),
+      );
+      expect(diffDays).toBe(29);
+    });
+  });
+
+  it("사용자 지정 프리셋 선택 시 시작일/종료일 입력 노출", async () => {
+    const { fetchSignups } = await import(
+      "@/features/admin-dashboard/api/analytics"
+    );
+    (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({
+      unit: "day",
+      from: "",
+      to: "",
+      buckets: [],
+    });
+
+    renderWithQuery(<SignupsPage />);
+
+    expect(screen.queryByLabelText("시작일")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "사용자 지정" }));
+    expect(screen.getByLabelText("시작일")).toBeTruthy();
+    expect(screen.getByLabelText("종료일")).toBeTruthy();
   });
 
   it("API 실패 → role=alert + 다시 시도 버튼", async () => {

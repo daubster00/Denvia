@@ -11,6 +11,7 @@ import {
   updateChatModelConfig,
   type ChatModelConfig,
 } from "@/features/admin-dashboard/api/chatModel";
+import { formatKRW, usdToKrwInt } from "@/lib/format-currency";
 import styles from "./page.module.css";
 
 // 모델별 사용자 안내 카피 — 응답 속도/품질/비용 특성을 비전문가에게 설명.
@@ -121,8 +122,14 @@ export default function SettingsPage() {
 
   const currentLimit = data ? Number(data.monthly_limit_usd) : 0;
   const spent = data ? Number(data.spent_usd) : 0;
+  const usdToKrw = data?.usd_to_krw ?? 1400;
+  const currentLimitKrw = data?.monthly_limit_krw ?? 0;
+  const spentKrw = data?.spent_krw ?? 0;
   const percent = data?.percent ?? 0;
   const draftNumber = Number(draft);
+  const draftKrwPreview = Number.isFinite(draftNumber) && draftNumber > 0
+    ? usdToKrwInt(draftNumber, usdToKrw)
+    : 0;
   const isDraftValid =
     Number.isFinite(draftNumber) && draftNumber > 0 && draftNumber <= 999_999.99;
   const isDirty =
@@ -177,19 +184,24 @@ export default function SettingsPage() {
             </div>
             <div className={styles.summaryRow}>
               <dt>현재 한도</dt>
-              <dd>$ {currentLimit.toFixed(2)}</dd>
+              <dd>
+                {formatKRW(currentLimitKrw)}{" "}
+                <span className={styles.unitNote}>
+                  (USD ${currentLimit.toFixed(2)} · 환율 ₩{usdToKrw.toLocaleString("ko-KR")}/$)
+                </span>
+              </dd>
             </div>
             <div className={styles.summaryRow}>
               <dt>이미 사용한 금액</dt>
               <dd>
-                $ {spent.toFixed(2)} ({percent.toFixed(1)}%)
+                {formatKRW(spentKrw)} ({percent.toFixed(1)}%)
               </dd>
             </div>
           </dl>
 
           <form className={styles.form} onSubmit={handleSubmit} noValidate>
             <label className={styles.fieldLabel} htmlFor="monthly-limit-input">
-              새 한도 (USD)
+              새 한도 (USD 기준)
             </label>
             <div className={styles.fieldRow}>
               <span className={styles.unitPrefix} aria-hidden="true">
@@ -218,7 +230,13 @@ export default function SettingsPage() {
               </button>
             </div>
             <p id="monthly-limit-help" className={styles.fieldHint}>
-              0.01 이상 999,999.99 이하의 USD 금액을 입력하세요.
+              0.01 이상 999,999.99 이하의 USD 금액을 입력하세요. OpenAI 청구가 USD라 입력 단위는 달러로 유지합니다.
+              {isDraftValid && draftKrwPreview > 0 ? (
+                <>
+                  {" "}예상 한도: <strong>{formatKRW(draftKrwPreview)}</strong> (환율 ₩
+                  {usdToKrw.toLocaleString("ko-KR")}/$ 적용)
+                </>
+              ) : null}
             </p>
 
             {mutation.isError && (

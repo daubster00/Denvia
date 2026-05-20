@@ -17,6 +17,7 @@ import jwt as pyjwt
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from api.src.deps.redis import get_redis_runtime
 from api.src.main import app
 from api.src.models.base import get_session
 from api.src.services.killswitch_service import (
@@ -25,6 +26,13 @@ from api.src.services.killswitch_service import (
     KillSwitchNotActive,
 )
 from api.src.settings import settings
+
+
+async def _fake_redis_runtime():
+    """get_redis_runtime override — .get(KEY) → None → DEFAULT_USD_TO_KRW(1400) 폴백."""
+    mock = MagicMock()
+    mock.get = AsyncMock(return_value=None)
+    yield mock
 
 
 def _make_admin_jwt(user_id: int = 99) -> str:
@@ -97,6 +105,9 @@ class TestKillswitchStatus:
                 "current_percent": 12.5,
                 "monthly_limit_usd": Decimal("100.00"),
                 "spent_usd": Decimal("12.50"),
+                "monthly_limit_krw": 140_000,
+                "spent_krw": 17_500,
+                "usd_to_krw": 1400,
             },
             "manual_total": {
                 "active": False,
@@ -115,6 +126,7 @@ class TestKillswitchStatus:
             ),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -143,6 +155,7 @@ class TestKillswitchActivate:
             "api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -168,6 +181,7 @@ class TestKillswitchActivate:
             ),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -201,6 +215,7 @@ class TestKillswitchActivate:
             ),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -233,6 +248,7 @@ class TestKillswitchDeactivate:
             ),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -272,6 +288,7 @@ class TestKillswitchDeactivate:
             ),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -317,6 +334,7 @@ class TestKillswitchDeactivate:
             ),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -355,6 +373,7 @@ class TestKillswitchRequeueExtension:
 
         with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"
@@ -394,6 +413,7 @@ class TestKillswitchRequeueExtension:
             ) as send_task_mock,
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(
                     transport=ASGITransport(app=app), base_url="http://test"

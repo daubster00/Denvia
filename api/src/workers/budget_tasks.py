@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import structlog
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from api.src.models.notification_queue import STATUS_SENT
 from api.src.models.budget_threshold import BudgetThreshold
 from api.src.models.killswitch_state import KillswitchState, MODE_AUTO_FREE_ONLY
 from api.src.models.user import User
+from api.src.services import runtime_config_service
 from api.src.services.budget_service import get_current_month_snapshot
 from api.src.settings import REDIS_DB_CELERY, REDIS_DB_RUNTIME_CONFIG, settings
 from api.src.workers.celery_app import celery_app
@@ -52,6 +54,14 @@ async def _check_thresholds_async() -> dict:
             percent = snapshot.percent
             limit = snapshot.monthly_limit_usd
 
+            # USD→KRW 환산: 알림톡·SSE 페이로드는 전체 시스템 KRW 통일 정책에 따라 KRW 텍스트로 발송.
+            usd_to_krw = await runtime_config_service.get_usd_to_krw(runtime_redis)
+            rate_dec = Decimal(usd_to_krw)
+            spent_krw_int = int((spent * rate_dec).quantize(Decimal("1")))
+            limit_krw_int = int((limit * rate_dec).quantize(Decimal("1")))
+            spent_krw_text = f"₩{spent_krw_int:,}"
+            limit_krw_text = f"₩{limit_krw_int:,}"
+
             admin_user, admin_phone = await _resolve_admin_target(session)
 
             row = (await session.execute(
@@ -65,7 +75,7 @@ async def _check_thresholds_async() -> dict:
                 send_result = await _try_notify(
                     notification, admin_user, admin_phone,
                     "admin.budget_warning.80",
-                    {"percent": f"{percent:.2f}", "spent_usd": f"${spent:.2f}", "limit_usd": f"${limit:.2f}"},
+                    {"percent": f"{percent:.2f}", "spent_krw": spent_krw_text, "limit_krw": limit_krw_text},
                     f"budget.warn80:{ym}",
                 )
                 if send_result and send_result.status == STATUS_SENT:
@@ -74,7 +84,7 @@ async def _check_thresholds_async() -> dict:
                 await _publish(redis, {
                     "type": "budget_warning",
                     "threshold": 80,
-                    "spent_usd": float(spent),
+                    "spent_krw": spent_krw_int,
                     "percent": percent,
                 })
                 actions.append("warn80")
@@ -84,7 +94,7 @@ async def _check_thresholds_async() -> dict:
                 send_result = await _try_notify(
                     notification, admin_user, admin_phone,
                     "admin.budget_warning.95",
-                    {"percent": f"{percent:.2f}", "spent_usd": f"${spent:.2f}", "limit_usd": f"${limit:.2f}"},
+                    {"percent": f"{percent:.2f}", "spent_krw": spent_krw_text, "limit_krw": limit_krw_text},
                     f"budget.warn95:{ym}",
                 )
                 if send_result and send_result.status == STATUS_SENT:
@@ -93,7 +103,7 @@ async def _check_thresholds_async() -> dict:
                 await _publish(redis, {
                     "type": "budget_warning",
                     "threshold": 95,
-                    "spent_usd": float(spent),
+                    "spent_krw": spent_krw_int,
                     "percent": percent,
                 })
                 actions.append("warn95")
@@ -120,12 +130,13 @@ async def _check_thresholds_async() -> dict:
                     mode=MODE_AUTO_FREE_ONLY,
                     year_month=ym,
                     spent_usd=float(spent),
+                    spent_krw=spent_krw_int,
                     percent=percent,
                 )
                 await _try_notify(
                     notification, admin_user, admin_phone,
                     "admin.budget_hard_cap_reached",
-                    {"limit_usd": f"${limit:.2f}"},
+                    {"limit_krw": limit_krw_text},
                     f"budget.hardcap:{ym}",
                 )
                 await _publish(redis, {

@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import html as _html
 import json
+import uuid
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import structlog
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, UploadFile
 from sqlalchemy import case, delete as sa_delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +43,7 @@ from api.src.schemas.admin.support import (
     InquiryStatus,
     InquiryUpdateRequest,
     RecentQAExcerpt,
+    ReplyImageUploadResponse,
 )
 from api.src.services.analytics_service import _mask_email
 from api.src.utils.html_sanitize import sanitize_body_html
@@ -642,6 +645,92 @@ def _iso(value) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+# ── 답변 본문 에디터 이미지 업로드 ────────────────────────────────────────────────
+# 팝업 패턴(api/src/services/popup_service.py)을 그대로 답습.
+# 저장 경로: api/data/uploads/support_reply_images/
+# 공개 URL : /static/support-reply-images/{filename}
+SUPPORT_REPLY_IMAGE_DIR = (
+    Path(__file__).parent.parent.parent / "data" / "uploads" / "support_reply_images"
+)
+SUPPORT_REPLY_IMAGE_URL_PREFIX = "/static/support-reply-images"
+_REPLY_IMAGE_ALLOWED_MIMES = {"image/png", "image/jpeg", "image/webp"}
+_REPLY_IMAGE_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+_REPLY_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
+
+
+async def upload_reply_image(
+    request: Request,
+    file: UploadFile,
+    admin_id: int,
+) -> ReplyImageUploadResponse:
+    """CS 답변 본문 에디터에서 호출되는 이미지 업로드.
+
+    MIME / 확장자 / 5MB 검증 후 uuid4 파일명으로 디스크 저장.
+    응답의 image_url 은 Tiptap 본문에 <img src="..."> 형태로 삽입된다.
+    """
+    if file.content_type not in _REPLY_IMAGE_ALLOWED_MIMES:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "SUPPORT_REPLY_IMAGE_MIME_INVALID",
+                "message": "PNG·JPG·WEBP 이미지만 업로드할 수 있습니다.",
+            },
+        )
+
+    raw_name = file.filename or ""
+    ext = Path(raw_name).suffix.lower()
+    if ext not in _REPLY_IMAGE_ALLOWED_EXTS:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "SUPPORT_REPLY_IMAGE_EXT_INVALID",
+                "message": "PNG·JPG·WEBP 확장자만 허용됩니다.",
+            },
+        )
+
+    contents = await file.read()
+    size = len(contents)
+    if size > _REPLY_IMAGE_MAX_SIZE_BYTES:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "SUPPORT_REPLY_IMAGE_TOO_LARGE",
+                "message": "이미지 크기는 5MB 이하여야 합니다.",
+            },
+        )
+
+    SUPPORT_REPLY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    dest = SUPPORT_REPLY_IMAGE_DIR / safe_filename
+    dest.write_bytes(contents)
+
+    image_url = f"{SUPPORT_REPLY_IMAGE_URL_PREFIX}/{safe_filename}"
+
+    request.state.audit_target_type = "support_reply_image"
+    request.state.audit_diff = {
+        "after": {
+            "filename": safe_filename,
+            "original_name": raw_name,
+            "size_bytes": size,
+            "mime_type": file.content_type,
+        }
+    }
+
+    logger.info(
+        "admin.support.reply_image.uploaded",
+        actor_user_id=admin_id,
+        filename=safe_filename,
+        size_bytes=size,
+        mime_type=file.content_type,
+    )
+
+    return ReplyImageUploadResponse(
+        image_url=image_url,
+        size_bytes=size,
+        mime_type=file.content_type,
+    )
+
+
 __all__ = [
     "list_inquiries",
     "get_inquiry",
@@ -650,5 +739,8 @@ __all__ = [
     "update_reply",
     "delete_reply",
     "count_open_inquiries",
+    "upload_reply_image",
+    "SUPPORT_REPLY_IMAGE_DIR",
+    "SUPPORT_REPLY_IMAGE_URL_PREFIX",
     "INQUIRY_REPLY_INBOX_TITLE",
 ]

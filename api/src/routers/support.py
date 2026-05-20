@@ -7,7 +7,16 @@ GET    /api/v1/support/inquiries/{inquiry_id}     본인 문의 상세 + 첨부 
 """
 
 import structlog
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import get_current_user
@@ -40,13 +49,15 @@ _ALLOWED_PER_PAGE = (10, 20, 50)
 async def submit_inquiry(
     request: Request,
     payload: InquirySubmitRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> InquirySubmitResponse:
     """고객문의 제출 — INSERT 후 inquiry_id 반환.
 
-    SLA: 본 엔드포인트는 알림톡을 보내지 않는다. 관리자 답변(Story 9.3) 시점에
-    notification_service.send(template_code='support.reply_received') 호출.
+    응답 후 fire-and-forget:
+    - 알림톡 admin.support_inquiry_created (관리자에게 신규 1:1 문의 접수 알림, UH_9848)
+    - 사용자 측 알림톡은 관리자 답변(Story 9.3) 시점에 별도 발송 (support.reply_received).
     """
     inquiry_id = await support_service.submit_inquiry(
         db,
@@ -64,6 +75,12 @@ async def submit_inquiry(
         subject_length=len(payload.subject),
         body_length=len(payload.body),
         attachment_count=len(payload.attachments),
+    )
+    background_tasks.add_task(
+        _notify_admin_inquiry_created,
+        inquiry_id=inquiry_id,
+        user_name=(current_user.name or current_user.email),
+        inquiry_subject=payload.subject,
     )
     return InquirySubmitResponse(inquiry_id=inquiry_id)
 
@@ -131,3 +148,47 @@ async def get_my_inquiry(
             },
         )
     return detail
+
+
+async def _notify_admin_inquiry_created(
+    *, inquiry_id: int, user_name: str, inquiry_subject: str
+) -> None:
+    """fire-and-forget 알림톡 — admin.support_inquiry_created (UH_9848).
+
+    수신자: denvia 관리자 단일. ENV `DENVIA_ADMIN_PHONE` 미설정 또는 admin 미존재 시 silent skip.
+    멱등 키: `support_inquiry:{inquiry_id}:admin_alert` — 동일 inquiry에 중복 발송 차단.
+    """
+    try:
+        from api.src.integrations.messaging.admin_recipient import (
+            resolve_admin_target,
+        )
+        from api.src.integrations.messaging.notification_service import (
+            get_notification_service,
+        )
+        from api.src.models.base import async_session_factory
+
+        async with async_session_factory() as db:
+            admin, admin_phone = await resolve_admin_target(db)
+        if admin is None or not admin_phone:
+            logger.info(
+                "support.inquiry.admin_notify_skipped",
+                reason="admin_phone_missing",
+                inquiry_id=inquiry_id,
+            )
+            return
+        svc = get_notification_service()
+        await svc.send(
+            user_id=admin.id,
+            phone=admin_phone,
+            template_code="admin.support_inquiry_created",
+            variables={
+                "user_name": user_name,
+                "inquiry_subject": inquiry_subject,
+            },
+            idempotency_key=f"support_inquiry:{inquiry_id}:admin_alert",
+        )
+    except Exception:
+        logger.warning(
+            "support.inquiry.admin_notify_failed",
+            inquiry_id=inquiry_id,
+        )

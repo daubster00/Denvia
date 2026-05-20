@@ -11,6 +11,9 @@ function makeStatus(overrides: Partial<AutoFreeOnlyStatus> = {}): AutoFreeOnlySt
     current_percent: 12.5,
     monthly_limit_usd: "100.00",
     spent_usd: "12.50",
+    monthly_limit_krw: 140_000,
+    spent_krw: 17_500,
+    usd_to_krw: 1400,
     ...overrides,
   };
 }
@@ -30,6 +33,7 @@ describe("AutoModeCard", () => {
           activated_at: "2026-05-07T05:23:00+00:00",
           current_percent: 102.5,
           spent_usd: "102.50",
+          spent_krw: 143_500,
         })}
       />,
     );
@@ -38,11 +42,11 @@ describe("AutoModeCard", () => {
     expect(screen.getByText(/2026-05-07 14:23 \(KST\)/)).toBeTruthy();
   });
 
-  it("year_month / 사용량(%) / 한도 USD 메타 노출", () => {
+  it("year_month / 사용량(%) / KRW 한도 메타 노출", () => {
     render(<AutoModeCard status={makeStatus({ current_percent: 87.34 })} />);
     expect(screen.getByText("2026-05")).toBeTruthy();
     expect(screen.getByText("87.34%")).toBeTruthy();
-    expect(screen.getByText("$100.00")).toBeTruthy();
+    expect(screen.getByText("₩140,000")).toBeTruthy();
   });
 
   it("예산 한도 상향 링크 노출", () => {

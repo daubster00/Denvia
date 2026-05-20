@@ -187,7 +187,7 @@ export default function RevenueDashboardPage() {
               value={`${data.token_cost_krw.toLocaleString("ko-KR")}원`}
               trend={{
                 direction: "flat",
-                text: `USD ${data.token_cost_usd} · 환율 ₩${data.usd_to_krw.toLocaleString("ko-KR")}/$`,
+                text: `환율 ₩${data.usd_to_krw.toLocaleString("ko-KR")}/$ 적용 (OpenAI 청구 USD ${data.token_cost_usd} 환산)`,
               }}
             />
             <KPICard

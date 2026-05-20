@@ -7,6 +7,9 @@ export interface UserTokensRow {
   total_input_tokens: number;
   total_output_tokens: number;
   total_cost_usd: string;
+  // 전체 시스템 KRW 통일 — 응답 시점 환율로 환산된 보조 필드.
+  total_cost_krw: number;
+  avg_cost_per_question_krw: number;
   question_count: number;
   avg_cost_per_question: string;
 }
@@ -18,6 +21,7 @@ export interface UserTokensListResponse {
   total: number;
   range: string;
   year_month: string | null;
+  usd_to_krw: number;
 }
 
 export interface FetchUserTokensParams {
@@ -138,6 +142,8 @@ export interface FeedbackItem {
   answer_text: string | null;
   rating: "good" | "bad";
   segment: string | null;
+  user_id: number | null;
+  email: string | null;
   created_at: string;
 }
 

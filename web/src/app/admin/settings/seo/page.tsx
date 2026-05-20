@@ -237,8 +237,9 @@ export default function SeoSettingsPage() {
 
           <h2 className={styles.cardTitle}>이미지 자산</h2>
           <p className={styles.cardCaption}>
-            업로드 버튼으로 새 이미지를 올리거나, 이미 인터넷에 올라간 이미지
-            주소를 붙여넣을 수 있습니다.
+            파일 업로드 버튼으로 컴퓨터에 저장된 이미지를 직접 등록합니다.
+            업로드 즉시 서버에 저장되며, 인터넷 주소를 직접 붙여넣는 방식은
+            지원하지 않습니다.
           </p>
 
           {/* 파비콘 */}
@@ -263,15 +264,6 @@ export default function SeoSettingsPage() {
                 )}
               </div>
               <div className={styles.assetControls}>
-                <input
-                  type="text"
-                  className={styles.assetUrlInput}
-                  value={draft.favicon_url}
-                  onChange={(e) =>
-                    setDraft({ ...draft, favicon_url: e.target.value })
-                  }
-                  placeholder="/static/seo-assets/... 또는 https://..."
-                />
                 <div className={styles.uploadRow}>
                   <button
                     type="button"
@@ -324,15 +316,6 @@ export default function SeoSettingsPage() {
                 )}
               </div>
               <div className={styles.assetControls}>
-                <input
-                  type="text"
-                  className={styles.assetUrlInput}
-                  value={draft.og_image_url}
-                  onChange={(e) =>
-                    setDraft({ ...draft, og_image_url: e.target.value })
-                  }
-                  placeholder="/static/seo-assets/... 또는 https://..."
-                />
                 <div className={styles.uploadRow}>
                   <button
                     type="button"

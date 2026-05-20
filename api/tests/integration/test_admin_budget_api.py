@@ -10,9 +10,17 @@ import jwt as pyjwt
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from api.src.deps.redis import get_redis_runtime
 from api.src.main import app
 from api.src.models.base import get_session
 from api.src.settings import settings
+
+
+async def _fake_redis_runtime():
+    """get_redis_runtime override — .get(KEY) → None → DEFAULT_USD_TO_KRW(1400) 폴백 경로."""
+    mock = MagicMock()
+    mock.get = AsyncMock(return_value=None)
+    yield mock
 
 
 def _make_jwt(role: str = "admin", sub_status: str = "free") -> str:
@@ -119,6 +127,7 @@ class TestBudgetCurrentMonthEndpoint:
             patch.object(app, "dependency_overrides", {get_session: gen}),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 res = await client.get(
                     "/api/v1/admin/budget/current-month",
@@ -144,6 +153,7 @@ class TestBudgetCurrentMonthEndpoint:
             patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)),
         ):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 res = await client.get(
                     "/api/v1/admin/budget/current-month",
@@ -159,6 +169,7 @@ class TestBudgetCurrentMonthEndpoint:
         gen = _mock_db_with_budget(modes=["auto_free_only"])
         with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 res = await client.get(
                     "/api/v1/admin/budget/current-month",
@@ -176,6 +187,7 @@ class TestBudgetCurrentMonthEndpoint:
         gen = _mock_db_with_budget(modes=["auto_free_only", "manual_total"])
         with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 res = await client.get(
                     "/api/v1/admin/budget/current-month",
@@ -193,6 +205,7 @@ class TestBudgetCurrentMonthEndpoint:
         gen = _mock_db_with_budget(spent=Decimal("12.34"), limit=Decimal("100.00"), modes=[])
         with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 res = await client.get(
                     "/api/v1/admin/budget/current-month",

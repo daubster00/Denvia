@@ -168,6 +168,15 @@ export function TopNav({ onResetChat }: TopNavProps) {
                   >
                     마이페이지
                   </Link>
+                  <Link
+                    href="/my/profile"
+                    role="menuitem"
+                    className={styles.menuItem}
+                    aria-current={pathname === "/my/profile" ? "page" : undefined}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    회원정보
+                  </Link>
                   <button
                     type="button"
                     role="menuitem"

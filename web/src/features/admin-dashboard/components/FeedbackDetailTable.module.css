@@ -67,11 +67,11 @@
 }
 
 .colQuestion {
-  width: 40%;
+  width: 34%;
 }
 
 .colAnswer {
-  width: 27%;
+  width: 24%;
 }
 
 .colRating {
@@ -79,7 +79,7 @@
 }
 
 .colSegment {
-  width: 9%;
+  width: 18%;
 }
 
 .colDate {
@@ -161,6 +161,28 @@
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.accountLink {
+  display: inline-block;
+  max-width: 100%;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.accountLink:hover,
+.accountLink:focus-visible {
+  text-decoration: underline;
+}
+
+.accountAnon {
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .pagination {
