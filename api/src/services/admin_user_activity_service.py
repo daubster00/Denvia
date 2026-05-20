@@ -21,17 +21,18 @@ from api.src.models.anomaly_event import AnomalyEvent
 from api.src.models.customer_inquiry import CustomerInquiry
 from api.src.models.qa_log import QALog
 from api.src.schemas.admin.user_activity import (
+    RetrievedDocItem,
     UserAnomalyEventItem,
     UserAnomalyEventListResponse,
     UserInquiryItem,
     UserInquiryListResponse,
+    UserQALogDetail,
     UserQALogItem,
     UserQALogListResponse,
 )
 
 logger = structlog.get_logger(__name__)
 
-_QA_EXCERPT_LEN = 120
 _INQUIRY_PREVIEW_LEN = 120
 
 
@@ -70,7 +71,8 @@ async def list_user_qa_logs(
     items = [
         UserQALogItem(
             qa_log_id=row.id,
-            question_excerpt=_excerpt(row.question_text, _QA_EXCERPT_LEN),
+            question_excerpt=row.question_text or "",
+            answer_excerpt=row.answer_text or "",
             input_tokens=row.input_tokens,
             output_tokens=row.output_tokens,
             cost_usd=row.cost_usd,
@@ -83,6 +85,53 @@ async def list_user_qa_logs(
     ]
     return UserQALogListResponse(
         items=items, page=page, per_page=per_page, total=int(total)
+    )
+
+
+async def get_user_qa_log_detail(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    qa_log_id: int,
+) -> UserQALogDetail | None:
+    """qa_logs 단건 상세 — 관리자 '상세보기' 전용.
+
+    user_id × qa_log_id 교차 검증으로 다른 사용자의 로그 노출을 차단한다.
+    반환은 normalized_query, retrieved_docs 포함 (본 마이그레이션 이전 행은 None).
+    """
+    row = (
+        await db.execute(
+            select(QALog).where(QALog.id == qa_log_id, QALog.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+
+    raw_docs = row.retrieved_docs or []
+    docs: list[RetrievedDocItem] = []
+    for entry in raw_docs:
+        if not isinstance(entry, dict):
+            continue
+        docs.append(
+            RetrievedDocItem(
+                page_content=str(entry.get("page_content", "")),
+                metadata=entry.get("metadata") or {},
+            )
+        )
+
+    return UserQALogDetail(
+        qa_log_id=row.id,
+        question_text=row.question_text or "",
+        normalized_query=row.normalized_query,
+        retrieved_docs=docs,
+        answer_text=row.answer_text,
+        rule_matched=bool(row.rule_matched),
+        status=row.status,
+        input_tokens=row.input_tokens,
+        output_tokens=row.output_tokens,
+        cost_usd=row.cost_usd,
+        latency_ms=row.latency_ms,
+        created_at=row.created_at,
     )
 
 
@@ -172,6 +221,7 @@ async def list_user_anomaly_events(
 
 __all__ = [
     "list_user_qa_logs",
+    "get_user_qa_log_detail",
     "list_user_inquiries",
     "list_user_anomaly_events",
 ]

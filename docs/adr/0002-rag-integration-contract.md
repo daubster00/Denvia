@@ -1,9 +1,9 @@
 # ADR-0002: RAG 통합 계약 — 수정 허용·금지 정책
 
-> **최종 수정일:** 2026-04-24
+> **최종 수정일:** 2026-05-20
 > **작성자:** Hyung woo
 > **승인자:** (인수자 검토 시 기입)
-> **버전:** v1.0
+> **버전:** v1.1
 > **관련 FR/Story:** FR51·FR52·FR53·FR54 / Story 2.1·8.1·8.3·8.4·9.5a
 
 ---
@@ -109,6 +109,20 @@ PR 작성자와 reviewer 모두 아래 3문항이 **Yes**여야 머지할 수 �
 - ① 동일 입력 → 동일 출력 유지 (텍스트·문서 메타·토큰량 ± 허용 오차)
 - ② 동의어 정규화·장애인가산 매칭 결과가 기존과 동일
 - ③ 모델·retriever 파라미터 기본값 유지 (`text-embedding-3-large`·`o4-mini`·`k=5`)
+
+### 4. 관리자 감사 목적 저장 단서 (v1.1, 2026-05-20)
+
+`return_source_documents` 토글과 동의어 치환 후 쿼리(`normalized_query`)는
+**SSE 응답·사용자 노출에 사용하지 않는다**는 원칙은 유지한다. 다만 관리자 페이지
+"사용자 → 질의 → 상세보기" 감사 흐름을 위해 다음 저장은 허용한다.
+
+- `qa_logs.normalized_query` (TEXT): `apply_scaling_rules` + `normalize_query` 적용 후 retriever/룰 엔진에 전달된 최종 쿼리.
+- `qa_logs.retrieved_docs` (JSONB): top-k 검색 문서들의 `{page_content, metadata}` 직렬화. 본문은 2000자 컷오프.
+
+조건:
+- 본 데이터는 **관리자(`require_admin`) 가드 라우터에서만 노출**한다.
+- SSE 이벤트(`token`/`done`/`rule_matched`/`reframe`/`error`) 페이로드에는 절대 포함하지 않는다.
+- 결과 의도(동일 입력 → 동일 출력)는 변경되지 않는다 — `return_source_documents=True`는 저장만 추가하며, 응답 텍스트·토큰 사용량·매칭 결과에 영향 없음 (체크리스트 3문항 통과 유지).
 
 ---
 

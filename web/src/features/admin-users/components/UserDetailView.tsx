@@ -206,7 +206,16 @@ export function UserDetailView({
                       입력 {qa.input_tokens ?? "—"} · 출력 {qa.output_tokens ?? "—"}
                     </span>
                   </div>
-                  <p className={styles.qaText}>{qa.question_excerpt}</p>
+                  <div className={styles.qaBlock}>
+                    <span className={styles.qaLabelQ}>Q</span>
+                    <p className={styles.qaText}>{qa.question_excerpt}</p>
+                  </div>
+                  <div className={styles.qaBlock}>
+                    <span className={styles.qaLabelA}>A</span>
+                    <p className={styles.qaAnswer}>
+                      {qa.answer_excerpt ?? "—"}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ul>

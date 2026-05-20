@@ -27,6 +27,8 @@ import {
   formatDiffField,
 } from "@/features/admin-users/labels";
 import styles from "./UserActivityLogs.module.css";
+import drawerStyles from "./QALogDetailDrawer.module.css";
+import { QALogDetailDrawer } from "./QALogDetailDrawer";
 
 interface Props {
   userId: number;
@@ -203,6 +205,7 @@ function PanelChrome({
 
 function QATab({ userId }: { userId: number }) {
   const [page, setPage] = useState(1);
+  const [openQaLogId, setOpenQaLogId] = useState<number | null>(null);
   const query = useQuery<PagedResponse<UserQALogItem>>({
     queryKey: ["admin", "users", userId, "qa-logs", page],
     queryFn: () => fetchUserQALogs({ userId, page, perPage: PER_PAGE }),
@@ -221,23 +224,45 @@ function QATab({ userId }: { userId: number }) {
             <thead>
               <tr>
                 <th>일시</th>
-                <th>질문</th>
+                <th>질의</th>
                 <th>입력/출력</th>
                 <th>상태</th>
+                <th aria-label="상세보기" />
               </tr>
             </thead>
             <tbody>
               {items.map((row) => (
                 <tr key={row.qa_log_id}>
                   <td className={styles.muted}>{fmt(row.created_at)}</td>
-                  <td className={styles.cellQuestion}>
-                    {row.question_excerpt || "—"}
+                  <td className={styles.cellQA}>
+                    <div className={styles.qaBlock}>
+                      <span className={styles.qaLabelQ}>Q</span>
+                      <p className={styles.qaText}>
+                        {row.question_excerpt || "—"}
+                      </p>
+                    </div>
+                    <div className={styles.qaBlock}>
+                      <span className={styles.qaLabelA}>A</span>
+                      <p className={styles.qaAnswer}>
+                        {row.answer_excerpt || "—"}
+                      </p>
+                    </div>
                   </td>
                   <td className={styles.muted}>
                     {row.input_tokens ?? "—"} / {row.output_tokens ?? "—"}
                   </td>
                   <td>
                     <span className={styles.chip}>{row.status ?? "—"}</span>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={drawerStyles.detailButton}
+                      onClick={() => setOpenQaLogId(row.qa_log_id)}
+                      data-testid={`qa-log-detail-button-${row.qa_log_id}`}
+                    >
+                      상세보기
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -251,6 +276,13 @@ function QATab({ userId }: { userId: number }) {
         perPage={PER_PAGE}
         onChange={setPage}
       />
+      {openQaLogId !== null ? (
+        <QALogDetailDrawer
+          userId={userId}
+          qaLogId={openQaLogId}
+          onClose={() => setOpenQaLogId(null)}
+        />
+      ) : null}
     </PanelChrome>
   );
 }

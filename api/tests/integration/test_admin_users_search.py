@@ -68,7 +68,7 @@ def _make_search_item(
         user_id=user_id,
         email=email,
         phone="01012345678",
-        segment="dentist",
+        segment="doctor",
         years_of_experience=5,
         subscription_status=subscription_status,
         is_blocked=(subscription_status == "blocked"),
@@ -152,9 +152,9 @@ class TestAdminUsersList:
             "api.src.routers.admin.users.admin_user_service.search_users",
             new=AsyncMock(return_value=response),
         ) as service_mock:
-            res = await self._call("?segment=dentist")
+            res = await self._call("?segment=doctor")
         assert res.status_code == 200
-        assert service_mock.call_args.kwargs.get("segment") == "dentist"
+        assert service_mock.call_args.kwargs.get("segment") == "doctor"
 
     async def test_list_with_blocked_true_filter(self):
         response = UserSearchListResponse(items=[], page=1, per_page=20, total=0)
@@ -172,11 +172,11 @@ class TestAdminUsersList:
             "api.src.routers.admin.users.admin_user_service.search_users",
             new=AsyncMock(return_value=response),
         ) as service_mock:
-            res = await self._call("?q=test&segment=dentist&subscription_status=pro")
+            res = await self._call("?q=test&segment=doctor&subscription_status=pro")
         assert res.status_code == 200
         kwargs = service_mock.call_args.kwargs
         assert kwargs.get("q") == "test"
-        assert kwargs.get("segment") == "dentist"
+        assert kwargs.get("segment") == "doctor"
         assert kwargs.get("subscription_status") == "pro"
 
     async def test_list_per_page_over_max_returns_422(self):

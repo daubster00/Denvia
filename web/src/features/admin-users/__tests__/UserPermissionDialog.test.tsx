@@ -26,7 +26,7 @@ function makeUser(overrides: Partial<UserSearchItem> = {}): UserSearchItem {
     user_id: 12,
     email: "user@example.com",
     phone: "01012345678",
-    segment: "dentist",
+    segment: "doctor",
     years_of_experience: 5,
     subscription_status: "free",
     is_blocked: false,
@@ -283,13 +283,13 @@ describe("UserPermissionDialog", () => {
         <UserPermissionDialog open user={makeUser()} onClose={() => {}} />,
       ),
     );
-    const dentistRadio = screen.getByTestId(
-      "segment-radio-dentist",
+    const doctorRadio = screen.getByTestId(
+      "segment-radio-doctor",
     ) as HTMLInputElement;
     const hygienistRadio = screen.getByTestId(
-      "segment-radio-dental_hygienist",
+      "segment-radio-hygienist",
     ) as HTMLInputElement;
-    expect(dentistRadio.checked).toBe(true);
+    expect(doctorRadio.checked).toBe(true);
     expect(hygienistRadio.checked).toBe(false);
   });
 
@@ -298,22 +298,22 @@ describe("UserPermissionDialog", () => {
       "@/features/admin-users/api/users"
     );
     (updateUserPermission as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeUser({ segment: "dental_hygienist" }),
+      makeUser({ segment: "hygienist" }),
     );
     render(
       withQuery(
         <UserPermissionDialog
           open
-          user={makeUser({ segment: "dentist" })}
+          user={makeUser({ segment: "doctor" })}
           onClose={() => {}}
         />,
       ),
     );
-    fireEvent.click(screen.getByTestId("segment-radio-dental_hygienist"));
+    fireEvent.click(screen.getByTestId("segment-radio-hygienist"));
     fireEvent.click(screen.getByTestId("save-button"));
     await waitFor(() => {
       expect(updateUserPermission).toHaveBeenCalledWith(12, {
-        segment: "dental_hygienist",
+        segment: "hygienist",
       });
     });
   });

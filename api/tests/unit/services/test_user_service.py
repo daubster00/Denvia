@@ -47,7 +47,7 @@ def _make_user(
     user.id = user_id
     user.email = email
     user.phone = "01012345678"
-    user.segment = "dentist"
+    user.segment = "doctor"
     user.years_of_experience = 5
     user.subscription_status = subscription_status
     user.daily_quota_override = daily_quota_override
@@ -231,7 +231,7 @@ class TestUpdatePermission:
             user_id=1,
             email="user@example.com",
             phone=None,
-            segment="dentist",
+            segment="doctor",
             years_of_experience=5,
             subscription_status="free",
             is_blocked=False,
@@ -460,7 +460,7 @@ class TestSpeedUpdatePermission:
             user_id=1,
             email="user@example.com",
             phone=None,
-            segment="dentist",
+            segment="doctor",
             years_of_experience=5,
             subscription_status="free",
             is_blocked=False,
@@ -602,7 +602,7 @@ class TestSegmentUpdate:
     """관리자가 가입유형을 수정하는 경로의 diff/audit 동작 검증."""
 
     async def _stub_serialize(
-        self, segment: str | None = "dentist"
+        self, segment: str | None = "doctor"
     ) -> UserSearchItem:
         return UserSearchItem(
             user_id=1,
@@ -627,10 +627,10 @@ class TestSegmentUpdate:
         self,
     ):
         user = _make_user()
-        user.segment = "dentist"
+        user.segment = "doctor"
         db = _make_db()
         request = _make_request_state()
-        payload = UserPermissionUpdateRequest(segment="dental_hygienist")
+        payload = UserPermissionUpdateRequest(segment="hygienist")
 
         with patch.object(
             user_service, "get_user_by_id", new=AsyncMock(return_value=user)
@@ -640,17 +640,17 @@ class TestSegmentUpdate:
                 "_serialize_response",
                 new=AsyncMock(
                     return_value=await self._stub_serialize(
-                        segment="dental_hygienist"
+                        segment="hygienist"
                     )
                 ),
             ):
                 await user_service.update_permission(request, 1, payload, db)
 
-        assert user.segment == "dental_hygienist"
+        assert user.segment == "hygienist"
         assert request.state.audit_action == AUDIT_USER_PERMISSION_EDIT
         diff = request.state.audit_diff
-        assert diff["before"]["segment"] == "dentist"
-        assert diff["after"]["segment"] == "dental_hygienist"
+        assert diff["before"]["segment"] == "doctor"
+        assert diff["after"]["segment"] == "hygienist"
         # 다른 필드는 변경되지 않았으므로 diff에서 제외
         assert "subscription_status" not in diff["before"]
         assert "daily_quota_override" not in diff["before"]
@@ -658,12 +658,12 @@ class TestSegmentUpdate:
     async def test_segment_unchanged_value_is_no_op_in_diff(self):
         # 같은 값으로 PATCH 보냈을 때 diff에는 포함되지 않아야 함
         user = _make_user()
-        user.segment = "dentist"
+        user.segment = "doctor"
         user.daily_quota_override = None
         db = _make_db()
         request = _make_request_state()
         payload = UserPermissionUpdateRequest(
-            segment="dentist", daily_quota_override=50
+            segment="doctor", daily_quota_override=50
         )
 
         with patch.object(
@@ -709,4 +709,4 @@ class TestSegmentUpdate:
     async def test_segment_invalid_value_rejected_at_schema(self):
         # Pydantic Literal — 3종 외 값은 422
         with pytest.raises(Exception):
-            UserPermissionUpdateRequest(segment="doctor")  # type: ignore[arg-type]
+            UserPermissionUpdateRequest(segment="dentist")  # type: ignore[arg-type]

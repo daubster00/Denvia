@@ -11,7 +11,7 @@ function makeItem(overrides: Partial<UserSearchItem> = {}): UserSearchItem {
     user_id: 1,
     email: "user@example.com",
     phone: "01012345678",
-    segment: "dentist",
+    segment: "doctor",
     years_of_experience: 5,
     subscription_status: "free",
     is_blocked: false,

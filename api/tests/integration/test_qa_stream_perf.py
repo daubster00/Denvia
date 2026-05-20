@@ -88,7 +88,7 @@ async def test_rag_stream_ttfb_p95_under_3s():
         ttfb = None
         t0 = time.perf_counter()
 
-        async def _noop(u, full):
+        async def _noop(u, full, docs):
             pass
 
         async for _ in qr.stream_rag_answer(q, _noop):

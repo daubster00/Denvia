@@ -18,6 +18,10 @@ export interface SearchFilters {
   segment: Segment | null;
   subscription_status: SubscriptionStatus | null;
   blocked: boolean | null;
+  /** 가입일 시작 (YYYY-MM-DD, KST 해당일 포함). 빈 문자열 = 미지정. */
+  created_from: string;
+  /** 가입일 종료 (YYYY-MM-DD, KST 해당일 포함). 빈 문자열 = 미지정. */
+  created_to: string;
 }
 
 interface Props {
@@ -30,8 +34,8 @@ interface Props {
 
 const SEGMENT_OPTIONS: { value: Segment | "all"; label: string }[] = [
   { value: "all", label: "전체" },
-  { value: "dentist", label: "치과의사" },
-  { value: "dental_hygienist", label: "치과위생사" },
+  { value: "doctor", label: "치과의사" },
+  { value: "hygienist", label: "치과위생사" },
   { value: "student_other", label: "학생/기타" },
 ];
 
@@ -100,6 +104,19 @@ export function SearchFilterBar({
     });
   }
 
+  function handleCreatedFromChange(event: ChangeEvent<HTMLInputElement>) {
+    onChange({ ...value, created_from: event.target.value });
+  }
+
+  function handleCreatedToChange(event: ChangeEvent<HTMLInputElement>) {
+    onChange({ ...value, created_to: event.target.value });
+  }
+
+  const dateRangeInvalid =
+    !!value.created_from &&
+    !!value.created_to &&
+    value.created_from > value.created_to;
+
   return (
     <div
       className={styles.bar}
@@ -154,6 +171,31 @@ export function SearchFilterBar({
           </option>
         ))}
       </select>
+
+      <div className={styles.dateRange} role="group" aria-label="가입일 범위">
+        <span className={styles.dateLabel}>가입일</span>
+        <input
+          type="date"
+          className={styles.dateInput}
+          value={value.created_from}
+          max={value.created_to || undefined}
+          onChange={handleCreatedFromChange}
+          aria-label="가입일 시작"
+          aria-invalid={dateRangeInvalid || undefined}
+        />
+        <span className={styles.dateSeparator} aria-hidden="true">
+          ~
+        </span>
+        <input
+          type="date"
+          className={styles.dateInput}
+          value={value.created_to}
+          min={value.created_from || undefined}
+          onChange={handleCreatedToChange}
+          aria-label="가입일 종료"
+          aria-invalid={dateRangeInvalid || undefined}
+        />
+      </div>
 
       <button
         type="button"

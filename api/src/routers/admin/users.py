@@ -12,6 +12,7 @@ GET /admin/users/{user_id} — 단건 상세 (Drawer 4 섹션)
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 import structlog
@@ -27,6 +28,7 @@ from api.src.models.user import User
 from api.src.schemas.admin.user_activity import (
     UserAnomalyEventListResponse,
     UserInquiryListResponse,
+    UserQALogDetail,
     UserQALogListResponse,
 )
 from api.src.schemas.admin.users import (
@@ -83,21 +85,38 @@ def _admin_user_id_key(request: Request) -> str:
 async def list_users(
     request: Request,
     q: str | None = Query(None, min_length=1, max_length=100),
-    segment: Literal["dentist", "dental_hygienist", "student_other"] | None = Query(None),
+    segment: Literal["doctor", "hygienist", "student_other"] | None = Query(None),
     subscription_status: Literal["free", "pro", "blocked"] | None = Query(None),
     blocked: bool | None = Query(None),
+    created_from: date | None = Query(
+        None, description="가입일 시작(KST, YYYY-MM-DD). 해당일 00:00부터 포함."
+    ),
+    created_to: date | None = Query(
+        None, description="가입일 종료(KST, YYYY-MM-DD). 해당일 23:59까지 포함."
+    ),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ) -> UserSearchListResponse:
     """관리자용 사용자 통합 검색 (GET이므로 audit_logs INSERT 없음)."""
+    if created_from is not None and created_to is not None and created_from > created_to:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "ADMIN_USERS_INVALID_DATE_RANGE",
+                "message": "가입일 시작이 종료보다 늦을 수 없습니다.",
+            },
+        )
+
     result = await admin_user_service.search_users(
         db,
         q=q,
         segment=segment,
         subscription_status=subscription_status,
         blocked=blocked,
+        created_from=created_from,
+        created_to=created_to,
         page=page,
         per_page=per_page,
     )
@@ -112,6 +131,8 @@ async def list_users(
             "segment": segment,
             "subscription_status": subscription_status,
             "blocked": blocked,
+            "created_from": created_from.isoformat() if created_from else None,
+            "created_to": created_to.isoformat() if created_to else None,
         },
         page=page,
         per_page=per_page,
@@ -168,6 +189,46 @@ async def list_user_qa_logs(
         trace_id=str(getattr(request.state, "trace_id", "")),
     )
     return result
+
+
+@router.get(
+    "/{user_id}/qa-logs/{qa_log_id}",
+    response_model=UserQALogDetail,
+)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def get_user_qa_log_detail(
+    request: Request,
+    user_id: int,
+    qa_log_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> UserQALogDetail:
+    """관리자용 단건 질의 상세 — '상세보기' 버튼.
+
+    응답에 ``normalized_query``, ``retrieved_docs`` 포함. SSE/사용자 응답에는
+    절대 노출되지 않는 데이터로, 관리자 감사 목적 한정 (ADR-0002 보강).
+    본 마이그레이션(0038) 이전 행은 두 필드 모두 NULL/빈 리스트.
+    """
+    await _require_user_exists(db, user_id)
+    detail = await admin_user_activity_service.get_user_qa_log_detail(
+        db, user_id=user_id, qa_log_id=qa_log_id
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_QA_LOG_NOT_FOUND",
+                "message": "질의 기록을 찾을 수 없습니다.",
+            },
+        )
+    logger.info(
+        "admin.users.activity.qa_log.detail_viewed",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        qa_log_id=qa_log_id,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return detail
 
 
 @router.get("/{user_id}/inquiries", response_model=UserInquiryListResponse)

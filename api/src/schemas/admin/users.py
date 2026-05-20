@@ -64,10 +64,11 @@ class SubscriptionSummary(BaseModel):
 
 
 class RecentQALog(BaseModel):
-    """최근 질의 1건 (60자 발췌 + 토큰 + 비용)."""
+    """최근 질의 1건 (질문/답변 전문 + 토큰 + 비용)."""
 
     qa_log_id: int
     question_excerpt: str
+    answer_excerpt: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
     cost_usd: Decimal | None = None
@@ -114,7 +115,7 @@ class UserPermissionUpdateRequest(BaseModel):
     """
 
     subscription_status: Literal["free", "pro", "blocked"] | None = None
-    segment: Literal["dentist", "dental_hygienist", "student_other"] | None = Field(
+    segment: Literal["doctor", "hygienist", "student_other"] | None = Field(
         default=None,
         description="가입유형 — 관리자가 사용자 분류를 교정할 때 사용 (SSOT 편차 #1: 관리자만 변경 가능).",
     )

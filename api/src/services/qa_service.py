@@ -122,6 +122,8 @@ class QAService:
         if user.subscription_status == "admin":
             return
 
+        t0 = time.perf_counter()
+
         # Story 6.5 — rapid_questions 자동 탐지 hook (편차 4)
         await anomaly_service.check_rapid_questions(
             user_id=user.id,
@@ -133,6 +135,7 @@ class QAService:
             await db.commit()
         except Exception:
             await db.rollback()
+        t_anomaly_ms = int((time.perf_counter() - t0) * 1000)
 
         key = _today_key_kst(user.id)
         used = await redis_quota.incr(key)
@@ -140,6 +143,7 @@ class QAService:
             await redis_quota.expire(key, 86400)
 
         limit, src = await _resolve_daily_limit(user, redis_runtime)
+        t_quota_ms = int((time.perf_counter() - t0) * 1000) - t_anomaly_ms
 
         logger.debug(
             "qa.quota.resolved",
@@ -204,10 +208,23 @@ class QAService:
         )
 
         delay, _dsrc = await _resolve_delay(user, redis_runtime)
+        t_before_sleep_ms = int((time.perf_counter() - t0) * 1000)
         if delay > 0:
             delay_float = float(delay)
             logger.info("qa.free_delay.applied", user_id=user.id, delay_seconds=delay_float)
             await asyncio.sleep(delay_float)
+
+        # 진단용 elapsed breakdown (TTFT 추적). PII 없음.
+        logger.info(
+            "qa.preflight.timings_ms",
+            user_id=user.id,
+            subscription_status=user.subscription_status,
+            anomaly_ms=t_anomaly_ms,
+            quota_ms=t_quota_ms,
+            pre_sleep_ms=t_before_sleep_ms,
+            total_ms=int((time.perf_counter() - t0) * 1000),
+            free_delay_seconds=float(delay) if delay > 0 else 0.0,
+        )
 
     async def echo(
         self,
@@ -262,6 +279,7 @@ class QAService:
 
         t0 = time.perf_counter()
         aborted = False
+        first_token_logged = False
 
         # AC-4: 요청 시작 시 즉시 INSERT (취소 추적 가능)
         trace_id = structlog.contextvars.get_contextvars().get("trace_id")
@@ -277,15 +295,27 @@ class QAService:
         await db.refresh(log)
         qa_log_id = log.id
         await db.commit()  # 별도 트랜잭션 — 스트리밍 중 락 회피
+        t_log_insert_ms = int((time.perf_counter() - t0) * 1000)
 
         try:
             # RAG 자산 호출 — vendor/rag CLI 순서 보존 (ADR-0002 §결정 1·2)
             await query_runner.ensure_initialized()
+            t_init_ms = int((time.perf_counter() - t0) * 1000)
             scaled = await asyncio.to_thread(apply_scaling_rules, question_text)
             syn_dict = await asyncio.to_thread(get_syn_dict)
             normalized = await asyncio.to_thread(normalize_query, scaled, syn_dict)
             rule_answer = await asyncio.to_thread(generate_rule_answer, normalized)
             procedures = await asyncio.to_thread(extract_procedures, normalized)
+            t_prep_done_ms = int((time.perf_counter() - t0) * 1000)
+            logger.info(
+                "qa.stream.prep_timings_ms",
+                qa_log_id=qa_log_id,
+                user_id=user.id,
+                log_insert_ms=t_log_insert_ms,
+                ensure_init_ms=t_init_ms - t_log_insert_ms,
+                rag_prep_5_steps_ms=t_prep_done_ms - t_init_ms,
+                total_before_llm_ms=t_prep_done_ms,
+            )
 
             # AC-2 분기 조건 (원본 CLI 기준, ADR-0002 §결정 1)
             use_rule = (
@@ -294,9 +324,19 @@ class QAService:
                 and rule_answer is not None
             )
 
+            retrieved_docs_payload: list[dict] = []
+
             if use_rule:
                 # 룰 응답 경로: rule_matched → token 1회 → done
                 yield {"event": "rule_matched", "data": json.dumps({"procedure_count": len(procedures)})}
+                logger.info(
+                    "qa.stream.first_token_ms",
+                    qa_log_id=qa_log_id,
+                    user_id=user.id,
+                    path="rule",
+                    ttft_ms=int((time.perf_counter() - t0) * 1000),
+                )
+                first_token_logged = True
                 yield {"event": "token", "data": json.dumps({"delta": rule_answer})}
                 accumulated = rule_answer
                 usage = TokenUsage(0, 0, 0, 0.0)
@@ -304,16 +344,28 @@ class QAService:
                 # RAG 경로: stream_rag_answer async iter → token 다회 → done
                 accumulated_chunks: list[str] = []
                 usage_holder: list[TokenUsage] = []
+                docs_holder: list[list[dict]] = []
 
-                def _on_complete(u: TokenUsage, full: str) -> None:
+                def _on_complete(u: TokenUsage, full: str, docs: list[dict]) -> None:
                     usage_holder.append(u)
+                    docs_holder.append(docs)
 
                 async for token in query_runner.stream_rag_answer(normalized, _on_complete):
+                    if not first_token_logged:
+                        logger.info(
+                            "qa.stream.first_token_ms",
+                            qa_log_id=qa_log_id,
+                            user_id=user.id,
+                            path="rag",
+                            ttft_ms=int((time.perf_counter() - t0) * 1000),
+                        )
+                        first_token_logged = True
                     accumulated_chunks.append(token)
                     yield {"event": "token", "data": json.dumps({"delta": token})}
 
                 accumulated = "".join(accumulated_chunks)
                 usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
+                retrieved_docs_payload = docs_holder[0] if docs_holder else []
 
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -344,6 +396,9 @@ class QAService:
             log.cost_usd = Decimal(str(usage.cost_usd))
             log.latency_ms = latency_ms
             log.status = "completed"
+            # 관리자 감사용 — 동의어 치환 후 쿼리와 top-k 문서 (rule 경로면 docs는 빈 리스트)
+            log.normalized_query = normalized
+            log.retrieved_docs = retrieved_docs_payload
             await db.commit()
 
             # Story 2.6: structuring usage 별도 structlog 관측 (qa_logs 무합산)

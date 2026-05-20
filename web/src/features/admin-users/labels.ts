@@ -8,8 +8,8 @@ import type {
 } from "@/features/admin-users/api/users";
 
 export const SEGMENT_LABELS: Record<Segment, string> = {
-  dentist: "치과의사",
-  dental_hygienist: "치과위생사",
+  doctor: "치과의사",
+  hygienist: "치과위생사",
   student_other: "학생/기타",
 };
 

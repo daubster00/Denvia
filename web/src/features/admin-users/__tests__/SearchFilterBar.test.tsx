@@ -10,6 +10,8 @@ const baseValue: SearchFilters = {
   segment: null,
   subscription_status: null,
   blocked: null,
+  created_from: "",
+  created_to: "",
 };
 
 beforeEach(() => {
@@ -57,9 +59,9 @@ describe("SearchFilterBar", () => {
       />,
     );
     const select = screen.getByLabelText("가입유형 필터");
-    fireEvent.change(select, { target: { value: "dentist" } });
+    fireEvent.change(select, { target: { value: "doctor" } });
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ segment: "dentist" }),
+      expect.objectContaining({ segment: "doctor" }),
     );
   });
 

@@ -9,12 +9,33 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export interface UserQALogItem {
   qa_log_id: number;
   question_excerpt: string;
+  answer_excerpt: string;
   input_tokens: number | null;
   output_tokens: number | null;
   cost_usd: string | null;
   latency_ms: number | null;
   status: string | null;
   rule_matched: boolean;
+  created_at: string;
+}
+
+export interface RetrievedDocItem {
+  page_content: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface UserQALogDetail {
+  qa_log_id: number;
+  question_text: string;
+  normalized_query: string | null;
+  retrieved_docs: RetrievedDocItem[];
+  answer_text: string | null;
+  rule_matched: boolean;
+  status: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_usd: string | null;
+  latency_ms: number | null;
   created_at: string;
 }
 
@@ -70,6 +91,14 @@ export async function fetchUserQALogs(
   const qs = buildQuery(params);
   return fetchJSON(
     `${API_BASE}/api/v1/admin/users/${params.userId}/qa-logs?${qs}`,
+  );
+}
+
+export async function fetchUserQALogDetail(
+  params: { userId: number; qaLogId: number },
+): Promise<UserQALogDetail> {
+  return fetchJSON(
+    `${API_BASE}/api/v1/admin/users/${params.userId}/qa-logs/${params.qaLogId}`,
   );
 }
 

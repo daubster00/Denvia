@@ -79,7 +79,7 @@ async def test_stream_rag_path_yields_token_and_done():
     async def _mock_stream(query, on_complete):
         yield "안녕"
         yield "하세요"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "안녕하세요")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "안녕하세요", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -194,7 +194,7 @@ async def test_stream_does_not_log_question_text(caplog):
 
     async def _mock_stream(query, on_complete):
         yield "답변"
-        on_complete(TokenUsage(1, 2, 3, 0.0), "답변")
+        on_complete(TokenUsage(1, 2, 3, 0.0), "답변", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -224,7 +224,7 @@ async def test_stream_inserts_immediately_then_updates():
 
     async def _mock_stream(query, on_complete):
         yield "답변"
-        on_complete(TokenUsage(1, 2, 3, 0.001), "답변")
+        on_complete(TokenUsage(1, 2, 3, 0.001), "답변", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -261,7 +261,7 @@ async def test_stream_success_sets_status_completed():
 
     async def _mock_stream(query, on_complete):
         yield "답변"
-        on_complete(TokenUsage(1, 2, 3, 0.001), "답변")
+        on_complete(TokenUsage(1, 2, 3, 0.001), "답변", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -357,7 +357,7 @@ async def test_stream_rag_with_reframe_yields_reframe_event():
 
     async def _mock_stream(query, on_complete):
         yield "어느 치아인지?"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -386,7 +386,7 @@ async def test_stream_rag_without_reframe_no_reframe_event():
 
     async def _mock_stream(query, on_complete):
         yield "임플란트 치료 방법입니다."
-        on_complete(TokenUsage(5, 10, 15, 0.002), "임플란트 치료 방법입니다.")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "임플란트 치료 방법입니다.", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -413,7 +413,7 @@ async def test_stream_aclose_sets_status_aborted():
     async def _mock_stream_many(query, on_complete):
         for ch in ["a", "b", "c"]:
             yield ch
-        on_complete(TokenUsage(0, 0, 0, 0.0), "abc")
+        on_complete(TokenUsage(0, 0, 0, 0.0), "abc", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 

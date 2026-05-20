@@ -16,7 +16,6 @@ from fastapi import HTTPException
 from api.src.services import admin_user_service
 from api.src.services.admin_user_service import (
     _build_or_clause,
-    _excerpt,
     _is_card_last4_query,
     _resolve_active_billing_keys,
     _serialize_user,
@@ -28,7 +27,7 @@ def _make_user(
     user_id: int = 1,
     email: str = "user@example.com",
     phone: str | None = "01012345678",
-    segment: str | None = "dentist",
+    segment: str | None = "doctor",
     years_of_experience: int | None = 5,
     subscription_status: str = "free",
     daily_quota_override: int | None = None,
@@ -104,20 +103,6 @@ class TestSerializeUser:
         assert item.pro_since is None
         assert item.last_login_at is None
         assert item.block_until is None
-
-
-class TestExcerpt:
-    def test_excerpt_short_text_returned_as_is(self):
-        assert _excerpt("짧은 질문") == "짧은 질문"
-
-    def test_excerpt_long_text_truncated_with_ellipsis(self):
-        long_text = "가" * 80
-        result = _excerpt(long_text, length=60)
-        assert len(result) == 61  # 60 + ellipsis char
-        assert result.endswith("…")
-
-    def test_excerpt_none_returns_empty_string(self):
-        assert _excerpt(None) == ""
 
 
 @pytest.mark.asyncio
@@ -294,6 +279,7 @@ class TestGetUserDetail:
         qa_row = MagicMock(
             id=1,
             question_text="가" * 100,
+            answer_text="나" * 200,
             input_tokens=120,
             output_tokens=380,
             cost_usd=Decimal("0.0042"),
@@ -318,7 +304,8 @@ class TestGetUserDetail:
         assert out.subscription_summary.billing_key_active is True
         assert out.subscription_summary.card_last4 == "1234"
         assert len(out.recent_qa) == 1
-        assert out.recent_qa[0].question_excerpt.endswith("…")
+        assert out.recent_qa[0].question_excerpt == "가" * 100
+        assert out.recent_qa[0].answer_excerpt == "나" * 200
         assert out.recent_qa[0].input_tokens == 120
         assert out.recent_anomaly_events == []
 

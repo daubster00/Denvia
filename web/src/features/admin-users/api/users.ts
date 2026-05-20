@@ -8,7 +8,7 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type SubscriptionStatus = "free" | "pro" | "blocked";
-export type Segment = "dentist" | "dental_hygienist" | "student_other";
+export type Segment = "doctor" | "hygienist" | "student_other";
 
 export interface UserSearchItem {
   user_id: number;
@@ -40,6 +40,10 @@ export interface FetchUsersParams {
   segment?: Segment;
   subscription_status?: SubscriptionStatus;
   blocked?: boolean;
+  /** 가입일 시작 (YYYY-MM-DD, KST 기준 해당일 포함) */
+  created_from?: string;
+  /** 가입일 종료 (YYYY-MM-DD, KST 기준 해당일 포함) */
+  created_to?: string;
   page?: number;
   per_page?: number;
 }
@@ -56,6 +60,7 @@ export interface SubscriptionSummary {
 export interface RecentQALog {
   qa_log_id: number;
   question_excerpt: string;
+  answer_excerpt: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   cost_usd: string | null;
@@ -88,6 +93,8 @@ export async function fetchUsers(
   if (params.subscription_status)
     query.set("subscription_status", params.subscription_status);
   if (params.blocked !== undefined) query.set("blocked", String(params.blocked));
+  if (params.created_from) query.set("created_from", params.created_from);
+  if (params.created_to) query.set("created_to", params.created_to);
   if (params.page) query.set("page", String(params.page));
   if (params.per_page) query.set("per_page", String(params.per_page));
 

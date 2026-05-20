@@ -15,6 +15,8 @@ const DEFAULT_FILTERS: SearchFilters = {
   segment: null,
   subscription_status: null,
   blocked: null,
+  created_from: "",
+  created_to: "",
 };
 
 const PER_PAGE = 20;
@@ -25,11 +27,18 @@ export default function AdminUsersPage() {
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
 
+  const dateRangeValid =
+    !filters.created_from ||
+    !filters.created_to ||
+    filters.created_from <= filters.created_to;
+
   const search = useUsersSearch({
     q: filters.q || undefined,
     segment: filters.segment ?? undefined,
     subscription_status: filters.subscription_status ?? undefined,
     blocked: filters.blocked ?? undefined,
+    created_from: dateRangeValid && filters.created_from ? filters.created_from : undefined,
+    created_to: dateRangeValid && filters.created_to ? filters.created_to : undefined,
     page,
     per_page: PER_PAGE,
   });

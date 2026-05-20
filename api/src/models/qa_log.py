@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -36,6 +36,9 @@ class QALog(Base):
     status: Mapped[str | None] = mapped_column(
         String(16), nullable=True, default="in_progress"
     )
+    # 관리자 감사용 (Story: QA 상세보기) — SSE 응답에 절대 노출되지 않음
+    normalized_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retrieved_docs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

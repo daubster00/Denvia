@@ -21,6 +21,8 @@ export function useUsersSearch(params: FetchUsersParams) {
         segment: params.segment ?? null,
         subscription_status: params.subscription_status ?? null,
         blocked: params.blocked ?? null,
+        created_from: params.created_from ?? null,
+        created_to: params.created_to ?? null,
         page: params.page ?? 1,
         per_page: params.per_page ?? 20,
       },

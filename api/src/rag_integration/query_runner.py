@@ -3,6 +3,7 @@
 import asyncio
 import json
 import queue
+import time
 from collections.abc import AsyncIterator
 
 import redis.asyncio as aioredis
@@ -15,6 +16,31 @@ from api.src.settings import REDIS_DB_RUNTIME_CONFIG, settings
 logger = structlog.get_logger(__name__)
 
 _initialized = False
+
+# 관리자 감사용 retrieved_docs 1건당 page_content 최대 길이.
+# 너무 길면 JSONB 컬럼 사이즈와 관리자 UI 응답이 비대해진다.
+_DOC_CONTENT_LIMIT = 2000
+
+
+def _serialize_source_documents(docs) -> list[dict]:
+    """LangChain Document 리스트를 JSON 직렬화 가능한 dict 리스트로 변환한다.
+
+    qa_logs.retrieved_docs(JSONB) 저장 전용. 관리자 감사 외 용도 금지.
+    page_content는 ``_DOC_CONTENT_LIMIT`` 길이로 잘라 폭주를 방지한다.
+    """
+    out: list[dict] = []
+    for d in docs or []:
+        content = getattr(d, "page_content", None) or ""
+        if len(content) > _DOC_CONTENT_LIMIT:
+            content = content[:_DOC_CONTENT_LIMIT] + "…"
+        metadata = getattr(d, "metadata", None) or {}
+        try:
+            json.dumps(metadata, ensure_ascii=False)
+            safe_meta = metadata
+        except (TypeError, ValueError):
+            safe_meta = {k: str(v) for k, v in metadata.items()}
+        out.append({"page_content": content, "metadata": safe_meta})
+    return out
 
 
 async def ensure_initialized() -> None:
@@ -191,15 +217,22 @@ async def stream_rag_answer(
     """RAG 체인을 streaming으로 실행해 토큰 단위로 yield한다.
 
     asyncio.to_thread + Queue 패턴 사용 (Story 2.1 패턴과 동일).
-    on_complete(usage, full_text) 콜백은 스트림 종료 시 qa_logs UPDATE용.
-    ADR-0002 §결정 2: return_source_documents=False (D-02, AR15 강제).
+    on_complete(usage, full_text, docs) 콜백은 스트림 종료 시 qa_logs UPDATE용.
+      - docs: list[dict] — RetrievalQA가 top-k로 가져온 문서들의 직렬화.
+              관리자 감사 용도(qa_logs.retrieved_docs)로만 저장하며,
+              SSE 응답이나 사용자 노출에는 절대 사용하지 않는다 (ADR-0002 보강).
+
+    return_source_documents=True 로 두지만, 결과 dict 의 'result' 필드만
+    토큰 스트림으로 흘리고 'source_documents' 는 콜백으로만 전달한다.
     """
     from rag.run_qa import get_retriever  # type: ignore[import-untyped]
     from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
 
+    t0 = time.perf_counter()
     await ensure_initialized()
     runtime = await _load_runtime_params()
+    t_runtime_loaded_ms = int((time.perf_counter() - t0) * 1000)
 
     # 프롬프트 오버라이드 구성 (async context에서 읽어 클로저로 전달)
     block_ids = ("BASE", "치식_위치", "치면_방향", "마취_산정", "브릿지")
@@ -219,7 +252,9 @@ async def stream_rag_answer(
     token_queue: queue.Queue[str | None] = queue.Queue()
     accumulated: list[str] = []
     usage_holder: list[TokenUsage] = []
+    docs_holder: list[list[dict]] = []
     exc_holder: list[BaseException] = []
+    first_token_perf: list[float] = []
 
     def _run_sync() -> None:
         """동기 스레드에서 RetrievalQA를 실행하고 토큰을 Queue에 넣는다."""
@@ -228,6 +263,8 @@ async def stream_rag_answer(
 
             class _QueueCallbackHandler(BaseCallbackHandler):
                 def on_llm_new_token(self, token: str, **kwargs) -> None:
+                    if not first_token_perf:
+                        first_token_perf.append(time.perf_counter())
                     accumulated.append(token)
                     token_queue.put(token)
 
@@ -251,15 +288,18 @@ async def stream_rag_answer(
                 llm=llm,
                 chain_type="stuff",
                 retriever=retriever,
-                return_source_documents=False,
+                return_source_documents=True,
                 chain_type_kwargs={
                     "prompt": PromptTemplate.from_template(prompt_template_str)
                 },
             )
 
             with capture_usage() as usage:
-                with_retry(chain.invoke)({"query": query})
+                result = with_retry(chain.invoke)({"query": query})
             usage_holder.append(usage)
+            # 관리자 감사용 — SSE/사용자 응답에는 흘리지 않고 docs_holder에만 적재
+            raw_docs = result.get("source_documents", []) if isinstance(result, dict) else []
+            docs_holder.append(_serialize_source_documents(raw_docs))
         except Exception as e:
             exc_holder.append(e)
         finally:
@@ -283,4 +323,18 @@ async def stream_rag_answer(
 
     full_text = "".join(accumulated)
     usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
-    on_complete(usage, full_text)
+    docs = docs_holder[0] if docs_holder else []
+
+    # 진단용: stream_rag_answer 진입부터 OpenAI 첫 토큰 도착까지의 elapsed.
+    # runtime 로드 시간과 분리해서 본다(= retriever + LLM TTFT).
+    if first_token_perf:
+        ttft_ms = int((first_token_perf[0] - t0) * 1000)
+        logger.info(
+            "rag.stream.ttft_ms",
+            runtime_load_ms=t_runtime_loaded_ms,
+            llm_ttft_ms=ttft_ms - t_runtime_loaded_ms,
+            total_ttft_ms=ttft_ms,
+            total_tokens=usage.total_tokens,
+        )
+
+    on_complete(usage, full_text, docs)

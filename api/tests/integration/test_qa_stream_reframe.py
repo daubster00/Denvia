@@ -91,7 +91,7 @@ async def test_rag_reframe_detected_event_order():
     async def _mock_stream(query, on_complete):
         yield "어느"
         yield " 치아인지?"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -127,7 +127,7 @@ async def test_rag_reframe_payload_content():
 
     async def _mock_stream(query, on_complete):
         yield "어느 치아인지?"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -158,7 +158,7 @@ async def test_rag_no_reframe_only_token_and_done():
 
     async def _mock_stream(query, on_complete):
         yield "임플란트 치료 방법입니다."
-        on_complete(TokenUsage(5, 10, 15, 0.002), "임플란트 치료 방법입니다.")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "임플란트 치료 방법입니다.", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -256,7 +256,7 @@ async def test_generator_exit_no_reframe():
     async def _mock_stream_many(query, on_complete):
         for ch in ["a", "b", "c"]:
             yield ch
-        on_complete(TokenUsage(0, 0, 0, 0.0), "abc")
+        on_complete(TokenUsage(0, 0, 0, 0.0), "abc", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
     mock_detect = AsyncMock(return_value=None)
@@ -325,7 +325,7 @@ async def test_answer_text_serialization_with_reframe():
 
     async def _mock_stream(query, on_complete):
         yield "어느 치아인지 알려주세요?"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지 알려주세요?")
+        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지 알려주세요?", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -364,7 +364,7 @@ async def test_qa_logs_cost_does_not_include_structuring_usage():
 
     async def _mock_stream(query, on_complete):
         yield "어느 치아?"
-        on_complete(rag_usage, "어느 치아?")
+        on_complete(rag_usage, "어느 치아?", [])
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 

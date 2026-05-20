@@ -18,7 +18,9 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException
@@ -41,9 +43,26 @@ from api.src.schemas.admin.users import (
 
 logger = structlog.get_logger(__name__)
 
-_QA_EXCERPT_LEN = 60
 _RECENT_QA_LIMIT = 5
 _RECENT_ANOMALY_LIMIT = 3
+_KST = ZoneInfo("Asia/Seoul")
+
+
+def _kst_created_range(
+    f: date | None, t: date | None
+) -> tuple[datetime | None, datetime | None]:
+    """가입일(created_at) from/to 날짜를 KST [시작, 끝+1일) datetime 범위로 변환.
+
+    admin_support_service._kst_date_range와 동일 패턴. 종료일은 그날 끝까지
+    포함되도록 다음날 00:00 KST를 exclusive upper bound로 사용한다.
+    """
+    start_dt: datetime | None = None
+    end_dt: datetime | None = None
+    if f is not None:
+        start_dt = datetime.combine(f, time.min).replace(tzinfo=_KST)
+    if t is not None:
+        end_dt = datetime.combine(t + timedelta(days=1), time.min).replace(tzinfo=_KST)
+    return start_dt, end_dt
 
 
 def _is_card_last4_query(q: str) -> bool:
@@ -149,9 +168,11 @@ async def search_users(
     db: AsyncSession,
     *,
     q: str | None = None,
-    segment: Literal["dentist", "dental_hygienist", "student_other"] | None = None,
+    segment: Literal["doctor", "hygienist", "student_other"] | None = None,
     subscription_status: Literal["free", "pro", "blocked"] | None = None,
     blocked: bool | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
     page: int = 1,
     per_page: int = 20,
 ) -> UserSearchListResponse:
@@ -159,6 +180,9 @@ async def search_users(
 
     blocked=True 면 subscription_status='blocked'만, blocked=False 면 그 외만,
     None이면 모든 상태를 포함한다.
+
+    created_from/created_to 는 KST 기준 가입일 범위 필터(양 끝일 포함). 한쪽만
+    지정해도 동작한다.
     """
     # 1. WHERE 절 구성 — None인 필터는 SQL에서 제외 (불필요한 분기 회피)
     conditions: list[Any] = [User.role != "admin"]  # 관리자 계정 제외
@@ -170,6 +194,12 @@ async def search_users(
         conditions.append(User.subscription_status == "blocked")
     elif blocked is False:
         conditions.append(User.subscription_status != "blocked")
+
+    start_dt, end_dt = _kst_created_range(created_from, created_to)
+    if start_dt is not None:
+        conditions.append(User.created_at >= start_dt)
+    if end_dt is not None:
+        conditions.append(User.created_at < end_dt)
 
     or_clause = _build_or_clause((q or "").strip() or None)
     if or_clause is not None:
@@ -205,15 +235,6 @@ async def search_users(
     return UserSearchListResponse(
         items=items, page=page, per_page=per_page, total=int(total)
     )
-
-
-def _excerpt(text: str | None, length: int = _QA_EXCERPT_LEN) -> str:
-    """질문 텍스트를 length자로 자르고 길면 ellipsis(…)를 붙임."""
-    if not text:
-        return ""
-    if len(text) <= length:
-        return text
-    return text[:length] + "…"
 
 
 async def get_user_detail(db: AsyncSession, user_id: int) -> UserDetailResponse:
@@ -267,7 +288,8 @@ async def get_user_detail(db: AsyncSession, user_id: int) -> UserDetailResponse:
     recent_qa = [
         RecentQALog(
             qa_log_id=row.id,
-            question_excerpt=_excerpt(row.question_text),
+            question_excerpt=row.question_text or "",
+            answer_excerpt=row.answer_text if row.answer_text else None,
             input_tokens=row.input_tokens,
             output_tokens=row.output_tokens,
             cost_usd=row.cost_usd,
