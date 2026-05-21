@@ -177,6 +177,17 @@ export function TopNav({ onResetChat }: TopNavProps) {
                   >
                     회원정보
                   </Link>
+                  <Link
+                    href="/my/inquiries"
+                    role="menuitem"
+                    className={styles.menuItem}
+                    aria-current={
+                      pathname?.startsWith("/my/inquiries") ? "page" : undefined
+                    }
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    1:1문의
+                  </Link>
                   <button
                     type="button"
                     role="menuitem"
