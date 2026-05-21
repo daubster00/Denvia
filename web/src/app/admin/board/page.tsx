@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { Option, Select } from "@wanteddev/wds";
 
 import {
   BoardApiError,
@@ -94,37 +95,43 @@ export default function AdminBoardListPage() {
 
       <div className={styles.filters}>
         <span className={styles.filterLabel}>카테고리</span>
-        <select
-          className={styles.filterSelect}
-          value={category}
-          onChange={(e) => {
-            setCategory(e.target.value as BoardCategory | "");
-            setPage(1);
-          }}
-        >
-          <option value="">전체</option>
-          {metaQuery.data?.categories.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+        <div className={styles.filterSelectWrap}>
+          <Select
+            value={category}
+            onChange={(v) => {
+              setCategory(v as BoardCategory | "");
+              setPage(1);
+            }}
+            placeholder="전체"
+            width="180px"
+          >
+            <Option value="">전체</Option>
+            {metaQuery.data?.categories.map((c) => (
+              <Option key={c.key} value={c.key}>
+                {c.label}
+              </Option>
+            ))}
+          </Select>
+        </div>
         <span className={styles.filterLabel}>상태</span>
-        <select
-          className={styles.filterSelect}
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value as BoardPostStatus | "");
-            setPage(1);
-          }}
-        >
-          <option value="">전체</option>
-          {metaQuery.data?.statuses.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+        <div className={styles.filterSelectWrap}>
+          <Select
+            value={status}
+            onChange={(v) => {
+              setStatus(v as BoardPostStatus | "");
+              setPage(1);
+            }}
+            placeholder="전체"
+            width="180px"
+          >
+            <Option value="">전체</Option>
+            {metaQuery.data?.statuses.map((s) => (
+              <Option key={s.key} value={s.key}>
+                {s.label}
+              </Option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       {listQuery.isError ? (
