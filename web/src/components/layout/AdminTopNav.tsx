@@ -25,7 +25,7 @@ export function AdminTopNav() {
 
   return (
     <header className={styles.header}>
-      <LogoLink />
+      <LogoLink href="/admin" ariaLabel="관리자 대시보드" />
 
       <div className={styles.right}>
         {admin && <span className={styles.email}>{admin.email}</span>}
