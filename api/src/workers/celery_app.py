@@ -23,6 +23,7 @@ celery_app = Celery(
         "api.src.workers.anomaly_tasks",       # Story 6.2: 차단 자동 만료
         "api.src.workers.content_schedule_tasks",  # Story 4.2: F-502 야간 차단 토글
         "api.src.workers.forex_tasks",         # Story 5.5 후속: USD→KRW 환율 일일 자동 갱신
+        "api.src.workers.career_tasks",        # 연차 매년 1월 1일 +1 자동 가산
     ],
 )
 
@@ -107,6 +108,13 @@ celery_app.conf.update(
         "forex-update-usd-krw-daily-0900": {
             "task": "forex_tasks.update_usd_krw",
             "schedule": crontab(hour=9, minute=0),
+        },
+        # 연차 자동 +1 가산 — 매년 1월 1일 00:05 KST.
+        # 자정 정각이 아닌 5분 뒤로 잡는 이유는 자정 정각 슬롯 충돌 회피 + 시스템 시각
+        # 동기화 여유. 멱등 SQL이라 같은 해 두 번 실행돼도 안전.
+        "career-annual-increment-jan-1-0005": {
+            "task": "career_tasks.annual_increment",
+            "schedule": crontab(month_of_year=1, day_of_month=1, hour=0, minute=5),
         },
     },
 )

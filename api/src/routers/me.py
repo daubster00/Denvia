@@ -58,6 +58,7 @@ from api.src.services.qa_service import (
 from api.src.settings import REDIS_DB_RATE_LIMIT, settings
 from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_session_jwt
+from api.src.utils.korean_time import now_kst
 
 logger = structlog.get_logger(__name__)
 
@@ -656,6 +657,10 @@ async def set_segment(
 
     current_user.segment = body.segment
     current_user.years_of_experience = body.years_of_experience
+    # 매년 1월 1일 +1 가산 배치의 가드값 — 가입한 해는 카운트하지 않도록
+    # 현재 KST 연도를 기록(연차가 NULL이면 가산 대상도 아니므로 None 유지).
+    if body.years_of_experience is not None:
+        current_user.experience_last_increment_year = now_kst().year
     current_user.updated_at = datetime.now(tz=timezone.utc)
     await db.commit()
 

@@ -22,6 +22,11 @@ class User(Base):
     )
     segment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     years_of_experience: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # 매년 1월 1일 00:05 KST 배치(career_tasks.annual_increment)가 +1 누적할 때 갱신.
+    # 같은 KST 연도에 두 번 실행돼도 멱등하도록 가드값으로 사용.
+    experience_last_increment_year: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True
+    )
     # 회원정보 — 마이페이지 회원정보 수정에서 사용. 모두 nullable(기존 가입자 호환).
     name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     postcode: Mapped[str | None] = mapped_column(String(10), nullable=True)
