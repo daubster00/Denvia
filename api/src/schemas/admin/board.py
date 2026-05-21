@@ -14,8 +14,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# 4가지 상태 — 0040_admin_board.py board_post_status_enum 과 동기.
-BoardPostStatus = Literal["review", "in_progress", "rejected", "on_hold"]
+# 5가지 상태 — 0040_admin_board.py + 0041_board_status_completed.py 동기.
+BoardPostStatus = Literal[
+    "review", "in_progress", "completed", "rejected", "on_hold"
+]
 
 # 카테고리 8종 — 본 프로젝트 영역 기준. 추후 추가는 ALLOWED_CATEGORIES 확장 + UI 라벨만.
 BoardCategory = Literal[

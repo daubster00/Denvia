@@ -7,7 +7,12 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type BoardPostStatus = "review" | "in_progress" | "rejected" | "on_hold";
+export type BoardPostStatus =
+  | "review"
+  | "in_progress"
+  | "completed"
+  | "rejected"
+  | "on_hold";
 
 export type BoardCategory =
   | "auth"

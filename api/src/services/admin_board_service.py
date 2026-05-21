@@ -60,10 +60,11 @@ CATEGORY_LABELS: list[dict[str, str]] = [
 ]
 ALLOWED_CATEGORIES = {c["key"] for c in CATEGORY_LABELS}
 
-# 상태 라벨 — 0040 board_post_status_enum 과 동기.
+# 상태 라벨 — 0040 + 0041_board_status_completed board_post_status_enum 과 동기.
 STATUS_LABELS: list[dict[str, str]] = [
     {"key": "review", "label": "요청사항검토"},
     {"key": "in_progress", "label": "수정중"},
+    {"key": "completed", "label": "수정완료"},
     {"key": "rejected", "label": "수정불가"},
     {"key": "on_hold", "label": "보류"},
 ]

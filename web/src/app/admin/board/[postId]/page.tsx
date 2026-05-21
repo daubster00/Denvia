@@ -8,6 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Option, Select } from "@wanteddev/wds";
 
 import { toEditorHtml } from "@/lib/asset-url";
 import {
@@ -29,6 +30,7 @@ import styles from "./page.module.css";
 const STATUS_CLASS: Record<BoardPostStatus, string> = {
   review: styles.statusReview,
   in_progress: styles.statusInProgress,
+  completed: styles.statusCompleted,
   rejected: styles.statusRejected,
   on_hold: styles.statusOnHold,
 };
@@ -208,20 +210,20 @@ export default function BoardPostDetailPage(
         <div className={styles.statusBlock}>
           <span className={styles.statusBlockLabel}>상태</span>
           {post.can_change_status ? (
-            <select
-              className={styles.statusSelect}
-              value={post.status}
-              onChange={(e) =>
-                statusMut.mutate(e.target.value as BoardPostStatus)
-              }
-              disabled={statusMut.isPending}
-            >
-              {metaQuery.data?.statuses.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            <div className={styles.statusSelectWrap}>
+              <Select
+                value={post.status}
+                onChange={(v) => statusMut.mutate(v as BoardPostStatus)}
+                disabled={statusMut.isPending}
+                width="180px"
+              >
+                {metaQuery.data?.statuses.map((s) => (
+                  <Option key={s.key} value={s.key}>
+                    {s.label}
+                  </Option>
+                ))}
+              </Select>
+            </div>
           ) : (
             <span className={`${styles.statusBadge} ${STATUS_CLASS[post.status]}`}>
               {statusLabel}
