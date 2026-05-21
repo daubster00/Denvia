@@ -4,7 +4,8 @@
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
-  z-index: 70;
+  /* TopNav header(100) / dropdown(200) 모두 가리기 위해 1000번대 사용. AppToast(1100)는 모달 위에 떠야 정상. */
+  z-index: 1000;
 }
 
 .dialog {
@@ -14,7 +15,7 @@
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
-  z-index: 80;
+  z-index: 1001;
   display: flex;
   flex-direction: column;
   overflow: hidden;
