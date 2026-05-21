@@ -23,7 +23,7 @@ from pathlib import Path
 
 import structlog
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.admin_board_comment import AdminBoardComment
@@ -69,6 +69,16 @@ STATUS_LABELS: list[dict[str, str]] = [
     {"key": "on_hold", "label": "보류"},
 ]
 ALLOWED_STATUSES = {s["key"] for s in STATUS_LABELS}
+
+# 목록 정렬 우선순위 — 위에서부터 노출되는 순서. 값이 작을수록 상단.
+# 같은 상태 내에서는 created_at DESC (최신 글이 위).
+STATUS_SORT_ORDER: dict[str, int] = {
+    "review": 1,        # 요청사항검토
+    "in_progress": 2,   # 수정중
+    "on_hold": 3,       # 보류
+    "rejected": 4,      # 수정불가
+    "completed": 5,     # 수정완료
+}
 
 # 이미지 업로드
 BOARD_IMAGE_DIR = (
@@ -160,7 +170,7 @@ async def list_posts(
     page: int = 1,
     per_page: int = 20,
 ) -> BoardPostListResponse:
-    """글 목록 — created_at DESC. 카테고리/상태 필터."""
+    """글 목록 — 상태 우선순위(검토→수정중→보류→수정불가→수정완료) 후 created_at DESC."""
     base = (
         select(
             AdminBoardPost.id,
@@ -191,9 +201,16 @@ async def list_posts(
 
     total = (await db.execute(count_q)).scalar_one()
 
+    status_order = case(
+        STATUS_SORT_ORDER,
+        value=AdminBoardPost.status,
+        else_=99,
+    )
+
     rows = (
         await db.execute(
             base.order_by(
+                status_order.asc(),
                 desc(AdminBoardPost.created_at),
                 desc(AdminBoardPost.id),
             )
