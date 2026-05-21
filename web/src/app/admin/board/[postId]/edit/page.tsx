@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Option, Select } from "@wanteddev/wds";
 
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import {
@@ -131,22 +132,19 @@ export default function EditBoardPostPage(
 
       <form className={styles.form} onSubmit={onSubmit}>
         <div className={styles.row}>
-          <label className={styles.label} htmlFor="board-edit-category">
-            카테고리
-          </label>
-          <select
-            id="board-edit-category"
-            className={styles.select}
+          <span className={styles.label}>카테고리</span>
+          <Select
             value={category}
-            onChange={(e) => setCategory(e.target.value as BoardCategory | "")}
+            onChange={(v) => setCategory(v as BoardCategory | "")}
+            placeholder="선택해주세요"
+            width="100%"
           >
-            <option value="">선택해주세요</option>
             {metaQuery.data?.categories.map((c) => (
-              <option key={c.key} value={c.key}>
+              <Option key={c.key} value={c.key}>
                 {c.label}
-              </option>
+              </Option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className={styles.row}>
