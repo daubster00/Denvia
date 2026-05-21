@@ -12,12 +12,18 @@ import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { ApiError } from "@/types/api";
 import styles from "./page.module.css";
 
+/**
+ * 입력 숫자열을 자릿수에 맞게 010-XXXX-XXXX 모양으로 점진적으로 포맷한다.
+ * - 0~3자  : "010"
+ * - 4~7자  : "010-XXXX"
+ * - 8자 이상: "010-XXXX-XXXX" (최대 11자리까지만 유지)
+ */
 function formatPhoneDisplay(raw: string): string {
-  const digits = raw.replace(/[^0-9]/g, "");
-  if (digits.length === 11 && digits.startsWith("010")) {
-    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
-  }
-  return raw;
+  const digits = raw.replace(/[^0-9]/g, "").slice(0, 11);
+  if (digits.length === 0) return "";
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
 export default function AdminAccountPage() {
@@ -230,11 +236,13 @@ function ProfileEditCard({ profile, onUpdated }: ProfileEditCardProps) {
           <input
             id="admin-account-phone"
             type="tel"
+            inputMode="numeric"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(formatPhoneDisplay(e.target.value))}
             className={styles.input}
             placeholder="010-0000-0000"
             autoComplete="tel"
+            maxLength={13}
           />
           <p className={styles.fieldHint}>
             비워두면 등록된 연락처가 삭제됩니다.

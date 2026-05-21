@@ -281,8 +281,9 @@ async def admin_update_profile(
 ) -> AdminProfileResponse:
     """관리자 본인 계정 정보 수정 — 이메일·휴대폰·이름.
 
-    - 이메일은 활성 다른 사용자와 중복 불가 (409 ACCOUNT_EMAIL_DUPLICATE)
-    - 휴대폰은 활성 다른 사용자와 중복 불가 (409 ACCOUNT_PHONE_DUPLICATE)
+    - 이메일은 활성 **다른 관리자**와 중복 불가 (409 ACCOUNT_EMAIL_DUPLICATE)
+      일반 사용자(role != 'admin')와 같은 값을 가져도 허용 — 관리자는 관리자끼리만 비교.
+    - 휴대폰도 동일 — 활성 다른 관리자와만 중복 검사.
     - 비밀번호는 별도 POST /password 엔드포인트로 변경
     """
     sent_fields = body.model_fields_set
@@ -292,6 +293,7 @@ async def admin_update_profile(
         existing = await db.execute(
             select(User).where(
                 User.email == body.email,
+                User.role == "admin",
                 User.withdrawn_at.is_(None),
                 User.id != admin.id,
             )
@@ -312,6 +314,7 @@ async def admin_update_profile(
             existing = await db.execute(
                 select(User).where(
                     User.phone == body.phone,
+                    User.role == "admin",
                     User.withdrawn_at.is_(None),
                     User.id != admin.id,
                 )
