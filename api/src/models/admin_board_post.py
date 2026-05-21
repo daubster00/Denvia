@@ -1,7 +1,7 @@
 """AdminBoardPost ORM — 관리자 수정요청 게시판 글.
 
-마이그레이션 0040_admin_board 와 1:1 매핑.
-status: review(요청사항검토) | in_progress(수정중) | rejected(수정불가) | on_hold(보류).
+마이그레이션 0040_admin_board + 0041_board_status_completed 와 1:1 매핑.
+status: review(요청사항검토) | in_progress(수정중) | rejected(수정불가) | on_hold(보류) | completed(수정완료).
 category: 앱 레벨에서 검증 (api/src/services/admin_board_service.py: ALLOWED_CATEGORIES).
 content_html: sanitize_body_html() 적용 후 저장.
 """
@@ -36,6 +36,7 @@ class AdminBoardPost(Base):
             "in_progress",
             "rejected",
             "on_hold",
+            "completed",
             name="board_post_status_enum",
             create_type=False,
         ),
