@@ -23,7 +23,7 @@ from pathlib import Path
 
 import structlog
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import case, desc, func, select
+from sqlalchemy import String, case, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.admin_board_comment import AdminBoardComment
@@ -201,9 +201,13 @@ async def list_posts(
 
     total = (await db.execute(count_q)).scalar_one()
 
+    # status 컬럼이 PG enum(board_post_status_enum)이라
+    # SQLAlchemy case(dict, value=...)가 만드는 VARCHAR 바인딩과 직접 비교가 안 된다
+    # ("operator does not exist: board_post_status_enum = character varying").
+    # 양쪽을 text로 맞추기 위해 컬럼을 String으로 캐스팅.
     status_order = case(
         STATUS_SORT_ORDER,
-        value=AdminBoardPost.status,
+        value=cast(AdminBoardPost.status, String),
         else_=99,
     )
 
