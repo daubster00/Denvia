@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
@@ -23,13 +24,35 @@ export function AdminTopNav() {
     }
   };
 
+  const gradeLabel = admin?.is_master ? "마스터" : "관리자";
+
   return (
     <header className={styles.header}>
       <LogoLink href="/admin" ariaLabel="관리자 대시보드" />
 
       <div className={styles.right}>
-        {admin && <span className={styles.email}>{admin.email}</span>}
-        <span className={styles.adminBadge}>관리자</span>
+        {admin && (
+          <Link
+            href="/admin/account"
+            className={styles.accountLink}
+            aria-label="관리자 계정 정보 수정"
+            title="계정 정보 수정"
+          >
+            <span className={styles.accountInfo}>
+              <span className={styles.email}>{admin.email}</span>
+              <span
+                className={
+                  admin.is_master ? styles.masterBadge : styles.adminBadge
+                }
+              >
+                {gradeLabel}
+              </span>
+            </span>
+            <span className={styles.accountHint} aria-hidden="true">
+              계정 수정
+            </span>
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => {

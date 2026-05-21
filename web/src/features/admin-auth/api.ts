@@ -82,6 +82,28 @@ export interface AdminSessionUser {
   user_id: number;
   email: string;
   role: string; // 항상 "admin"
+  is_master: boolean;
+}
+
+export interface AdminProfile {
+  user_id: number;
+  email: string;
+  phone: string | null;
+  name: string | null;
+  role: string; // 항상 "admin"
+  is_master: boolean;
+  grade_label: string; // "마스터" | "관리자"
+}
+
+export interface AdminProfileUpdatePayload {
+  email?: string;
+  phone?: string | null;
+  name?: string | null;
+}
+
+export interface AdminPasswordChangePayload {
+  current_password: string;
+  new_password: string;
 }
 
 export async function adminLogin(payload: {
@@ -100,4 +122,26 @@ export async function adminLogout(): Promise<void> {
 
 export async function adminFetchMe(): Promise<AdminSessionUser> {
   return adminApiFetch<AdminSessionUser>("/api/v1/admin/auth/me");
+}
+
+export async function fetchAdminProfile(): Promise<AdminProfile> {
+  return adminApiFetch<AdminProfile>("/api/v1/admin/auth/profile");
+}
+
+export async function updateAdminProfile(
+  payload: AdminProfileUpdatePayload,
+): Promise<AdminProfile> {
+  return adminApiFetch<AdminProfile>("/api/v1/admin/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function changeAdminPassword(
+  payload: AdminPasswordChangePayload,
+): Promise<void> {
+  await adminApiFetch<{ ok: boolean }>("/api/v1/admin/auth/password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
