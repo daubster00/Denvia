@@ -3,8 +3,9 @@
 /** PopupCarousel — Story 7.2 v2.
  *
  * 정중앙 모달 + 좌우 슬라이드 캐러셀 + dots/숫자 indicator + "오늘 하루 안보기".
- * - 노출 후보는 useActivePopups()에서 받고, 세션/하루 안보기 필터를 본 컴포넌트가 적용한다.
- * - 모달이 열리는 순간 노출된 팝업을 모두 sessionStorage에 기록 → 같은 세션에선 재노출 안 됨.
+ * - 노출 후보는 useActivePopups()에서 받고, "오늘 하루 안보기" 필터만 본 컴포넌트가 적용한다.
+ * - X/닫기/ESC는 휘발성(컴포넌트 state)으로 처리 → 새로고침하면 다시 노출.
+ *   영속 차단은 오직 "오늘 하루 안보기"(localStorage, KST 자정까지)만 수행한다.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -16,8 +17,6 @@ import {
   detectDevice,
   dismissForToday,
   isDismissedForToday,
-  isSeenInSession,
-  markSeenInSession,
 } from "../lib/popup-dismissal";
 import styles from "./PopupCarousel.module.css";
 
@@ -47,22 +46,11 @@ export function PopupCarousel() {
   const [activeIndex, setActiveIndex] = useState(0);
   const touchStartXRef = useRef<number | null>(null);
 
-  // 세션·하루 안보기 필터 적용. useMemo로 popups 변경 시에만 재계산.
+  // "오늘 하루 안보기"만 영속 필터로 적용. X/닫기는 closed state로 휘발성 처리.
   const visiblePopups: ActivePopup[] = useMemo(() => {
     if (!popups || popups.length === 0) return [];
-    return popups.filter(
-      (p) => !isSeenInSession(p.popup_id) && !isDismissedForToday(p.popup_id),
-    );
+    return popups.filter((p) => !isDismissedForToday(p.popup_id));
   }, [popups]);
-
-  // 모달이 열리는 순간(첫 마운트) 노출 후보 모두 세션에 기록.
-  // 빈 배열일 땐 아무것도 안 함.
-  useEffect(() => {
-    if (visiblePopups.length === 0) return;
-    visiblePopups.forEach((p) => markSeenInSession(p.popup_id));
-    // popup id 집합이 바뀌면 다시 마킹 (예: device 변경, 새 데이터 로드).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visiblePopups.map((p) => p.popup_id).join(",")]);
 
   // ESC = 닫기.
   useEffect(() => {

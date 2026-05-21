@@ -1,13 +1,12 @@
 /** 팝업 노출 제어 — Story 7.2 v2.
  *
- * 두 가지 차단 메커니즘을 클라이언트에서 처리:
- * 1. 세션당 1회: sessionStorage — 같은 세션 내에는 다시 안 띄움.
- * 2. 오늘 하루 안보기: localStorage — KST 자정까지 차단.
+ * 영속 차단은 "오늘 하루 안보기"(localStorage, KST 자정까지)만 처리.
+ * X/닫기/ESC 같은 일반 닫기는 컴포넌트 state에서만 휘발성으로 다루어
+ * 새로고침하면 다시 노출되도록 한다.
  *
  * 서버는 후보 배열만 내려주고, 실제 노출 여부는 본 헬퍼들이 결정한다.
  */
 
-const SESSION_PREFIX = "popup_seen_in_session_";
 const DISMISS_PREFIX = "popup_dismissed_until_";
 
 function safeWindow(): Window | null {
@@ -34,26 +33,6 @@ export function nextKstMidnightIso(now: Date = new Date()): string {
   // KST 자정 → UTC 시점은 9시간 전
   const utcAtKstMidnight = new Date(kstTomorrow.getTime() - 9 * 60 * 60 * 1000);
   return utcAtKstMidnight.toISOString();
-}
-
-export function markSeenInSession(popupId: number): void {
-  const w = safeWindow();
-  if (!w) return;
-  try {
-    w.sessionStorage.setItem(`${SESSION_PREFIX}${popupId}`, "1");
-  } catch {
-    // private mode / quota — 무시 (다음 세션엔 다시 노출, 안전한 fail open).
-  }
-}
-
-export function isSeenInSession(popupId: number): boolean {
-  const w = safeWindow();
-  if (!w) return false;
-  try {
-    return w.sessionStorage.getItem(`${SESSION_PREFIX}${popupId}`) !== null;
-  } catch {
-    return false;
-  }
 }
 
 export function dismissForToday(popupId: number, now: Date = new Date()): void {

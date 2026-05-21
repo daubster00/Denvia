@@ -126,8 +126,10 @@ describe("PopupCarousel", () => {
     expect(img.src).toContain("/static/popup-images/abc.png");
   });
 
-  it("이미 세션에서 본 팝업 → 미노출", async () => {
-    window.sessionStorage.setItem("popup_seen_in_session_99", "1");
+  it("'오늘 하루 안보기'로 차단된 팝업 → 미노출", async () => {
+    // 미래 시각으로 localStorage에 차단 기록을 심어둔다.
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    window.localStorage.setItem("popup_dismissed_until_99", future);
     vi.mocked(fetchActivePopups).mockResolvedValue([makePopup({ popup_id: 99 })]);
     render(<PopupCarousel />, { wrapper: makeWrapper() });
     await waitFor(() => expect(fetchActivePopups).toHaveBeenCalled());
