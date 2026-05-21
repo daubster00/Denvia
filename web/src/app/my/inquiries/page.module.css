@@ -1,5 +1,5 @@
 .container {
-  max-width: 1300px;
+  max-width: 880px;
   margin: 0 auto;
   padding: 40px 40px 80px;
   display: flex;
@@ -82,7 +82,7 @@
 }
 
 .colSubject {
-  min-width: 320px;
+  min-width: 0;
 }
 
 .colStatus {
@@ -112,7 +112,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 540px;
+  max-width: 360px;
 }
 
 .attachIcon {
