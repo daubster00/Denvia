@@ -4,10 +4,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionBootstrap } from "../SessionBootstrap";
 import { useSessionStore } from "@/stores/session-store";
 
-// next/navigation useRouter 모킹
+// next/navigation 모킹 — useRouter / usePathname / useSearchParams 모두 필요.
 const mockPush = vi.fn();
+const mockReplace = vi.fn();
+const mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  usePathname: () => "/",
+  useSearchParams: () => mockSearchParams,
 }));
 
 // vi.mock은 최상위에서만 호이스팅 처리 가능

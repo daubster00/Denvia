@@ -11,6 +11,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from api.src.middleware.audit import AuditMiddleware
+from api.src.middleware.session_refresh import SessionRefreshMiddleware
 from api.src.middleware.trace import TraceMiddleware
 from api.src.middleware.rate_limit import limiter, ratelimit_handler, SlowAPIMiddleware, RateLimitExceeded
 from api.src.routers import health
@@ -86,9 +87,11 @@ app = FastAPI(title="Denvia API", version="0.1.0", lifespan=lifespan)
 # slowapi Limiter 주입
 app.state.limiter = limiter
 
-# 미들웨어 등록 (바깥쪽부터 순서: cors → rate_limit → audit → trace)
+# 미들웨어 등록 (바깥쪽부터 순서: cors → rate_limit → audit → session_refresh → trace)
+# session_refresh는 응답 직전에 세션 쿠키를 다시 set 하므로 trace보다 바깥에 둠.
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(AuditMiddleware)
+app.add_middleware(SessionRefreshMiddleware)
 app.add_middleware(TraceMiddleware)
 # CORS — 프론트 origin만 허용, credentials:include 필요 (JWT 쿠키)
 app.add_middleware(

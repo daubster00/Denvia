@@ -46,11 +46,20 @@ function AdminAuthenticatedShell({
     retry: false,
   });
 
+  const queryClient = useQueryClient();
+
   useEffect(() => {
     if (admin) {
       setAdmin(admin);
     }
   }, [admin, setAdmin]);
+
+  // 관리자 페이지 내 이동마다 세션 재확인 — 백엔드 SessionRefreshMiddleware 가 쿠키 TTL 을 연장하여
+  // 활동 중에는 1시간 만료가 무한 연장된다. 만료된 경우엔 401 → adminApiFetch 가 /admin/login 으로 리다이렉트.
+  useEffect(() => {
+    if (!pathname) return;
+    queryClient.invalidateQueries({ queryKey: ["admin-session"] });
+  }, [pathname, queryClient]);
 
   useAdminEventsSSE();
 
@@ -63,7 +72,6 @@ function AdminAuthenticatedShell({
     enabled: !!admin,
   });
 
-  const queryClient = useQueryClient();
   const { rebuildProgress, activeJobId, lastCompletedJobId, setActiveJobId, setRebuildProgress, setLastCompletedJobId } = useAdminEventsStore();
 
   useEffect(() => {

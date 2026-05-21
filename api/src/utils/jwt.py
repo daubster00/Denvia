@@ -7,9 +7,9 @@ import jwt as pyjwt
 from api.src.settings import settings
 
 
-_SESSION_TTL_SHORT = timedelta(hours=1)     # persist_session=False (브라우저 세션)
-_SESSION_TTL_LONG = timedelta(days=1)       # persist_session=True (Story 1.4)
-_ADMIN_SESSION_TTL = timedelta(hours=1)     # 관리자 세션은 persist 없음 — 1시간 고정
+SESSION_TTL_SHORT = timedelta(hours=1)      # persist_session=False (브라우저 세션)
+SESSION_TTL_LONG = timedelta(days=1)        # persist_session=True (Story 1.4)
+ADMIN_SESSION_TTL = timedelta(hours=1)      # 관리자 세션 1시간 (활동 시 슬라이딩 연장)
 
 _ADMIN_AUDIENCE = "denvia-admin"
 
@@ -24,13 +24,15 @@ def encode_session_jwt(
     """denvia_session 쿠키에 삽입할 JWT를 생성한다.
 
     persist=True → 1일 TTL, persist=False → 1시간 TTL.
+    persist 값은 payload에도 함께 저장돼서, 슬라이딩 미들웨어가 갱신 시 동일 TTL을 재적용한다.
     """
-    ttl = _SESSION_TTL_LONG if persist else _SESSION_TTL_SHORT
+    ttl = SESSION_TTL_LONG if persist else SESSION_TTL_SHORT
     now = datetime.now(tz=timezone.utc)
     payload = {
         "sub": str(user_id),
         "role": role,
         "sub_status": subscription_status,
+        "persist": bool(persist),
         "iat": now,
         "exp": now + ttl,
     }
@@ -89,7 +91,7 @@ def encode_admin_session_jwt(user_id: int) -> str:
         "sub": str(user_id),
         "aud": _ADMIN_AUDIENCE,
         "iat": now,
-        "exp": now + _ADMIN_SESSION_TTL,
+        "exp": now + ADMIN_SESSION_TTL,
     }
     return pyjwt.encode(
         payload,

@@ -23,10 +23,20 @@ async function handleErrorResponse(res: Response, path: string): Promise<never> 
   const message = (body["message"] as string | undefined) ?? res.statusText;
 
   if (res.status === 401 && path !== ME_PATH) {
-    // 401 감지: 세션 클리어 + 로그인 팝업 오픈 (동적 import로 서버 컴포넌트 안전 처리)
+    // 401 감지: 세션 클리어 + 메인(/)으로 이동 후 로그인 팝업 자동 오픈.
+    // 이미 메인이면 페이지 이동 없이 팝업만 띄움. /admin/* 경로는 이 핸들러를 타지 않음(별도 admin-auth/api.ts).
     if (typeof window !== "undefined") {
       const { useSessionStore } = await import("@/stores/session-store");
       useSessionStore.getState().clearSession();
+      const onHome = window.location.pathname === "/";
+      if (!onHome) {
+        // /?login=required 로 보내면 SessionBootstrap 마운트 후 OAuthErrorBanner 영역의 쿼리스트링은
+        // 그대로 두고, 아래 openPopup이 페이지 이동 다음 tick에서 팝업을 띄운다.
+        window.location.replace("/?login=required");
+        return Promise.reject(
+          new ApiError({ code: "AUTH_SESSION_EXPIRED", message: "세션이 만료되었습니다. 다시 로그인해주세요.", trace_id: traceId })
+        );
+      }
       useSessionStore.getState().openPopup("email");
     }
   }
