@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMe } from "./api";
@@ -19,16 +19,14 @@ import { useSessionStore } from "@/stores/session-store";
  * `?login=required` 진입 처리:
  * - api-client.ts 가 보호 페이지에서 401 감지 시 `/?login=required` 로 리다이렉트 후
  *   여기서 팝업을 자동 오픈한다.
+ * - useSearchParams 사용 컴포넌트는 prerender 시 Suspense 경계가 필요 (Next.js 16).
  */
 export function SessionBootstrap({ children }: { children: React.ReactNode }) {
   const setUser = useSessionStore((s) => s.setUser);
   const clearSession = useSessionStore((s) => s.clearSession);
-  const openPopup = useSessionStore((s) => s.openPopup);
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const popupHandledRef = useRef(false);
 
   const { data, isError } = useQuery({
     queryKey: ["session"],
@@ -65,7 +63,23 @@ export function SessionBootstrap({ children }: { children: React.ReactNode }) {
     queryClient.invalidateQueries({ queryKey: ["session"] });
   }, [pathname, queryClient]);
 
-  // /?login=required 진입 시 로그인 팝업 자동 오픈 + 쿼리스트링 정리.
+  return (
+    <>
+      <Suspense fallback={null}>
+        <LoginRequiredHandler />
+      </Suspense>
+      {children}
+    </>
+  );
+}
+
+function LoginRequiredHandler() {
+  const openPopup = useSessionStore((s) => s.openPopup);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const popupHandledRef = useRef(false);
+
   const loginRequired = searchParams.get("login");
   useEffect(() => {
     if (loginRequired !== "required") {
@@ -81,5 +95,5 @@ export function SessionBootstrap({ children }: { children: React.ReactNode }) {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname || "/");
   }, [loginRequired, openPopup, pathname, router, searchParams]);
 
-  return <>{children}</>;
+  return null;
 }
