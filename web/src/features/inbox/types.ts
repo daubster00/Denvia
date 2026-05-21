@@ -30,18 +30,16 @@ export interface UnreadCountResponse {
 
 export type PopupTargetDevice = "pc" | "mobile" | "both";
 export type PopupType = "image" | "editor";
-export type PopupDisplayPosition =
-  | "center"
-  | "top"
-  | "bottom"
-  | "bottom_left"
-  | "bottom_right";
+export type PopupDisplayPosition = "center" | "left" | "right" | "custom";
 
 export interface ActivePopup {
   popup_id: number;
   title: string;
   popup_type: PopupType;
   display_position: PopupDisplayPosition;
+  // display_position === "custom" 일 때만 채워지고, 그 외에는 null.
+  display_position_top_px: number | null;
+  display_position_left_px: number | null;
   image_url: string | null;
   body_html_safe: string | null;
   link_url: string | null;

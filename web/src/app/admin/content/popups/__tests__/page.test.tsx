@@ -122,6 +122,8 @@ describe("AdminPopupsPage", () => {
           target_device: "both",
           popup_type: "editor",
           display_position: "center",
+          display_position_top_px: null,
+          display_position_left_px: null,
           image_url: null,
           sort_order: 0,
           is_active: true,

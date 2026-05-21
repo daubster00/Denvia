@@ -6,6 +6,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // zod 스키마 — Story 7.2 v2 (백엔드 Pydantic과 1:1)
 // ──────────────────────────────────────────────────────────────────────────────
 
+export const POPUP_POSITION_PX_MIN = 0;
+export const POPUP_POSITION_PX_MAX = 5000;
+
 export const popupFormSchema = z
   .object({
     title: z
@@ -29,13 +32,19 @@ export const popupFormSchema = z
     display_start: z.string().min(1, "노출 시작 시각을 입력해주세요"),
     display_end: z.string().min(1, "노출 종료 시각을 입력해주세요"),
     target_segment: z.enum(["all", "doctor", "hygienist", "student_other"]),
-    display_position: z.enum([
-      "center",
-      "top",
-      "bottom",
-      "bottom_left",
-      "bottom_right",
-    ]),
+    display_position: z.enum(["center", "left", "right", "custom"]),
+    display_position_top_px: z
+      .number()
+      .int()
+      .min(POPUP_POSITION_PX_MIN, `${POPUP_POSITION_PX_MIN} 이상`)
+      .max(POPUP_POSITION_PX_MAX, `${POPUP_POSITION_PX_MAX} 이하`)
+      .nullable(),
+    display_position_left_px: z
+      .number()
+      .int()
+      .min(POPUP_POSITION_PX_MIN, `${POPUP_POSITION_PX_MIN} 이상`)
+      .max(POPUP_POSITION_PX_MAX, `${POPUP_POSITION_PX_MAX} 이하`)
+      .nullable(),
     sort_order: z
       .number()
       .int()
@@ -66,6 +75,24 @@ export const popupFormSchema = z
       message: "본문을 입력해주세요",
       path: ["body_html"],
     },
+  )
+  .refine(
+    (data) =>
+      data.display_position !== "custom" ||
+      data.display_position_top_px !== null,
+    {
+      message: "위에서 몇 px 떨어질지 입력해주세요",
+      path: ["display_position_top_px"],
+    },
+  )
+  .refine(
+    (data) =>
+      data.display_position !== "custom" ||
+      data.display_position_left_px !== null,
+    {
+      message: "왼쪽에서 몇 px 떨어질지 입력해주세요",
+      path: ["display_position_left_px"],
+    },
   );
 
 export type PopupFormInput = z.infer<typeof popupFormSchema>;
@@ -73,12 +100,7 @@ export type PopupFormInput = z.infer<typeof popupFormSchema>;
 export type TargetSegment = "all" | "doctor" | "hygienist" | "student_other";
 export type TargetDevice = "pc" | "mobile" | "both";
 export type PopupType = "image" | "editor";
-export type PopupDisplayPosition =
-  | "center"
-  | "top"
-  | "bottom"
-  | "bottom_left"
-  | "bottom_right";
+export type PopupDisplayPosition = "center" | "left" | "right" | "custom";
 
 export interface PopupListItem {
   id: number;
@@ -89,6 +111,8 @@ export interface PopupListItem {
   target_device: TargetDevice;
   popup_type: PopupType;
   display_position: PopupDisplayPosition;
+  display_position_top_px: number | null;
+  display_position_left_px: number | null;
   image_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -180,11 +204,15 @@ function toRequestBody(input: PopupFormInput) {
         ? input.image_url
         : null
       : null;
+  // custom 모드가 아닐 때 px 값은 강제로 null — 서버 검증과 일치.
+  const isCustom = input.display_position === "custom";
   return {
     title: input.title,
     popup_type: input.popup_type,
     target_device: input.target_device,
     display_position: input.display_position,
+    display_position_top_px: isCustom ? input.display_position_top_px : null,
+    display_position_left_px: isCustom ? input.display_position_left_px : null,
     body_html,
     image_url,
     link_url: input.link_url === "" ? null : (input.link_url ?? null),

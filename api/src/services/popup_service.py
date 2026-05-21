@@ -93,6 +93,26 @@ def _validate_image_url(image_url: str | None) -> None:
         )
 
 
+def _normalize_position_payload(req) -> None:
+    """display_position == 'custom' 일 때만 px 값을 유지하고, 그 외에는 None 으로 정규화.
+
+    'custom' 인데 px 값이 누락되면 422 로 거절한다(부분 입력 방지).
+    in-place 로 req.display_position_top_px / display_position_left_px 를 정리한다.
+    """
+    if req.display_position == "custom":
+        if req.display_position_top_px is None or req.display_position_left_px is None:
+            raise HTTPException(
+                422,
+                detail={
+                    "code": "POPUP_POSITION_PX_REQUIRED",
+                    "message": "직접 입력 위치는 위/왼쪽 px 값을 모두 입력해주세요.",
+                },
+            )
+    else:
+        req.display_position_top_px = None
+        req.display_position_left_px = None
+
+
 def _validate_type_payload(
     popup_type: str, image_url: str | None, body_html: str | None
 ) -> None:
@@ -191,6 +211,7 @@ async def create_popup(
     _validate_link_url(req.link_url)
     _validate_image_url(req.image_url)
     _validate_type_payload(req.popup_type, req.image_url, req.body_html)
+    _normalize_position_payload(req)
     sanitized = sanitize_body_html(req.body_html) if req.body_html else None
 
     popup = Popup(
@@ -204,6 +225,8 @@ async def create_popup(
         target_device=req.target_device,
         popup_type=req.popup_type,
         display_position=req.display_position,
+        display_position_top_px=req.display_position_top_px,
+        display_position_left_px=req.display_position_left_px,
         sort_order=req.sort_order,
         is_active=req.is_active,
         created_by_admin_id=admin.id,
@@ -219,6 +242,8 @@ async def create_popup(
             "target_device": popup.target_device,
             "popup_type": popup.popup_type,
             "display_position": popup.display_position,
+            "display_position_top_px": popup.display_position_top_px,
+            "display_position_left_px": popup.display_position_left_px,
             "sort_order": popup.sort_order,
             "display_start": popup.display_start.isoformat(),
             "display_end": popup.display_end.isoformat(),
@@ -253,6 +278,7 @@ async def update_popup(
     _validate_link_url(req.link_url)
     _validate_image_url(req.image_url)
     _validate_type_payload(req.popup_type, req.image_url, req.body_html)
+    _normalize_position_payload(req)
 
     before = {
         "title": popup.title,
@@ -260,6 +286,8 @@ async def update_popup(
         "target_device": popup.target_device,
         "popup_type": popup.popup_type,
         "display_position": popup.display_position,
+        "display_position_top_px": popup.display_position_top_px,
+        "display_position_left_px": popup.display_position_left_px,
         "sort_order": popup.sort_order,
         "display_start": popup.display_start.isoformat(),
         "display_end": popup.display_end.isoformat(),
@@ -279,6 +307,8 @@ async def update_popup(
     popup.target_device = req.target_device
     popup.popup_type = req.popup_type
     popup.display_position = req.display_position
+    popup.display_position_top_px = req.display_position_top_px
+    popup.display_position_left_px = req.display_position_left_px
     popup.sort_order = req.sort_order
     popup.is_active = req.is_active
     request.state.audit_target_type = "popup"
@@ -291,6 +321,8 @@ async def update_popup(
             "target_device": req.target_device,
             "popup_type": req.popup_type,
             "display_position": req.display_position,
+            "display_position_top_px": req.display_position_top_px,
+            "display_position_left_px": req.display_position_left_px,
             "sort_order": req.sort_order,
             "display_start": req.display_start.isoformat(),
             "display_end": req.display_end.isoformat(),

@@ -22,10 +22,9 @@ import styles from "./PopupCarousel.module.css";
 
 const POSITION_CLASS: Record<PopupDisplayPosition, string> = {
   center: styles.dialogCenter,
-  top: styles.dialogTop,
-  bottom: styles.dialogBottom,
-  bottom_left: styles.dialogBottomLeft,
-  bottom_right: styles.dialogBottomRight,
+  left: styles.dialogLeft,
+  right: styles.dialogRight,
+  custom: styles.dialogCustom,
 };
 
 function safeExternalHref(raw: string | null | undefined): string | null {
@@ -78,6 +77,19 @@ export function PopupCarousel() {
       ? styles.dialogCenter
       : POSITION_CLASS[current.display_position] ?? styles.dialogCenter;
 
+  // 직접 좌표 모드(custom)일 때만 CSS 변수로 top/left px 을 주입한다.
+  // 모바일/그 외 위치값에서는 변수가 없어 CSS 의 fallback 이 적용됨.
+  const dialogStyleVars =
+    device !== "mobile" && current.display_position === "custom"
+      ? ({
+          "--popup-top-px": `${current.display_position_top_px ?? 0}px`,
+          "--popup-left-px": `${current.display_position_left_px ?? 0}px`,
+        } as React.CSSProperties)
+      : undefined;
+  const dialogStyle: React.CSSProperties = {
+    ...dialogStyleVars,
+  };
+
   function handleClose() {
     setClosed(true);
   }
@@ -116,6 +128,7 @@ export function PopupCarousel() {
         aria-modal="true"
         aria-labelledby="popup-carousel-title"
         className={`${styles.dialog} ${positionClass}`}
+        style={dialogStyle}
       >
         <div className={styles.header}>
           <h2 id="popup-carousel-title" className={styles.title}>

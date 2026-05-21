@@ -103,6 +103,8 @@ def _popup_row(
     popup.target_device = target_device
     popup.popup_type = popup_type
     popup.display_position = display_position
+    popup.display_position_top_px = None
+    popup.display_position_left_px = None
     popup.sort_order = sort_order
     popup.is_active = is_active
     popup.deleted_at = deleted_at

@@ -159,26 +159,22 @@
   transform: translate(-50%, -50%);
 }
 
-.dialogTop {
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.dialogBottom {
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.dialogBottomLeft {
-  bottom: 16px;
+.dialogLeft {
+  top: 50%;
   left: 16px;
+  transform: translateY(-50%);
 }
 
-.dialogBottomRight {
-  bottom: 16px;
+.dialogRight {
+  top: 50%;
   right: 16px;
+  transform: translateY(-50%);
+}
+
+/* `--popup-preview-top` / `--popup-preview-left` 은 컴포넌트에서 무대 크기 대비 비율(%)로 주입됨. */
+.dialogCustom {
+  top: var(--popup-preview-top, 50%);
+  left: var(--popup-preview-left, 50%);
 }
 
 .dialogHeader {

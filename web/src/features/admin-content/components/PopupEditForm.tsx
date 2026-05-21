@@ -57,17 +57,22 @@ const EMPTY_FORM: PopupFormInput = {
   display_end: "",
   target_segment: "all",
   display_position: "center",
+  display_position_top_px: null,
+  display_position_left_px: null,
   sort_order: 0,
   is_active: true,
 };
 
 const POSITION_OPTIONS = [
+  ["left", "왼쪽"],
   ["center", "가운데"],
-  ["top", "위"],
-  ["bottom", "아래"],
-  ["bottom_left", "좌하단"],
-  ["bottom_right", "우하단"],
+  ["right", "오른쪽"],
+  ["custom", "직접 입력"],
 ] as const;
+
+// 직접 입력 모드를 처음 켰을 때 채워줄 기본 좌표 — 가운데 근처에서 시작.
+const CUSTOM_DEFAULT_TOP_PX = 200;
+const CUSTOM_DEFAULT_LEFT_PX = 200;
 
 function toLocalInput(iso: string): string {
   if (!iso) return "";
@@ -109,6 +114,8 @@ export function PopupEditForm({ mode, popupId, onCancel, onSaved }: Props) {
           display_end: toLocalInput(detail.display_end),
           target_segment: detail.target_segment,
           display_position: detail.display_position ?? "center",
+          display_position_top_px: detail.display_position_top_px ?? null,
+          display_position_left_px: detail.display_position_left_px ?? null,
           sort_order: detail.sort_order,
           is_active: detail.is_active,
         });
@@ -440,12 +447,27 @@ export function PopupEditForm({ mode, popupId, onCancel, onSaved }: Props) {
             <RadioGroup
               name="display_position"
               value={form.display_position}
-              onValueChange={(v) =>
-                update(
-                  "display_position",
-                  v as PopupFormInput["display_position"],
-                )
-              }
+              onValueChange={(v) => {
+                const next = v as PopupFormInput["display_position"];
+                setForm((prev) => ({
+                  ...prev,
+                  display_position: next,
+                  display_position_top_px:
+                    next === "custom"
+                      ? (prev.display_position_top_px ?? CUSTOM_DEFAULT_TOP_PX)
+                      : null,
+                  display_position_left_px:
+                    next === "custom"
+                      ? (prev.display_position_left_px ?? CUSTOM_DEFAULT_LEFT_PX)
+                      : null,
+                }));
+                setErrors((prev) => ({
+                  ...prev,
+                  display_position: undefined,
+                  display_position_top_px: undefined,
+                  display_position_left_px: undefined,
+                }));
+              }}
               orientation="horizontal"
               disabled={form.target_device === "mobile"}
             >
@@ -462,9 +484,63 @@ export function PopupEditForm({ mode, popupId, onCancel, onSaved }: Props) {
               </div>
             </RadioGroup>
             <span className={styles.helper}>
-              모바일에서는 화면이 좁아 항상 가운데 고정이며, 여러 개일 때는
-              슬라이드로 넘어갑니다.
+              왼쪽·가운데·오른쪽은 모두 화면 세로 가운데에 표시됩니다. 모바일에서는
+              화면이 좁아 항상 가운데 고정이며, 여러 개일 때는 슬라이드로 넘어갑니다.
             </span>
+
+            {form.display_position === "custom" &&
+            form.target_device !== "mobile" ? (
+              <div className={styles.positionPxRow}>
+                <label className={styles.positionPxItem}>
+                  <span className={styles.positionPxLabel}>위에서</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={5000}
+                    value={form.display_position_top_px ?? ""}
+                    placeholder="예: 200"
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      update(
+                        "display_position_top_px",
+                        raw === "" ? null : Number(raw),
+                      );
+                    }}
+                    aria-invalid={Boolean(errors.display_position_top_px)}
+                  />
+                  <span className={styles.positionPxUnit}>px</span>
+                </label>
+                <label className={styles.positionPxItem}>
+                  <span className={styles.positionPxLabel}>왼쪽에서</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={5000}
+                    value={form.display_position_left_px ?? ""}
+                    placeholder="예: 200"
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      update(
+                        "display_position_left_px",
+                        raw === "" ? null : Number(raw),
+                      );
+                    }}
+                    aria-invalid={Boolean(errors.display_position_left_px)}
+                  />
+                  <span className={styles.positionPxUnit}>px</span>
+                </label>
+              </div>
+            ) : null}
+            {errors.display_position_top_px ? (
+              <p role="alert" className={styles.error}>
+                {errors.display_position_top_px}
+              </p>
+            ) : null}
+            {errors.display_position_left_px ? (
+              <p role="alert" className={styles.error}>
+                {errors.display_position_left_px}
+              </p>
+            ) : null}
           </div>
 
           <label className={styles.field}>

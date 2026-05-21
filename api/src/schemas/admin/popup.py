@@ -11,9 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PopupTargetDevice = Literal["pc", "mobile", "both"]
 PopupType = Literal["image", "editor"]
-PopupDisplayPosition = Literal[
-    "center", "top", "bottom", "bottom_left", "bottom_right"
-]
+PopupDisplayPosition = Literal["center", "left", "right", "custom"]
+
+# 직접 좌표 입력 시 px 허용 범위 — 현실적인 데스크톱 화면 안쪽으로 제한.
+POPUP_POSITION_PX_MIN = 0
+POPUP_POSITION_PX_MAX = 5000
 
 
 class PopupBase(BaseModel):
@@ -29,6 +31,12 @@ class PopupBase(BaseModel):
     target_device: PopupTargetDevice = "both"
     popup_type: PopupType = "editor"
     display_position: PopupDisplayPosition = "center"
+    display_position_top_px: int | None = Field(
+        default=None, ge=POPUP_POSITION_PX_MIN, le=POPUP_POSITION_PX_MAX
+    )
+    display_position_left_px: int | None = Field(
+        default=None, ge=POPUP_POSITION_PX_MIN, le=POPUP_POSITION_PX_MAX
+    )
     sort_order: int = Field(default=0, ge=0, le=999)
     is_active: bool = True
 
@@ -64,6 +72,8 @@ class PopupListItem(BaseModel):
     target_device: PopupTargetDevice
     popup_type: PopupType
     display_position: PopupDisplayPosition
+    display_position_top_px: int | None
+    display_position_left_px: int | None
     image_url: str | None
     sort_order: int
     is_active: bool

@@ -23,13 +23,19 @@ type DeviceView = "pc" | "mobile";
 
 const POSITION_CLASS: Record<PopupFormInput["display_position"], string> = {
   center: styles.dialogCenter,
-  top: styles.dialogTop,
-  bottom: styles.dialogBottom,
-  bottom_left: styles.dialogBottomLeft,
-  bottom_right: styles.dialogBottomRight,
+  left: styles.dialogLeft,
+  right: styles.dialogRight,
+  custom: styles.dialogCustom,
 };
 
 const SAFE_HREF_RX = /^https?:\/\//i;
+
+// 미리보기 무대(viewportStage)의 실제 폭/높이를 모르므로, 사용자가 입력한 실제 px 을
+// 무대 크기(=가짜 데스크톱 viewport)에 비례해서 축소 표현한다.
+// PopupCarousel 의 실제 노출 영역은 데스크톱 기준 ~1280x800 정도라고 가정해
+// 무대 폭/높이 대비 동일한 비율로 적용한다.
+const STAGE_REFERENCE_WIDTH_PX = 1280;
+const STAGE_REFERENCE_HEIGHT_PX = 800;
 
 export function PopupPositionPreview({ form }: Props) {
   const canShowPc = form.target_device !== "mobile";
@@ -42,6 +48,19 @@ export function PopupPositionPreview({ form }: Props) {
     device === "mobile"
       ? styles.dialogCenter
       : POSITION_CLASS[form.display_position] ?? styles.dialogCenter;
+
+  // 직접 입력 모드 — 무대 크기에 비례해서 좌표 적용 (실제 화면 비율 시뮬레이션).
+  // CSS Module 의 `.dialogCustom` 이 var(--popup-preview-top/left) 를 소비한다.
+  const isCustomPc =
+    device === "pc" && form.display_position === "custom";
+  const customTop = isCustomPc ? (form.display_position_top_px ?? 0) : 0;
+  const customLeft = isCustomPc ? (form.display_position_left_px ?? 0) : 0;
+  const customCssVars = isCustomPc
+    ? ({
+        "--popup-preview-top": `${(customTop / STAGE_REFERENCE_HEIGHT_PX) * 100}%`,
+        "--popup-preview-left": `${(customLeft / STAGE_REFERENCE_WIDTH_PX) * 100}%`,
+      } as React.CSSProperties)
+    : undefined;
 
   const safeHref =
     form.link_url && SAFE_HREF_RX.test(form.link_url) ? form.link_url : null;
@@ -109,6 +128,7 @@ export function PopupPositionPreview({ form }: Props) {
           <div
             className={`${styles.dialog} ${positionClass}`}
             role="presentation"
+            style={customCssVars}
           >
             <div className={styles.dialogHeader}>
               <h4 className={styles.dialogTitle}>

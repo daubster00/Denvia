@@ -182,6 +182,16 @@ async def get_active_popups(
             title=p.title,
             popup_type=p.popup_type,
             display_position=p.display_position,
+            display_position_top_px=(
+                p.display_position_top_px
+                if p.display_position == "custom"
+                else None
+            ),
+            display_position_left_px=(
+                p.display_position_left_px
+                if p.display_position == "custom"
+                else None
+            ),
             image_url=p.image_url,
             body_html_safe=(
                 sanitize_body_html(p.body_html) if p.body_html else None

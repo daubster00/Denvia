@@ -77,15 +77,21 @@ class Popup(Base):
     display_position: Mapped[str] = mapped_column(
         SQLEnum(
             "center",
-            "top",
-            "bottom",
-            "bottom_left",
-            "bottom_right",
+            "left",
+            "right",
+            "custom",
             name="popup_display_position_enum",
             create_type=False,
         ),
         nullable=False,
         server_default="center",
+    )
+    # custom 모드 전용 — 그 외 위치값에서는 None.
+    display_position_top_px: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    display_position_left_px: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(
