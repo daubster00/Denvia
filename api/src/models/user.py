@@ -48,6 +48,9 @@ class User(Base):
     block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 차단 전 subscription_status 보존 — 만료/해제 시 복원에 사용 (Story 6.2 fix)
     pre_block_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # 이상 질문 패턴(연속 3회 3초 이내 후속 질문) 탐지 시 자동 throttle 시각.
+    # NULL = throttle 미적용. 관리자가 수동 해제할 때까지 지속.
+    anomaly_throttled_at: Mapped[datetime | None] = mapped_column(nullable=True)
     pro_granted_by_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
