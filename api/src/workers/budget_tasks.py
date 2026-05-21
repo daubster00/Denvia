@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from api.src.integrations.messaging.adapters.stub import StubMessagingAdapter
+from api.src.integrations.messaging.adapters import get_adapter
 from api.src.integrations.messaging.notification_service import NotificationService, SendResult
 from api.src.models.notification_queue import STATUS_SENT
 from api.src.models.budget_threshold import BudgetThreshold
@@ -223,8 +223,13 @@ def _build_notification_service(
     redis,
     runtime_redis,
 ) -> NotificationService:
-    """HOLD-MSG 동안 stub provider 사용."""
-    provider = StubMessagingAdapter()
+    """MESSAGING_PROVIDER 설정에 맞는 어댑터로 NotificationService 빌드.
+
+    Celery worker 컨텍스트에서는 main app의 async_session_factory 대신
+    이 태스크 전용 session_factory를 주입해야 하므로 팩토리 함수를 사용하지 않고
+    직접 조립한다(get_adapter()로 provider만 공유).
+    """
+    provider = get_adapter()
     return NotificationService(
         provider=provider,
         session_factory=session_factory,
