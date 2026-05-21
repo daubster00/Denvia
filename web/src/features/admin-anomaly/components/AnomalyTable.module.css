@@ -72,6 +72,27 @@
   background: var(--color-brand-soft, #eef2ff);
 }
 
+.unblockButton {
+  background: var(--color-success-soft, #ecfdf5);
+  color: var(--color-success, #047857);
+  border: 1px solid var(--color-success, #047857);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.unblockButton:hover {
+  background: var(--color-success, #047857);
+  color: #fff;
+}
+
+.unblockButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .linkButton {
   color: var(--color-brand, #6366f1);
   text-decoration: none;

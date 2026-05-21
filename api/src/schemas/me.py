@@ -16,6 +16,8 @@ class QuotaResponse(BaseModel):
     show_upgrade_prompt: bool
     show_subscribe_button: bool
     delay_seconds: float
+    # 답변 지연 안내문구 — 관리자 콘텐츠 페이지에서 편집. 빈 문자열이면 미노출.
+    free_delay_notice_text: str
 
 
 class UsageSummaryResponse(BaseModel):

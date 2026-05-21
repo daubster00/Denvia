@@ -31,6 +31,7 @@ DEFAULTS = {
     "runtime:free_daily_quota": "10",
     "runtime:free_delay_enabled": "true",
     "runtime:free_delay": "1",
+    "runtime:free_delay_notice_text": "현재는 무료버전으로 답변 출력은 약 40초가량 소요됩니다.",
     "runtime:pro_internal_cap": "500",
     "runtime:show_subscribe_button": "true",
     # Story 4.2 — 야간 광고 차단 토글 (협의서 #C-02, NFR-C5)
@@ -40,6 +41,10 @@ DEFAULTS = {
     "runtime:night_block_end_hour": "8",
     # 관리자 설정 — RAG 본 체인 채팅 모델. ADR-0002 §결정 2 인수자 기본값 유지.
     "runtime:chat_model": "o4-mini",
+    # 이상 질문 패턴 throttle — 답변 완료 후 3초 이내 후속 질문 연속 3회 시 자동 적용.
+    "runtime:anomaly_throttle_enabled": "true",
+    "runtime:anomaly_throttle_free_delay": "5.0",
+    "runtime:anomaly_throttle_pro_delay": "2.0",
 }
 
 

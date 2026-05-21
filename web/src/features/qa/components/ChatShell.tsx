@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { useQAStore } from "@/stores/qa-store";
 import { ChatInput } from "@/features/qa/ChatInput";
 import { ChatMessage } from "@/features/qa/components/ChatMessage";
-import { FreeDelayBanner } from "@/features/qa/components/FreeDelayBanner";
 import styles from "@/styles/chat-shell.module.css";
 
 import type { RefObject } from "react";
@@ -23,9 +22,9 @@ interface ChatShellProps {
     remaining: number;
     daily_limit: number;
     delay_seconds: number;
+    /** 입력창 위 회색 안내문구 — 빈 문자열이면 미노출 (관리자가 콘텐츠 페이지에서 편집) */
+    free_delay_notice_text: string;
   } | null;
-  /** FreeDelayBanner 1회 노출 트리거 — submit 직후 true (AC-9) */
-  showDelayBanner?: boolean;
 }
 
 /**
@@ -54,7 +53,6 @@ export function ChatShell({
   onPickReframeOption,
   inputRef,
   quotaData,
-  showDelayBanner = false,
 }: ChatShellProps) {
   const messages = useQAStore((s) => s.messages);
   const isHero = messages.length === 0;
@@ -66,8 +64,13 @@ export function ChatShell({
     }
   }, [messages, isHero]);
 
-  const isFree = quotaData?.subscription_status === "free";
   const isPro = quotaData?.subscription_status === "pro";
+  const delayNoticeText = quotaData?.free_delay_notice_text?.trim() ?? "";
+  const delayNotice = delayNoticeText ? (
+    <p role="note" className={styles.delayNotice}>
+      {delayNoticeText}
+    </p>
+  ) : null;
 
   const remainingCaption = quotaData ? (
     isPro ? (
@@ -83,7 +86,7 @@ export function ChatShell({
     return (
       <div className={styles.shellHero}>
         <div className={styles.inputCenter}>
-          <FreeDelayBanner show={showDelayBanner && isFree && (quotaData?.delay_seconds ?? 0) > 0} />
+          {delayNotice}
           <ChatInput
             variant="hero"
             interactive
@@ -121,7 +124,7 @@ export function ChatShell({
         <div ref={bottomRef} />
       </div>
       <div className={styles.inputBottom}>
-        <FreeDelayBanner show={showDelayBanner && isFree && (quotaData?.delay_seconds ?? 0) > 0} />
+        {delayNotice}
         <ChatInput
           variant="inline"
           value={inputValue}

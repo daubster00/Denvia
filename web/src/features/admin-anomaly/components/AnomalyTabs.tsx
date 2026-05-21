@@ -11,10 +11,10 @@ interface Props {
 
 const ALL_TYPES: AnomalyType[] = [
   "login_brute_force",
-  "rapid_questions",
   "concurrent_ip_login",
   "repeated_question",
   "recovery_abuse",
+  "rapid_followup_questions",
 ];
 
 export function AnomalyTabs({ activeType, onChange }: Props) {

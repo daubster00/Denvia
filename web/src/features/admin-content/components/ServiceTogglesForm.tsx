@@ -18,7 +18,10 @@ const EMPTY_FORM: RuntimeConfigFormInput = {
   free_daily_quota: 10,
   free_delay_enabled: true,
   free_delay_seconds: 1,
+  free_delay_notice_text: "",
 };
+
+const NOTICE_TEXT_MAX = 200;
 
 export function ServiceTogglesForm() {
   const queryClient = useQueryClient();
@@ -39,6 +42,7 @@ export function ServiceTogglesForm() {
         free_daily_quota: configQuery.data.free_daily_quota,
         free_delay_enabled: configQuery.data.free_delay_enabled,
         free_delay_seconds: configQuery.data.free_delay_seconds,
+        free_delay_notice_text: configQuery.data.free_delay_notice_text,
       });
     }
   }, [configQuery.data]);
@@ -47,7 +51,8 @@ export function ServiceTogglesForm() {
     ? form.show_subscribe_button !== configQuery.data.show_subscribe_button ||
       form.free_daily_quota !== configQuery.data.free_daily_quota ||
       form.free_delay_enabled !== configQuery.data.free_delay_enabled ||
-      form.free_delay_seconds !== configQuery.data.free_delay_seconds
+      form.free_delay_seconds !== configQuery.data.free_delay_seconds ||
+      form.free_delay_notice_text !== configQuery.data.free_delay_notice_text
     : false;
 
   const saveMutation = useMutation({
@@ -209,6 +214,40 @@ export function ServiceTogglesForm() {
         {errors.free_delay_seconds ? (
           <p className={styles.fieldError} role="alert">
             {errors.free_delay_seconds}
+          </p>
+        ) : null}
+
+        <div className={styles.row}>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>답변 지연 안내문구</span>
+            <span className={styles.rowDesc}>
+              위 토글이 ON일 때 사용자 채팅 입력창 위에 회색 글자로 노출됩니다. 비워두면 기본 문구로 표시됩니다.
+            </span>
+          </div>
+        </div>
+        <div className={styles.noticeTextCell}>
+          <textarea
+            className={styles.noticeTextarea}
+            rows={2}
+            maxLength={NOTICE_TEXT_MAX}
+            placeholder="현재는 무료버전으로 답변 출력은 약 40초가량 소요됩니다."
+            disabled={!form.free_delay_enabled}
+            value={form.free_delay_notice_text}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+                free_delay_notice_text: e.target.value,
+              }))
+            }
+            aria-label="답변 지연 안내문구"
+          />
+          <span className={styles.noticeCount} aria-live="polite">
+            {form.free_delay_notice_text.length} / {NOTICE_TEXT_MAX}
+          </span>
+        </div>
+        {errors.free_delay_notice_text ? (
+          <p className={styles.fieldError} role="alert">
+            {errors.free_delay_notice_text}
           </p>
         ) : null}
 

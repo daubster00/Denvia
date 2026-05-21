@@ -21,7 +21,14 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from redis.asyncio import Redis as AsyncRedis
+
 from api.src.deps.auth import require_admin
+from api.src.deps.redis import get_redis_quota
+from api.src.middleware.audit_actions import (
+    AUDIT_ANOMALY_THROTTLE_CLEAR,
+    audit_action,
+)
 from api.src.middleware.rate_limit import limiter
 from api.src.models.base import get_session
 from api.src.models.user import User
@@ -40,6 +47,7 @@ from api.src.schemas.admin.users import (
 from api.src.services import (
     admin_user_activity_service,
     admin_user_service,
+    anomaly_service,
     user_service,
 )
 from api.src.utils.jwt import (
@@ -313,6 +321,54 @@ async def patch_user(
     )
 
     return item
+
+
+@router.delete("/{user_id}/anomaly-throttle", status_code=204)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+@audit_action(AUDIT_ANOMALY_THROTTLE_CLEAR)
+async def clear_anomaly_throttle(
+    request: Request,
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+    redis_quota: AsyncRedis = Depends(get_redis_quota),
+) -> None:
+    """이상 질문 패턴 throttle 수동 해제 — users.anomaly_throttled_at = NULL.
+
+    탐지 누적 streak·last_done Redis 키도 함께 정리한다.
+    이미 해제된 상태(NULL)면 멱등 — 200/204 동일 응답, audit diff='no_op'.
+    """
+    await _require_user_exists(db, user_id)
+
+    user_row = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    before = (
+        user_row.anomaly_throttled_at.isoformat()
+        if user_row is not None and user_row.anomaly_throttled_at is not None
+        else None
+    )
+
+    cleared = await anomaly_service.clear_user_anomaly_throttle(
+        user_id=user_id, db=db, redis_quota=redis_quota
+    )
+    await db.commit()
+
+    request.state.audit_target_type = "user"
+    request.state.audit_target_id = user_id
+    request.state.audit_diff = {
+        "before": {"anomaly_throttled_at": before},
+        "after": {"anomaly_throttled_at": None},
+        "cleared": cleared,
+    }
+
+    logger.info(
+        "admin.users.anomaly_throttle_cleared",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        cleared=cleared,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
 
 
 __all__ = ["router"]

@@ -9,13 +9,14 @@ const LABELS: Record<AnomalyStatus, string> = {
   new: "신규",
   reviewed: "검토 완료",
   actioned: "차단 적용",
+  unblocked: "차단 해제",
 };
 
 export function AnomalyStatusBadge({ status }: Props) {
   const cls =
     status === "actioned"
       ? styles.warning
-      : status === "reviewed"
+      : status === "reviewed" || status === "unblocked"
         ? styles.success
         : styles.brand;
   return (

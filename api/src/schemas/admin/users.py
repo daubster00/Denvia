@@ -35,6 +35,10 @@ class UserSearchItem(BaseModel):
         default=None,
         description="개별 응답 지연(초). NULL=전역 설정 따름. 0.0~30.0, 0.1 단위 (Story 6.3).",
     )
+    anomaly_throttled_at: datetime | None = Field(
+        default=None,
+        description="이상 질문 패턴 탐지로 자동 throttle 이 적용된 시각. NULL=throttle 미적용.",
+    )
     created_at: datetime
     last_login_at: datetime | None = Field(default=None, description="Story 6.2 컬럼 추가 후 채움")
     withdrawn_at: datetime | None = None
@@ -106,6 +110,12 @@ class BlockActionRequest(BaseModel):
         description="1~8760시간(최대 1년). null=영구 차단.",
     )
     reason: str = Field(min_length=1, max_length=200, description="차단 사유 (1~200자, 필수)")
+    anomaly_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="이상탐지 UI에서 차단을 적용한 경우, 해당 anomaly_event.id. "
+        "전달 시 해당 이벤트를 'actioned' 상태로 전이한다. 일반 권한 수정 시 생략.",
+    )
 
 
 class UserPermissionUpdateRequest(BaseModel):

@@ -30,7 +30,7 @@ from api.src.schemas.admin.users import (
     UserPermissionUpdateRequest,
     UserSearchItem,
 )
-from api.src.services import admin_user_service
+from api.src.services import admin_user_service, anomaly_service
 
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
@@ -48,6 +48,24 @@ def _http_422(code: str, message: str) -> HTTPException:
 
 def _http_404(code: str, message: str) -> HTTPException:
     return HTTPException(status_code=404, detail={"code": code, "message": message})
+
+
+def _extract_admin_actor_id(request: Request) -> int | None:
+    """관리자 세션 쿠키에서 actor user_id를 복원. 실패 시 None."""
+    from api.src.utils.jwt import (
+        JWTDecodeError,
+        SessionExpired,
+        decode_admin_session_jwt,
+    )
+
+    cookie = request.cookies.get("denvia_admin_session")
+    if not cookie:
+        return None
+    try:
+        payload = decode_admin_session_jwt(cookie)
+        return int(payload["sub"])
+    except (JWTDecodeError, SessionExpired, KeyError, ValueError):
+        return None
 
 
 def _validate_payload(
@@ -216,10 +234,20 @@ async def update_permission(
     # 1) 차단 해제 (unblock=true 단독 분기)
     if payload.unblock is True:
         _apply_unblock(user)
+        # 사용자의 모든 'actioned' anomaly 이벤트를 'unblocked' 로 종결.
+        # 사용자관리 페이지에서 해제하든 이상탐지 페이지에서 해제하든 동일하게 동기화.
+        await anomaly_service.mark_user_anomalies_unblocked(db, user_id=user.id)
 
     # 2) 차단 적용 (block_action — subscription_status='blocked' 자동 설정)
     if payload.block_action is not None:
         _apply_block(user, payload.block_action, now)
+        # 이상탐지 UI에서 호출된 경우, 해당 anomaly_event를 'actioned' 로 전이.
+        if payload.block_action.anomaly_id is not None:
+            await anomaly_service.mark_anomaly_actioned(
+                db,
+                anomaly_id=payload.block_action.anomaly_id,
+                actor_admin_id=_extract_admin_actor_id(request),
+            )
 
     # 3) 일반 subscription_status 변경 (block_action/unblock 분기와 충돌 안 하도록 마지막)
     if payload.subscription_status is not None and payload.block_action is None and payload.unblock is not True:

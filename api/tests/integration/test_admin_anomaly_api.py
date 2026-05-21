@@ -71,7 +71,7 @@ def _stub_session_dependency():
 def _make_event(status="new"):
     return {
         "id": 1,
-        "type": "rapid_questions",
+        "type": "rapid_followup_questions",
         "target_user_id": 7,
         "target_user_email_masked": "u**@example.com",
         "ip": "1.2.3.4",
@@ -154,7 +154,7 @@ class TestAdminAnomalyList:
         assert res.status_code == 200
         body = res.json()
         assert body["total"] == 1
-        assert body["items"][0]["type"] == "rapid_questions"
+        assert body["items"][0]["type"] == "rapid_followup_questions"
         svc.assert_awaited_once()
 
     async def test_type_in_filter_passes_through(self):
@@ -165,12 +165,15 @@ class TestAdminAnomalyList:
             ),
         ) as svc:
             res = await self._call(
-                {"type_in": "login_brute_force,rapid_questions"}
+                {"type_in": "login_brute_force,rapid_followup_questions"}
             )
         assert res.status_code == 200
         # type_in 파싱 검증
         kwargs = svc.call_args.kwargs
-        assert kwargs["type_in"] == ["login_brute_force", "rapid_questions"]
+        assert kwargs["type_in"] == [
+            "login_brute_force",
+            "rapid_followup_questions",
+        ]
 
     async def test_invalid_type_returns_422(self):
         res = await self._call({"type_in": "bad_value"})

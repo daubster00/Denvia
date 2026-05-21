@@ -197,6 +197,17 @@ export function useQAStream() {
             // 타자기 버퍼가 비워진 다음 finalize 한다.
             streamFinished = true;
             pendingFinalizeId = data.qa_log_id;
+            // 이상 질문 패턴 탐지로 throttle 이 새로 적용되었고, 무료 사용자라면
+            // 안내 팝업을 띄운다. 유료 사용자는 throttle 적용되어도 팝업 미노출
+            // (백엔드 done 이벤트에서 show_popup 을 false 로 내려준다).
+            if (data?.show_popup === true) {
+              useAlertStore.getState().show({
+                level: "warning",
+                title: "질문의 속도가 비정상적으로 빨라 이상탐지 되었습니다.",
+                description: "답변의 속도를 제한합니다.",
+                dedupeKey: "anomaly_throttle_applied",
+              });
+            }
             startTypewriter();
           }
           else if (ev.event === "error") {

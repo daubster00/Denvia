@@ -2,12 +2,13 @@
 
 Coverage:
 - check_concurrent_ip_login: 1~2 user_id skip / 3 user_id INSERT / 멱등 flag / IP None skip
-- check_rapid_questions: <3건 skip / 3건 INSERT / 5분 멱등 flag / admin skip
+- check_rapid_followup_questions: streak 임계 도달 시 status='actioned' + auto 검토 마킹
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import time
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis as fakeredis
 import pytest
@@ -117,72 +118,95 @@ async def test_concurrent_ip_login_different_ips_independent(fake_rl, db):
     assert {e.ip for e in db.added} == {"1.2.3.4", "5.6.7.8"}
 
 
-# ── check_rapid_questions ───────────────────────────────────────────────
+# ── check_rapid_followup_questions ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_rapid_questions_admin_skip(fake_quota, db):
-    await anomaly_service.check_rapid_questions(
+async def test_rapid_followup_threshold_inserts_actioned_event(fake_quota, db):
+    """답변 직후 3초 윈도우에서 streak 임계(3) 도달 시 actioned + 자동검토."""
+    user_id = 7
+    # streak=2 까지 사전 누적 → 본 호출에서 3 도달.
+    await fake_quota.set(
+        f"qa:last_done:user:{user_id}", str(time.time() - 1.0)
+    )
+    await fake_quota.set(f"qa:rapid_followup_streak:user:{user_id}", "2")
+
+    # User row 모킹 — anomaly_throttled_at = None (신규 throttle 적용).
+    user_row = MagicMock()
+    user_row.anomaly_throttled_at = None
+    select_result = MagicMock()
+    select_result.scalar_one_or_none = MagicMock(return_value=user_row)
+    db.execute = AsyncMock(return_value=select_result)
+
+    result = await anomaly_service.check_rapid_followup_questions(
+        user_id=user_id,
+        subscription_status="free",
+        redis_quota=fake_quota,
+        db=db,
+    )
+
+    assert result is True
+    assert len(db.added) == 1
+    event = db.added[0]
+    assert event.type == "rapid_followup_questions"
+    assert event.target_user_id == user_id
+    # 핵심 — 시스템 자동조치이므로 등록 시점부터 actioned + 자동검토.
+    assert event.status == "actioned"
+    assert event.reviewed_by_admin_id is None
+    assert event.reviewed_at is not None
+    assert event.details.get("auto_actioned") is True
+
+
+@pytest.mark.asyncio
+async def test_rapid_followup_below_threshold_no_event(fake_quota, db):
+    """streak 임계 미달 — INSERT 없음."""
+    user_id = 7
+    await fake_quota.set(
+        f"qa:last_done:user:{user_id}", str(time.time() - 1.0)
+    )
+    # streak=0 (없는 키 INCR → 1) → 임계 3 미달.
+
+    result = await anomaly_service.check_rapid_followup_questions(
+        user_id=user_id,
+        subscription_status="free",
+        redis_quota=fake_quota,
+        db=db,
+    )
+
+    assert result is False
+    assert db.added == []
+
+
+@pytest.mark.asyncio
+async def test_rapid_followup_admin_skipped(fake_quota, db):
+    """admin 은 throttle 대상이 아님 — Redis 조회 자체 skip."""
+    result = await anomaly_service.check_rapid_followup_questions(
         user_id=1,
         subscription_status="admin",
         redis_quota=fake_quota,
         db=db,
     )
+    assert result is False
     assert db.added == []
 
 
 @pytest.mark.asyncio
-async def test_rapid_questions_below_threshold_skip(fake_quota, db):
-    # 2건만 — 임계 미달
-    for _ in range(2):
-        await anomaly_service.check_rapid_questions(
-            user_id=7,
-            subscription_status="free",
-            redis_quota=fake_quota,
-            db=db,
-        )
+async def test_rapid_followup_outside_window_resets_streak(fake_quota, db):
+    """답변 완료 후 3초 초과 — streak 리셋, INSERT 없음."""
+    user_id = 7
+    await fake_quota.set(
+        f"qa:last_done:user:{user_id}", str(time.time() - 10.0)
+    )
+    await fake_quota.set(f"qa:rapid_followup_streak:user:{user_id}", "2")
+
+    result = await anomaly_service.check_rapid_followup_questions(
+        user_id=user_id,
+        subscription_status="free",
+        redis_quota=fake_quota,
+        db=db,
+    )
+
+    assert result is False
     assert db.added == []
-
-
-@pytest.mark.asyncio
-async def test_rapid_questions_threshold_inserts_event(fake_quota, db):
-    # 3건 — 임계 도달 후 INSERT
-    for _ in range(3):
-        await anomaly_service.check_rapid_questions(
-            user_id=7,
-            subscription_status="free",
-            redis_quota=fake_quota,
-            db=db,
-        )
-    assert len(db.added) == 1
-    event = db.added[0]
-    assert event.type == "rapid_questions"
-    assert event.target_user_id == 7
-    assert event.details["count_in_window"] == 3
-
-
-@pytest.mark.asyncio
-async def test_rapid_questions_idempotent_5min_flag(fake_quota, db):
-    # 3건 → INSERT, 4·5번째 → flag로 INSERT 막힘
-    for _ in range(5):
-        await anomaly_service.check_rapid_questions(
-            user_id=7,
-            subscription_status="free",
-            redis_quota=fake_quota,
-            db=db,
-        )
-    assert len(db.added) == 1
-
-
-@pytest.mark.asyncio
-async def test_rapid_questions_pro_user_also_applies(fake_quota, db):
-    # Pro도 어뷰징 대상 — admin만 skip
-    for _ in range(3):
-        await anomaly_service.check_rapid_questions(
-            user_id=42,
-            subscription_status="pro",
-            redis_quota=fake_quota,
-            db=db,
-        )
-    assert len(db.added) == 1
-    assert db.added[0].target_user_id == 42
+    # streak 키 삭제 확인.
+    assert await fake_quota.get(f"qa:rapid_followup_streak:user:{user_id}") is None

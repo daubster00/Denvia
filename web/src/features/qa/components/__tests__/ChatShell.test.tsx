@@ -4,7 +4,7 @@ import { ChatShell } from "../ChatShell";
 import { useQAStore } from "@/stores/qa-store";
 import { useSessionStore } from "@/stores/session-store";
 
-// Story 2.3: QuotaLock / FreeDelayBanner가 useRouter를 사용하므로 mock 필요
+// Story 2.3: QuotaLock 등 child가 useRouter를 사용하므로 mock 필요
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));

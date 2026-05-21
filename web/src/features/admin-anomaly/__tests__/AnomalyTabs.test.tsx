@@ -7,15 +7,17 @@ describe("AnomalyTabs", () => {
     render(<AnomalyTabs activeType={null} onChange={() => {}} />);
     expect(screen.getByRole("tab", { name: "전체" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "로그인 무차별 시도" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "빠른 연속 질의" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "복수 IP 동시 로그인" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "반복 질의" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "계정 복구 남용" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "답변 직후 연속 질의" })).toBeInTheDocument();
   });
 
   it("marks active tab with aria-selected=true", () => {
-    render(<AnomalyTabs activeType="rapid_questions" onChange={() => {}} />);
-    const activeTab = screen.getByRole("tab", { name: "빠른 연속 질의" });
+    render(
+      <AnomalyTabs activeType="rapid_followup_questions" onChange={() => {}} />,
+    );
+    const activeTab = screen.getByRole("tab", { name: "답변 직후 연속 질의" });
     expect(activeTab).toHaveAttribute("aria-selected", "true");
     const inactive = screen.getByRole("tab", { name: "전체" });
     expect(inactive).toHaveAttribute("aria-selected", "false");
@@ -30,7 +32,12 @@ describe("AnomalyTabs", () => {
 
   it("invokes onChange(null) when 전체 clicked", () => {
     const onChange = vi.fn();
-    render(<AnomalyTabs activeType="rapid_questions" onChange={onChange} />);
+    render(
+      <AnomalyTabs
+        activeType="rapid_followup_questions"
+        onChange={onChange}
+      />,
+    );
     fireEvent.click(screen.getByRole("tab", { name: "전체" }));
     expect(onChange).toHaveBeenCalledWith(null);
   });

@@ -44,7 +44,7 @@ def test_serialize_event_basic():
     now = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
     event = MagicMock()
     event.id = 42
-    event.type = "rapid_questions"
+    event.type = "rapid_followup_questions"
     event.target_user_id = 7
     event.ip = "1.2.3.4"
     event.ua = "Mozilla"
@@ -56,7 +56,7 @@ def test_serialize_event_basic():
 
     result = _serialize_event(event)
     assert result["id"] == 42
-    assert result["type"] == "rapid_questions"
+    assert result["type"] == "rapid_followup_questions"
     assert result["target_user_id"] == 7
     assert result["details"] == {"count_in_window": 5}
     assert result["status"] == "new"
@@ -112,7 +112,7 @@ async def test_mark_anomaly_reviewed_actioned_409():
 async def test_mark_anomaly_reviewed_reviewed_idempotent():
     event = MagicMock()
     event.id = 1
-    event.type = "rapid_questions"
+    event.type = "rapid_followup_questions"
     event.target_user_id = 7
     event.ip = None
     event.ua = None
@@ -136,7 +136,7 @@ async def test_mark_anomaly_reviewed_reviewed_idempotent():
 async def test_mark_anomaly_reviewed_new_to_reviewed():
     event = MagicMock()
     event.id = 1
-    event.type = "rapid_questions"
+    event.type = "rapid_followup_questions"
     event.target_user_id = 7
     event.ip = None
     event.ua = None
@@ -207,12 +207,17 @@ async def test_mark_anomaly_actioned_new_to_actioned():
 def test_anomaly_types_constant():
     assert anomaly_service.ANOMALY_TYPES == (
         "login_brute_force",
-        "rapid_questions",
         "concurrent_ip_login",
         "repeated_question",
         "recovery_abuse",
+        "rapid_followup_questions",
     )
 
 
 def test_anomaly_statuses_constant():
-    assert anomaly_service.ANOMALY_STATUSES == ("new", "reviewed", "actioned")
+    assert anomaly_service.ANOMALY_STATUSES == (
+        "new",
+        "reviewed",
+        "actioned",
+        "unblocked",
+    )

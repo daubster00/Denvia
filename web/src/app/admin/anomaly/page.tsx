@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnomalyTabs } from "@/features/admin-anomaly/components/AnomalyTabs";
 import { AnomalyTable } from "@/features/admin-anomaly/components/AnomalyTable";
@@ -12,6 +13,7 @@ import type {
   AnomalyType,
 } from "@/features/admin-anomaly/api/anomaly";
 import { useUpdatePermission } from "@/features/admin-users/hooks/useUpdatePermission";
+import { clearAnomalyThrottle } from "@/features/admin-users/api/users";
 import { useToastStore } from "@/stores/toast-store";
 import styles from "./page.module.css";
 
@@ -24,9 +26,34 @@ const STATUS_OPTIONS: { label: string; value: AnomalyStatus[] }[] = [
   { label: "전체", value: ["new", "reviewed", "actioned"] },
 ];
 
+const VALID_TYPES: AnomalyType[] = [
+  "login_brute_force",
+  "concurrent_ip_login",
+  "repeated_question",
+  "recovery_abuse",
+  "rapid_followup_questions",
+];
+
+const VALID_STATUSES: AnomalyStatus[] = ["new", "reviewed", "actioned"];
+
 export default function AnomalyPage() {
-  const [activeType, setActiveType] = useState<AnomalyType | null>(null);
-  const [statusIn, setStatusIn] = useState<AnomalyStatus[]>(["new"]);
+  const searchParams = useSearchParams();
+  const initialType = (() => {
+    const raw = searchParams.get("type");
+    return raw && (VALID_TYPES as string[]).includes(raw)
+      ? (raw as AnomalyType)
+      : null;
+  })();
+  const initialStatus = (() => {
+    const raw = searchParams.get("status");
+    if (raw && (VALID_STATUSES as string[]).includes(raw)) {
+      return [raw as AnomalyStatus];
+    }
+    return ["new"] as AnomalyStatus[];
+  })();
+
+  const [activeType, setActiveType] = useState<AnomalyType | null>(initialType);
+  const [statusIn, setStatusIn] = useState<AnomalyStatus[]>(initialStatus);
   const [page, setPage] = useState(1);
 
   const qc = useQueryClient();
@@ -73,6 +100,7 @@ export default function AnomalyPage() {
           block_action: {
             duration_hours: durationHours,
             reason: `이상행동 탐지 (${anomaly.type})`,
+            anomaly_id: anomaly.id,
           },
         },
       });
@@ -88,6 +116,53 @@ export default function AnomalyPage() {
       onSuccess: () => showToast("검토 완료 처리되었습니다."),
       onError: () => showToast("검토 처리에 실패했습니다."),
     });
+  }
+
+  async function handleUnblock(anomaly: AnomalyEventItem) {
+    if (!anomaly.target_user_id) {
+      showToast("대상 사용자가 없는 이벤트입니다.");
+      return;
+    }
+
+    // rapid_followup_questions 는 시스템 자동조치(throttle) — 차단이 아니므로
+    // 별도 엔드포인트(DELETE /admin/users/{id}/anomaly-throttle) 호출.
+    if (anomaly.type === "rapid_followup_questions") {
+      const ok = window.confirm(
+        "쿨다운(자동 속도 제한)을 해제하시겠습니까? 사용자가 즉시 다시 질의할 수 있습니다.",
+      );
+      if (!ok) return;
+      try {
+        await clearAnomalyThrottle(anomaly.target_user_id);
+        await qc.invalidateQueries({ queryKey: ["admin", "anomaly"] });
+        showToast("쿨다운이 해제되었습니다.");
+      } catch {
+        showToast("쿨다운 해제에 실패했습니다. 다시 시도해주세요.");
+      }
+      return;
+    }
+
+    const ok = window.confirm(
+      "차단을 해제하시겠습니까? 사용자가 즉시 다시 이용할 수 있습니다.",
+    );
+    if (!ok) return;
+    try {
+      await updatePermission.mutateAsync({
+        userId: anomaly.target_user_id,
+        payload: { unblock: true },
+      });
+      await qc.invalidateQueries({ queryKey: ["admin", "anomaly"] });
+      showToast("차단이 해제되었습니다.");
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? (err as { code: string }).code
+          : undefined;
+      if (code === "UNBLOCK_TARGET_NOT_BLOCKED") {
+        showToast("이미 차단이 해제된 사용자입니다.");
+      } else {
+        showToast("차단 해제에 실패했습니다. 다시 시도해주세요.");
+      }
+    }
   }
 
   const isStatusActive = (opt: AnomalyStatus[]) =>
@@ -144,6 +219,7 @@ export default function AnomalyPage() {
         onPageChange={setPage}
         onApplyBlock={handleApplyBlock}
         onMarkReviewed={handleMarkReviewed}
+        onUnblock={handleUnblock}
         onRetry={() => refetch()}
       />
     </section>

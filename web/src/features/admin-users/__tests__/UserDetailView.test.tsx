@@ -216,4 +216,29 @@ describe("UserDetailView", () => {
     const link = screen.getByText("로그 기록") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/admin/users/1/logs");
   });
+
+  it("anomaly throttle 적용 중인 사용자는 해제 버튼 대신 이상탐지 링크가 노출된다", () => {
+    const detail = makeDetail({
+      user: makeUser({ anomaly_throttled_at: "2026-05-15T03:00:00+09:00" }),
+    });
+    render(
+      withQuery(
+        <UserDetailView
+          detail={detail}
+          isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
+        />,
+      ),
+    );
+    expect(screen.getByText("이상탐지 적용 중")).toBeTruthy();
+    // 해제 버튼은 더 이상 노출되지 않음.
+    expect(screen.queryByRole("button", { name: "해제" })).toBeNull();
+    const link = screen.getByText("이상탐지에서 해제") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toContain("/admin/anomaly");
+    expect(link.getAttribute("href")).toContain(
+      "type=rapid_followup_questions",
+    );
+    expect(link.getAttribute("href")).toContain("status=actioned");
+  });
 });

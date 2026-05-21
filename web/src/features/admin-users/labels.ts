@@ -21,10 +21,10 @@ export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
 
 export const ANOMALY_TYPE_LABELS: Record<string, string> = {
   login_brute_force: "로그인 무차별 시도",
-  rapid_questions: "빠른 연속 질의",
   concurrent_ip_login: "복수 IP 동시 로그인",
   repeated_question: "반복 질의",
   recovery_abuse: "계정 복구 남용",
+  rapid_followup_questions: "답변 직후 연속 질의",
 };
 
 export function formatSegment(segment: Segment | null): string {

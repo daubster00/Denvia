@@ -18,6 +18,7 @@ class RuntimeConfigResponse(BaseModel):
     free_daily_quota: int
     free_delay_enabled: bool
     free_delay_seconds: int
+    free_delay_notice_text: str
 
 
 class RuntimeConfigUpdateRequest(BaseModel):
@@ -25,6 +26,7 @@ class RuntimeConfigUpdateRequest(BaseModel):
     free_daily_quota: int = Field(ge=0, le=9999)
     free_delay_enabled: bool
     free_delay_seconds: int = Field(ge=0)
+    free_delay_notice_text: str = Field(max_length=200)
 
 
 class ChatModelConfigResponse(BaseModel):
@@ -37,6 +39,25 @@ class ChatModelConfigResponse(BaseModel):
 
 class ChatModelConfigUpdateRequest(BaseModel):
     chat_model: str = Field(min_length=1, max_length=64)
+
+
+class AnomalyThrottleConfigResponse(BaseModel):
+    """이상 질문 패턴 throttle 설정 — 관리자 페이지 표시·편집 형태.
+
+    탐지 규칙: 답변 출력 완료 시각 기준 3초 이내 후속 질문 연속 3회.
+    적용: 해당 사용자 ``users.anomaly_throttled_at`` 채워 다음 질의부터 무료/유료별
+    설정된 초만큼 답변 시작 지연.
+    """
+
+    enabled: bool
+    free_delay_seconds: float
+    pro_delay_seconds: float
+
+
+class AnomalyThrottleConfigUpdateRequest(BaseModel):
+    enabled: bool
+    free_delay_seconds: float = Field(ge=0, le=999.9)
+    pro_delay_seconds: float = Field(ge=0, le=999.9)
 
 
 class ForexConfigResponse(BaseModel):

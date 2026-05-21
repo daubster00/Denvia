@@ -255,3 +255,32 @@
 .actionLink:hover {
   background: #f3f4f6;
 }
+
+.throttleCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.throttleSince {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.throttleLink {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.throttleLink:hover {
+  background: #f3f4f6;
+}

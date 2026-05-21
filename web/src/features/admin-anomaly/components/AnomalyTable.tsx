@@ -21,6 +21,7 @@ interface Props {
     durationHours: number | null,
   ) => void;
   onMarkReviewed: (anomaly: AnomalyEventItem) => void;
+  onUnblock: (anomaly: AnomalyEventItem) => void;
   onRetry: () => void;
 }
 
@@ -51,6 +52,7 @@ export function AnomalyTable({
   onPageChange,
   onApplyBlock,
   onMarkReviewed,
+  onUnblock,
   onRetry,
 }: Props) {
   const items = data?.items ?? [];
@@ -132,12 +134,16 @@ export function AnomalyTable({
                   <div className={styles.actions}>
                     {item.status === "actioned" ? (
                       item.target_user_id ? (
-                        <a
-                          href={`/admin/users/${item.target_user_id}`}
-                          className={styles.linkButton}
+                        <button
+                          type="button"
+                          className={styles.unblockButton}
+                          onClick={() => onUnblock(item)}
+                          data-testid={`anomaly-unblock-${item.id}`}
                         >
-                          차단 사용자 보기
-                        </a>
+                          {item.type === "rapid_followup_questions"
+                            ? "쿨다운 해제"
+                            : "차단 해제"}
+                        </button>
                       ) : (
                         <span className={styles.muted}>—</span>
                       )

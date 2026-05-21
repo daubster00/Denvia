@@ -59,7 +59,7 @@ const anomalyResponse = {
     },
     {
       id: 12,
-      type: "rapid_questions" as const,
+      type: "rapid_followup_questions" as const,
       target_user_id: null,
       target_user_email_masked: null,
       ip: "10.0.0.2",

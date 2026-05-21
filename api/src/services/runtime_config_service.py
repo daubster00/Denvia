@@ -7,11 +7,14 @@ QA flow는 ``api.src.services.qa_service`` 의 ``_resolve_*`` helper로 동일 �
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from fastapi import Request
 from redis.asyncio import Redis as AsyncRedis
 
 from api.src.schemas.admin.runtime_config import (
+    AnomalyThrottleConfigResponse,
+    AnomalyThrottleConfigUpdateRequest,
     RuntimeConfigResponse,
     RuntimeConfigUpdateRequest,
 )
@@ -22,6 +25,7 @@ KEY_SHOW_SUBSCRIBE = "runtime:show_subscribe_button"
 KEY_FREE_DAILY_QUOTA = "runtime:free_daily_quota"
 KEY_FREE_DELAY_ENABLED = "runtime:free_delay_enabled"
 KEY_FREE_DELAY = "runtime:free_delay"
+KEY_FREE_DELAY_NOTICE_TEXT = "runtime:free_delay_notice_text"
 # Story 7.1 — 쪽지함 미리보기 동시 노출 최대 개수 (관리자 CS 페이지에서 편집).
 KEY_INBOX_PREVIEW_MAX_COUNT = "runtime:inbox_preview_max_count"
 # 관리자 설정 — RAG 본 체인에서 사용할 채팅 모델 (기본 o4-mini, 화이트리스트 강제).
@@ -32,6 +36,8 @@ DEFAULT_SHOW_SUBSCRIBE = True
 DEFAULT_FREE_DAILY_QUOTA = 10
 DEFAULT_FREE_DELAY_ENABLED = True
 DEFAULT_FREE_DELAY_SECONDS = 1
+DEFAULT_FREE_DELAY_NOTICE_TEXT = "현재는 무료버전으로 답변 출력은 약 40초가량 소요됩니다."
+FREE_DELAY_NOTICE_TEXT_MAX_LEN = 200
 DEFAULT_INBOX_PREVIEW_MAX_COUNT = 1
 INBOX_PREVIEW_MAX_COUNT_MIN = 1
 INBOX_PREVIEW_MAX_COUNT_MAX = 5
@@ -62,17 +68,36 @@ def _to_int(raw: str | None, default: int) -> int:
         return default
 
 
+def _normalize_notice_text(raw: str | bytes | None) -> str:
+    """안내문구 정규화 — Redis 미설정/공백만이면 기본값. 길이 상한 강제."""
+    if raw is None:
+        return DEFAULT_FREE_DELAY_NOTICE_TEXT
+    value = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+    stripped = value.strip()
+    if not stripped:
+        return DEFAULT_FREE_DELAY_NOTICE_TEXT
+    return stripped[:FREE_DELAY_NOTICE_TEXT_MAX_LEN]
+
+
+async def get_free_delay_notice_text(redis_runtime: AsyncRedis) -> str:
+    """무료 지연 안내문구 단일 조회 — /me/quota 응답용."""
+    raw = await redis_runtime.get(KEY_FREE_DELAY_NOTICE_TEXT)
+    return _normalize_notice_text(raw)
+
+
 async def get_runtime_config(redis_runtime: AsyncRedis) -> RuntimeConfigResponse:
     show_raw = await redis_runtime.get(KEY_SHOW_SUBSCRIBE)
     quota_raw = await redis_runtime.get(KEY_FREE_DAILY_QUOTA)
     delay_enabled_raw = await redis_runtime.get(KEY_FREE_DELAY_ENABLED)
     delay_raw = await redis_runtime.get(KEY_FREE_DELAY)
+    notice_raw = await redis_runtime.get(KEY_FREE_DELAY_NOTICE_TEXT)
 
     return RuntimeConfigResponse(
         show_subscribe_button=_to_bool(show_raw, DEFAULT_SHOW_SUBSCRIBE),
         free_daily_quota=_to_int(quota_raw, DEFAULT_FREE_DAILY_QUOTA),
         free_delay_enabled=_to_bool(delay_enabled_raw, DEFAULT_FREE_DELAY_ENABLED),
         free_delay_seconds=_to_int(delay_raw, DEFAULT_FREE_DELAY_SECONDS),
+        free_delay_notice_text=_normalize_notice_text(notice_raw),
     )
 
 
@@ -87,12 +112,15 @@ async def update_runtime_config(
     await redis_runtime.set(KEY_FREE_DAILY_QUOTA, str(body.free_daily_quota))
     await redis_runtime.set(KEY_FREE_DELAY_ENABLED, "true" if body.free_delay_enabled else "false")
     await redis_runtime.set(KEY_FREE_DELAY, str(body.free_delay_seconds))
+    notice_normalized = _normalize_notice_text(body.free_delay_notice_text)
+    await redis_runtime.set(KEY_FREE_DELAY_NOTICE_TEXT, notice_normalized)
 
     after = RuntimeConfigResponse(
         show_subscribe_button=body.show_subscribe_button,
         free_daily_quota=body.free_daily_quota,
         free_delay_enabled=body.free_delay_enabled,
         free_delay_seconds=body.free_delay_seconds,
+        free_delay_notice_text=notice_normalized,
     )
 
     request.state.audit_target_type = "runtime_config"
@@ -234,3 +262,107 @@ async def get_night_block_settings(redis_runtime: AsyncRedis) -> NightBlockSetti
     else:
         active = str(active_raw).lower() in ("1", "true", "on", "yes")
     return NightBlockSettings(enabled=enabled, active=active)
+
+
+# =============================================================================
+# 이상 질문 패턴 throttle — '답변 완료 시각 기준 3초 이내 후속 질문 연속 3회'
+# 탐지 시 해당 사용자의 답변 출력 속도를 관리자 설정값으로 자동 제한한다.
+# qa_service.preflight 가 본 키들을 읽어 sleep 값을 결정한다.
+# =============================================================================
+
+KEY_ANOMALY_THROTTLE_ENABLED = "runtime:anomaly_throttle_enabled"
+KEY_ANOMALY_THROTTLE_FREE_DELAY = "runtime:anomaly_throttle_free_delay"
+KEY_ANOMALY_THROTTLE_PRO_DELAY = "runtime:anomaly_throttle_pro_delay"
+
+DEFAULT_ANOMALY_THROTTLE_ENABLED = True
+# 무료/유료 throttle 기본값 — 무료는 더 길게(체감 패널티),
+# 유료는 결제자 보호 차원에서 짧게 두되 결제자가 어뷰저면 어쨌든 제한.
+DEFAULT_ANOMALY_THROTTLE_FREE_DELAY = Decimal("5.0")
+DEFAULT_ANOMALY_THROTTLE_PRO_DELAY = Decimal("2.0")
+# Numeric(4,1) 컬럼과 동일한 0.0~999.9 범위로 클램프.
+ANOMALY_THROTTLE_DELAY_MIN = Decimal("0.0")
+ANOMALY_THROTTLE_DELAY_MAX = Decimal("999.9")
+
+
+def _to_decimal_seconds(raw: str | None, default: Decimal) -> Decimal:
+    """Redis 문자열을 0.1초 정밀도 Decimal 로 변환. 손상 값/None 은 default."""
+    if raw is None:
+        return default
+    try:
+        value = Decimal(str(raw)).quantize(Decimal("0.1"))
+    except Exception:
+        return default
+    if value < ANOMALY_THROTTLE_DELAY_MIN:
+        return ANOMALY_THROTTLE_DELAY_MIN
+    if value > ANOMALY_THROTTLE_DELAY_MAX:
+        return ANOMALY_THROTTLE_DELAY_MAX
+    return value
+
+
+async def get_anomaly_throttle_config(
+    redis_runtime: AsyncRedis,
+) -> AnomalyThrottleConfigResponse:
+    """현재 throttle 설정 조회 — 미설정 시 코드 기본값.
+
+    호출자: 관리자 GET 라우터 + qa_service.preflight 의 throttle 적용 분기.
+    """
+    enabled_raw = await redis_runtime.get(KEY_ANOMALY_THROTTLE_ENABLED)
+    free_raw = await redis_runtime.get(KEY_ANOMALY_THROTTLE_FREE_DELAY)
+    pro_raw = await redis_runtime.get(KEY_ANOMALY_THROTTLE_PRO_DELAY)
+
+    return AnomalyThrottleConfigResponse(
+        enabled=_to_bool(enabled_raw, DEFAULT_ANOMALY_THROTTLE_ENABLED),
+        free_delay_seconds=float(
+            _to_decimal_seconds(free_raw, DEFAULT_ANOMALY_THROTTLE_FREE_DELAY)
+        ),
+        pro_delay_seconds=float(
+            _to_decimal_seconds(pro_raw, DEFAULT_ANOMALY_THROTTLE_PRO_DELAY)
+        ),
+    )
+
+
+async def update_anomaly_throttle_config(
+    request: Request,
+    body: AnomalyThrottleConfigUpdateRequest,
+    redis_runtime: AsyncRedis,
+) -> AnomalyThrottleConfigResponse:
+    """관리자 PUT — 3 키 일괄 저장. audit diff 는 미들웨어가 INSERT."""
+    before = await get_anomaly_throttle_config(redis_runtime)
+
+    free_delay = Decimal(str(body.free_delay_seconds)).quantize(Decimal("0.1"))
+    pro_delay = Decimal(str(body.pro_delay_seconds)).quantize(Decimal("0.1"))
+
+    await redis_runtime.set(KEY_ANOMALY_THROTTLE_ENABLED, "true" if body.enabled else "false")
+    await redis_runtime.set(KEY_ANOMALY_THROTTLE_FREE_DELAY, str(free_delay))
+    await redis_runtime.set(KEY_ANOMALY_THROTTLE_PRO_DELAY, str(pro_delay))
+
+    after = AnomalyThrottleConfigResponse(
+        enabled=body.enabled,
+        free_delay_seconds=float(free_delay),
+        pro_delay_seconds=float(pro_delay),
+    )
+
+    request.state.audit_target_type = "runtime_config"
+    request.state.audit_diff = {
+        "before": before.model_dump(),
+        "after": after.model_dump(),
+    }
+    return after
+
+
+async def resolve_anomaly_throttle_delay(
+    redis_runtime: AsyncRedis,
+    *,
+    subscription_status: str,
+) -> tuple[Decimal, bool]:
+    """preflight 분기용 — throttle 적용 시 사용할 delay 와 활성 여부 반환.
+
+    반환: (delay_seconds, enabled). enabled=False 시 delay=0 으로 호출자가 skip.
+    """
+    cfg = await get_anomaly_throttle_config(redis_runtime)
+    if not cfg.enabled:
+        return (Decimal("0"), False)
+    if subscription_status == "pro":
+        return (Decimal(str(cfg.pro_delay_seconds)).quantize(Decimal("0.1")), True)
+    # admin 은 호출자에서 이미 우회됨. free/그 외 status 는 무료 값.
+    return (Decimal(str(cfg.free_delay_seconds)).quantize(Decimal("0.1")), True)

@@ -18,7 +18,6 @@ export function AuthenticatedQAExperience() {
   const router = useRouter();
   const pathname = usePathname();
   const [inputValue, setInputValue] = useState("");
-  const [showDelayBanner, setShowDelayBanner] = useState(false);
   const messages = useQAStore((s) => s.messages);
   const clearMessages = useQAStore((s) => s.clearMessages);
   const stream = useQAStream();
@@ -44,7 +43,6 @@ export function AuthenticatedQAExperience() {
   async function handleSubmit(text: string) {
     lastUserTextRef.current = text;
     setInputValue("");
-    setShowDelayBanner(true);
     if (pathname === "/") {
       router.push("/chat");
     }
@@ -90,7 +88,6 @@ export function AuthenticatedQAExperience() {
           onPickReframeOption={handlePickReframeOption}
           inputRef={chatInputRef as RefObject<HTMLTextAreaElement | null>}
           quotaData={quotaData}
-          showDelayBanner={showDelayBanner}
         />
       )}
     </>

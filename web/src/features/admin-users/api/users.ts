@@ -20,6 +20,9 @@ export interface UserSearchItem {
   is_blocked: boolean;
   block_until: string | null;
   daily_quota_override: number | null;
+  free_delay_override?: number | null;
+  /** 이상 질문 패턴 자동 throttle 적용 시각. null=미적용. */
+  anomaly_throttled_at?: string | null;
   created_at: string;
   last_login_at: string | null;
   withdrawn_at: string | null;
@@ -124,6 +127,8 @@ export async function fetchUserDetail(
 export interface BlockActionPayload {
   duration_hours: number | null;
   reason: string;
+  /** 이상탐지 UI에서 차단 시 해당 anomaly_event.id. 백엔드가 status='actioned'로 전이. */
+  anomaly_id?: number;
 }
 
 export interface UserPermissionUpdatePayload {
@@ -156,6 +161,35 @@ function _readCookie(name: string): string | undefined {
     new RegExp("(?:^|; )" + name.replace(/[-]/g, "\\$&") + "=([^;]*)"),
   );
   return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+export async function clearAnomalyThrottle(userId: number): Promise<void> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  const headers: Record<string, string> = {};
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/users/${userId}/anomaly-throttle`,
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers,
+    },
+  );
+  if (!res.ok) {
+    let code = "UNKNOWN_ERROR";
+    let message = "throttle 해제에 실패했습니다.";
+    try {
+      const body = (await res.json()) as {
+        code?: string;
+        message?: string;
+      };
+      if (body.code) code = body.code;
+      if (body.message) message = body.message;
+    } catch {
+      /* fallthrough */
+    }
+    throw new UserPermissionUpdateError(res.status, code, message);
+  }
 }
 
 export async function updateUserPermission(

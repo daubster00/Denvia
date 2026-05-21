@@ -17,10 +17,10 @@ class AnomalyEventItem(BaseModel):
     id: int
     type: Literal[
         "login_brute_force",
-        "rapid_questions",
         "concurrent_ip_login",
         "repeated_question",
         "recovery_abuse",
+        "rapid_followup_questions",
     ]
     target_user_id: int | None = None
     target_user_email_masked: str | None = Field(
@@ -30,7 +30,7 @@ class AnomalyEventItem(BaseModel):
     ip: str | None = None
     ua: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)
-    status: Literal["new", "reviewed", "actioned"]
+    status: Literal["new", "reviewed", "actioned", "unblocked"]
     reviewed_by_admin_id: int | None = None
     reviewed_at: datetime | None = None
     created_at: datetime

@@ -4,7 +4,8 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -18,7 +19,7 @@ from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.rag_integration import query_runner
 from api.src.schemas.qa import QAEchoResponse, ReframePayload  # noqa: F401
-from api.src.services import anomaly_service, qa_reframe_service
+from api.src.services import anomaly_service, qa_reframe_service, runtime_config_service
 from api.src.services.qa_reframe_service import ReframeExtractionResult  # noqa: F401
 
 logger = structlog.get_logger(__name__)
@@ -102,6 +103,14 @@ async def _resolve_delay(user: User, redis_runtime: Redis) -> tuple[Decimal, str
 _ECHO_ANSWER = "[placeholder] 스트리밍은 Story 2.2에서 구현됩니다"
 
 
+@dataclass(frozen=True)
+class PreflightResult:
+    """preflight 결과 — 스트림이 done 이벤트 + 팝업 신호에 사용."""
+
+    throttled: bool          # 이번 호출 시점에 anomaly throttle 적용 중인지
+    throttle_just_applied: bool  # 이번 호출에서 새로 throttle 이 적용되었는지 (팝업 트리거)
+
+
 class QAService:
     async def preflight(
         self,
@@ -110,27 +119,33 @@ class QAService:
         redis_quota: Redis,
         redis_runtime: Redis,
         db: AsyncSession,
-    ) -> None:
+    ) -> PreflightResult:
         """Quota INCR + 의도적 지연. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
 
         admin 사용자: quota·delay 모두 우회 (개발/지원 트래픽).
         pro 사용자: delay 미적용, 내부 안전 상한(pro_internal_cap)만 검증.
         free 사용자: quota INCR → 한도 검증 → sleep.
 
-        Story 6.5: rapid_questions 자동 탐지 hook (편차 4) — admin은 hook도 skip.
+        rapid_followup_questions 탐지(편차 +1) — 답변 완료 후 3초 이내 후속
+        질문 연속 3회. 임계 도달 시 users.anomaly_throttled_at 채워 다음 질의부터
+        runtime:anomaly_throttle_{free,pro}_delay 만큼 sleep.
         """
         if user.subscription_status == "admin":
-            return
+            return PreflightResult(throttled=False, throttle_just_applied=False)
 
         t0 = time.perf_counter()
 
-        # Story 6.5 — rapid_questions 자동 탐지 hook (편차 4)
-        await anomaly_service.check_rapid_questions(
+        # rapid_followup_questions 탐지 (답변 직후 3초 이내 연속 3회)
+        throttle_just_applied = await anomaly_service.check_rapid_followup_questions(
             user_id=user.id,
             subscription_status=user.subscription_status,
             redis_quota=redis_quota,
             db=db,
         )
+        if throttle_just_applied:
+            # 메모리상 user 객체에도 반영 — 아래 throttle 분기에서 즉시 사용.
+            user.anomaly_throttled_at = datetime.now(tz=timezone.utc)
+
         try:
             await db.commit()
         except Exception:
@@ -207,11 +222,31 @@ class QAService:
             remaining=limit - used,
         )
 
-        delay, _dsrc = await _resolve_delay(user, redis_runtime)
+        delay, dsrc = await _resolve_delay(user, redis_runtime)
+
+        # 신규 — 사용자에게 anomaly throttle 이 적용 중이면 throttle delay 로 override.
+        # max(base_delay, throttle_delay) — throttle 이 항상 더 길거나 같게 보장.
+        throttle_active = user.anomaly_throttled_at is not None
+        if throttle_active:
+            throttle_delay, throttle_enabled = (
+                await runtime_config_service.resolve_anomaly_throttle_delay(
+                    redis_runtime,
+                    subscription_status=user.subscription_status,
+                )
+            )
+            if throttle_enabled and throttle_delay > delay:
+                delay = throttle_delay
+                dsrc = "anomaly_throttle"
+
         t_before_sleep_ms = int((time.perf_counter() - t0) * 1000)
         if delay > 0:
             delay_float = float(delay)
-            logger.info("qa.free_delay.applied", user_id=user.id, delay_seconds=delay_float)
+            logger.info(
+                "qa.free_delay.applied",
+                user_id=user.id,
+                delay_seconds=delay_float,
+                source=dsrc,
+            )
             await asyncio.sleep(delay_float)
 
         # 진단용 elapsed breakdown (TTFT 추적). PII 없음.
@@ -224,6 +259,12 @@ class QAService:
             pre_sleep_ms=t_before_sleep_ms,
             total_ms=int((time.perf_counter() - t0) * 1000),
             free_delay_seconds=float(delay) if delay > 0 else 0.0,
+            throttled=throttle_active,
+        )
+
+        return PreflightResult(
+            throttled=throttle_active,
+            throttle_just_applied=throttle_just_applied,
         )
 
     async def echo(
@@ -259,6 +300,9 @@ class QAService:
         db: AsyncSession,
         user: User,
         question_text: str,
+        *,
+        redis_quota: Redis | None = None,
+        preflight_result: PreflightResult | None = None,
     ) -> AsyncIterator[dict]:
         """SSE 이벤트를 yield하는 async generator.
 
@@ -432,6 +476,19 @@ class QAService:
                     option_count=len(reframe_payload.options),
                 )
 
+            # 신규 — 이상탐지 throttle 상태 전달. 무료 사용자는 throttle_just_applied=True 면
+            # 프론트에서 팝업을 띄운다 (유료는 팝업 노출 없음).
+            throttle_payload: dict = {}
+            if preflight_result is not None:
+                throttle_payload = {
+                    "throttled": preflight_result.throttled,
+                    "throttle_just_applied": preflight_result.throttle_just_applied,
+                    "show_popup": (
+                        preflight_result.throttle_just_applied
+                        and user.subscription_status == "free"
+                    ),
+                }
+
             yield {
                 "event": "done",
                 "data": json.dumps({
@@ -440,8 +497,17 @@ class QAService:
                     "cost_usd": float(usage.cost_usd),
                     "latency_ms": latency_ms,
                     "rule_matched": use_rule,
+                    **throttle_payload,
                 }),
             }
+
+            # 신규 — 다음 후속 질의 탐지를 위한 답변 완료 시각 기록.
+            if redis_quota is not None:
+                await anomaly_service.record_stream_done(
+                    user_id=user.id,
+                    subscription_status=user.subscription_status,
+                    redis_quota=redis_quota,
+                )
 
             # AC-8: structlog (question_text/answer_text/delta 절대 금지)
             logger.info(

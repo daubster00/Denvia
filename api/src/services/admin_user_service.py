@@ -155,6 +155,7 @@ def _serialize_user(
         free_delay_override=(
             float(user.free_delay_override) if user.free_delay_override is not None else None
         ),
+        anomaly_throttled_at=user.anomaly_throttled_at,
         created_at=user.created_at,
         last_login_at=None,  # Story 6.2 채움
         withdrawn_at=user.withdrawn_at,

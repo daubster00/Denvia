@@ -11,7 +11,7 @@ function makeEvent(
 ): AnomalyEventItem {
   return {
     id: 1,
-    type: "rapid_questions",
+    type: "rapid_followup_questions",
     target_user_id: 7,
     target_user_email_masked: "u**@example.com",
     ip: "1.2.3.4",
@@ -43,6 +43,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={noop}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
@@ -69,6 +70,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={noop}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
@@ -76,10 +78,12 @@ describe("AnomalyTable", () => {
     expect(screen.getByTestId("anomaly-block-24h-1")).toBeInTheDocument();
   });
 
-  it("shows only 차단 사용자 보기 link on status='actioned' rows", () => {
+  it("shows only 차단 해제 button on status='actioned' rows", () => {
     render(
       <AnomalyTable
-        data={makeData([makeEvent({ status: "actioned" })])}
+        data={makeData([
+          makeEvent({ status: "actioned", type: "concurrent_ip_login" }),
+        ])}
         isLoading={false}
         isError={false}
         page={1}
@@ -87,12 +91,83 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={noop}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
     expect(screen.queryByTestId("anomaly-block-24h-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("anomaly-review-1")).not.toBeInTheDocument();
-    expect(screen.getByText("차단 사용자 보기")).toBeInTheDocument();
+    expect(screen.getByTestId("anomaly-unblock-1")).toBeInTheDocument();
+    expect(screen.getByText("차단 해제")).toBeInTheDocument();
+    expect(screen.queryByText("차단 사용자 보기")).not.toBeInTheDocument();
+  });
+
+  it("shows 쿨다운 해제 label for rapid_followup_questions actioned row", () => {
+    render(
+      <AnomalyTable
+        data={makeData([
+          makeEvent({
+            status: "actioned",
+            type: "rapid_followup_questions",
+          }),
+        ])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onApplyBlock={noop}
+        onMarkReviewed={noop}
+        onUnblock={noop}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.getByTestId("anomaly-unblock-1")).toBeInTheDocument();
+    expect(screen.getByText("쿨다운 해제")).toBeInTheDocument();
+    expect(screen.queryByText("차단 해제")).not.toBeInTheDocument();
+  });
+
+  it("re-shows 24h/7d/영구 차단 buttons on status='unblocked' rows", () => {
+    render(
+      <AnomalyTable
+        data={makeData([makeEvent({ status: "unblocked" })])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onApplyBlock={noop}
+        onMarkReviewed={noop}
+        onUnblock={noop}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.queryByTestId("anomaly-unblock-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("anomaly-review-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("anomaly-block-24h-1")).toBeInTheDocument();
+    expect(screen.getByTestId("anomaly-block-7d-1")).toBeInTheDocument();
+    expect(screen.getByTestId("anomaly-block-perm-1")).toBeInTheDocument();
+  });
+
+  it("invokes onUnblock when 차단 해제 clicked on actioned row", () => {
+    const onUnblock = vi.fn();
+    const event = makeEvent({ status: "actioned" });
+    render(
+      <AnomalyTable
+        data={makeData([event])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onApplyBlock={noop}
+        onMarkReviewed={noop}
+        onUnblock={onUnblock}
+        onRetry={noop}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("anomaly-unblock-1"));
+    expect(onUnblock).toHaveBeenCalledWith(event);
   });
 
   it("invokes onApplyBlock with correct duration when 24h clicked", () => {
@@ -108,6 +183,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={onApplyBlock}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
@@ -128,6 +204,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={onApplyBlock}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
@@ -148,6 +225,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={noop}
         onMarkReviewed={onMarkReviewed}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
@@ -166,6 +244,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={noop}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={noop}
       />,
     );
@@ -184,6 +263,7 @@ describe("AnomalyTable", () => {
         onPageChange={noop}
         onApplyBlock={noop}
         onMarkReviewed={noop}
+        onUnblock={noop}
         onRetry={onRetry}
       />,
     );

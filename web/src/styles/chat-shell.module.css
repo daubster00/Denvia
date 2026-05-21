@@ -107,3 +107,13 @@
   margin-top: 4px;
   display: block;
 }
+
+/* 답변 지연 안내문구 — 입력창 바로 위 회색 안내 (관리자 콘텐츠 페이지에서 편집) */
+.delayNotice {
+  font-size: 12px;
+  color: #9b9da3;
+  line-height: 1.5;
+  margin: 0 0 6px;
+  padding: 0 4px;
+  white-space: pre-wrap;
+}

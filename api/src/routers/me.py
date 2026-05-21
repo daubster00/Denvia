@@ -76,6 +76,17 @@ async def get_my_quota(
     admin은 preflight에서 quota/delay를 우회하므로(qa_service.preflight),
     /me/quota 응답도 동일한 정책으로 일관되게 unlimited 형태로 반환한다.
     """
+    # 지연 안내문구 — 글로벌 토글 ON일 때만 비어있지 않은 문자열을 반환 (지연 OFF면 "").
+    # 프론트는 빈 문자열이면 안내 영역 자체를 렌더하지 않는다.
+    delay_enabled_global = await _resolve_bool(
+        redis_runtime, "runtime:free_delay_enabled", default=True
+    )
+    notice_text = (
+        await runtime_config_service.get_free_delay_notice_text(redis_runtime)
+        if delay_enabled_global
+        else ""
+    )
+
     if current_user.subscription_status == "admin":
         return QuotaResponse(
             subscription_status="admin",
@@ -86,6 +97,7 @@ async def get_my_quota(
             show_upgrade_prompt=False,
             show_subscribe_button=False,
             delay_seconds=0.0,
+            free_delay_notice_text=notice_text,
         )
 
     raw = await redis_quota.get(_today_key_kst(current_user.id))
@@ -112,6 +124,7 @@ async def get_my_quota(
         show_upgrade_prompt=show_upgrade,
         show_subscribe_button=show_subscribe,
         delay_seconds=float(delay),
+        free_delay_notice_text=notice_text,
     )
 
 

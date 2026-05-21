@@ -10,10 +10,10 @@ from api.src.models.base import Base
 
 _AnomalyType = Enum(
     "login_brute_force",
-    "rapid_questions",
     "concurrent_ip_login",
     "repeated_question",
     "recovery_abuse",
+    "rapid_followup_questions",
     name="anomaly_event_type",
     create_constraint=False,
 )
@@ -22,6 +22,7 @@ _AnomalyStatus = Enum(
     "new",
     "reviewed",
     "actioned",
+    "unblocked",
     name="anomaly_event_status",
     create_constraint=False,
 )

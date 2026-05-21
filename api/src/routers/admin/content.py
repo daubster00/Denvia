@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.src.deps.auth import require_admin
 from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
+    AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE,
     AUDIT_INBOX_PREVIEW_CONFIG_UPDATE,
     AUDIT_MODEL_PARAMS_EDIT,
     AUDIT_NOTICE_CREATE,
@@ -61,6 +62,8 @@ from api.src.schemas.admin.popup import (
     PopupUpdateRequest,
 )
 from api.src.schemas.admin.runtime_config import (
+    AnomalyThrottleConfigResponse,
+    AnomalyThrottleConfigUpdateRequest,
     ChatModelConfigResponse,
     ChatModelConfigUpdateRequest,
     ForexConfigResponse,
@@ -236,6 +239,39 @@ async def update_chat_model_config(
         chat_model=after,
         allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
         default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
+    )
+
+
+@router.get(
+    "/runtime-config/anomaly-throttle", response_model=AnomalyThrottleConfigResponse
+)
+async def get_anomaly_throttle_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> AnomalyThrottleConfigResponse:
+    """이상 질문 패턴 throttle 설정 조회 — enabled + 무료/유료 지연 초.
+
+    탐지 규칙: 답변 출력 완료 시각 기준 3초 이내 후속 질문 연속 3회.
+    적용 대상은 사용자 ``users.anomaly_throttled_at``. 본 엔드포인트는 전역 설정만.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    return await runtime_config_service.get_anomaly_throttle_config(redis_runtime)
+
+
+@router.put(
+    "/runtime-config/anomaly-throttle", response_model=AnomalyThrottleConfigResponse
+)
+@audit_action(AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE)
+async def update_anomaly_throttle_config(
+    request: Request,
+    body: AnomalyThrottleConfigUpdateRequest,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> AnomalyThrottleConfigResponse:
+    """throttle 설정 일괄 저장 — diff_json 은 audit middleware 가 INSERT."""
+    return await runtime_config_service.update_anomaly_throttle_config(
+        request, body, redis_runtime
     )
 
 

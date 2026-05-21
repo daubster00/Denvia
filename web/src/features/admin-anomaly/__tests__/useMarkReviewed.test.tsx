@@ -31,7 +31,7 @@ describe("useMarkReviewed", () => {
   it("invokes markAnomalyReviewed and invalidates list query on success", async () => {
     const fakeResult = {
       id: 1,
-      type: "rapid_questions" as const,
+      type: "rapid_followup_questions" as const,
       target_user_id: 7,
       target_user_email_masked: null,
       ip: null,

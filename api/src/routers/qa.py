@@ -69,14 +69,20 @@ async def qa_stream(
             },
         )
 
-    await _qa_service.preflight(
+    preflight = await _qa_service.preflight(
         user=user,
         redis_quota=redis_quota,
         redis_runtime=redis_runtime,
         db=db,
     )
     return EventSourceResponse(
-        _qa_service.stream(db=db, user=user, question_text=body.question_text),
+        _qa_service.stream(
+            db=db,
+            user=user,
+            question_text=body.question_text,
+            redis_quota=redis_quota,
+            preflight_result=preflight,
+        ),
         media_type="text/event-stream",
     )
 

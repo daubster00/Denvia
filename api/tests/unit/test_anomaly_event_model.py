@@ -26,17 +26,17 @@ def test_anomaly_event_type_enum_values():
     enums = set(type_col.type.enums)
     assert enums == {
         "login_brute_force",
-        "rapid_questions",
         "concurrent_ip_login",
         "repeated_question",
         "recovery_abuse",
+        "rapid_followup_questions",
     }
 
 
 def test_anomaly_event_status_enum_values():
     status_col = AnomalyEvent.__table__.columns["status"]
     enums = set(status_col.type.enums)
-    assert enums == {"new", "reviewed", "actioned"}
+    assert enums == {"new", "reviewed", "actioned", "unblocked"}
 
 
 def test_anomaly_event_target_user_id_nullable():

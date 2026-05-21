@@ -5,7 +5,7 @@
 - mark_anomaly_reviewed: PATCH /admin/anomaly/{id} — status='reviewed' 전이
 - mark_anomaly_actioned: 차단 endpoint(6.2 PATCH /admin/users/{id})에서 호출 — status='actioned'
 - check_concurrent_ip_login: auth_service 로그인 성공 직후 hook (편차 3)
-- check_rapid_questions: qa_service.preflight 직후 hook (편차 4)
+- check_rapid_followup_questions: qa_service.preflight 직후 hook — 답변 직후 3초 연속 질의 탐지
 - _publish_anomaly_alert: SSE admin:events 채널 publish (편차 6, severity='high'만)
 """
 
@@ -29,12 +29,12 @@ logger = structlog.get_logger(__name__)
 
 ANOMALY_TYPES: tuple[str, ...] = (
     "login_brute_force",
-    "rapid_questions",
     "concurrent_ip_login",
     "repeated_question",
     "recovery_abuse",
+    "rapid_followup_questions",
 )
-ANOMALY_STATUSES: tuple[str, ...] = ("new", "reviewed", "actioned")
+ANOMALY_STATUSES: tuple[str, ...] = ("new", "reviewed", "actioned", "unblocked")
 
 _HIGH_SEVERITY_TYPES: frozenset[str] = frozenset(
     {"repeated_question", "concurrent_ip_login"}
@@ -44,11 +44,20 @@ _HIGH_SEVERITY_TYPES: frozenset[str] = frozenset(
 # 알리고 등록본은 자유 텍스트 변수이므로 카카오 심사에 영향 없음.
 _ANOMALY_TYPE_LABEL_KO: dict[str, str] = {
     "login_brute_force": "비밀번호 다회 오류",
-    "rapid_questions": "동일 사용자 분당 다회 질의",
     "concurrent_ip_login": "동일 IP 다수 계정 동시 로그인",
     "repeated_question": "동일 질문 반복",
     "recovery_abuse": "계정 복구 다회 시도",
+    "rapid_followup_questions": "답변 직후 3초 이내 연속 질의 (자동 throttle 적용)",
 }
+
+# 후속 질문 패턴 탐지 — 답변 완료 시각 기준 윈도우와 연속 임계.
+RAPID_FOLLOWUP_WINDOW_SECONDS = 3.0
+RAPID_FOLLOWUP_STREAK_THRESHOLD = 3
+# Redis 키. last_done 은 한 시간만 유지하면 충분 — 이후 어차피 streak 이 리셋됨.
+_RAPID_FOLLOWUP_LAST_DONE_KEY = "qa:last_done:user:{user_id}"
+_RAPID_FOLLOWUP_STREAK_KEY = "qa:rapid_followup_streak:user:{user_id}"
+_RAPID_FOLLOWUP_LAST_DONE_TTL = 3600
+_RAPID_FOLLOWUP_STREAK_TTL = 3600
 
 
 def _mask_email_for_alimtalk(email: str | None) -> str | None:
@@ -83,6 +92,9 @@ async def list_anomaly_events(
         select(AnomalyEvent)
         .outerjoin(User, AnomalyEvent.target_user_id == User.id)
         .where(or_(AnomalyEvent.target_user_id.is_(None), User.role != "admin"))
+        # 'unblocked' 는 종결 상태 — 정책상 리스트에 노출하지 않는다.
+        # 어떤 status_in 이 들어와도 항상 제외.
+        .where(AnomalyEvent.status != "unblocked")
     )
 
     if status_in is None or len(status_in) == 0:
@@ -195,6 +207,56 @@ async def mark_anomaly_reviewed(
     return {"event": serialized, "transitioned": True}
 
 
+async def mark_anomaly_unblocked(
+    db: AsyncSession,
+    *,
+    anomaly_id: int,
+) -> AnomalyEvent | None:
+    """이상탐지 UI 에서 차단 해제 호출 시 — 'actioned' → 'unblocked' 전이.
+
+    - None 반환: anomaly_id 미존재 또는 'actioned' 가 아닌 상태(멱등 noop).
+    - reviewed_by_admin_id / reviewed_at 은 actioned 시점 값을 그대로 유지한다
+      (해제 이력은 audit_logs 의 user.permission_edit 에서 추적).
+    """
+    event = await db.get(AnomalyEvent, anomaly_id)
+    if event is None or event.status != "actioned":
+        return None
+    event.status = "unblocked"
+    return event
+
+
+async def mark_user_anomalies_unblocked(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    type_in: list[str] | None = None,
+) -> int:
+    """대상 사용자의 'actioned' anomaly 를 'unblocked' 로 일괄 전이.
+
+    호출 시점: ``user_service._apply_unblock`` 직후. 사용자관리 페이지에서 해제하든
+    이상탐지 페이지에서 해제하든, 그 사용자에 대한 차단 적용 이력은 모두 종결 상태로
+    옮긴다(이상탐지 리스트에서 자동 제외 — 종결 상태는 노출하지 않는 정책).
+
+    ``type_in`` 지정 시 해당 타입의 이벤트만 전이 — 쿨다운(throttle) 해제는
+    `rapid_followup_questions` 만 unblocked 처리하고 별개의 24h/7d/영구차단 이력은
+    그대로 둔다.
+
+    반환: 전이된 행 수.
+    """
+    from sqlalchemy import update as sa_update
+
+    stmt = (
+        sa_update(AnomalyEvent)
+        .where(AnomalyEvent.target_user_id == user_id)
+        .where(AnomalyEvent.status == "actioned")
+    )
+    if type_in:
+        stmt = stmt.where(AnomalyEvent.type.in_(type_in))
+    stmt = stmt.values(status="unblocked")
+    result = await db.execute(stmt)
+    return int(result.rowcount or 0)
+
+
 async def mark_anomaly_actioned(
     db: AsyncSession,
     *,
@@ -305,77 +367,222 @@ async def check_concurrent_ip_login(
         logger.error("anomaly.concurrent_ip_login.hook_failed", exc_info=True)
 
 
-async def check_rapid_questions(
+# ── 답변 완료 후 3초 이내 후속 질의 연속 탐지 ──────────────────────────────────
+
+
+async def check_rapid_followup_questions(
     *,
     user_id: int,
     subscription_status: str,
     redis_quota,
     db: AsyncSession,
     redis_pubsub=None,
-) -> None:
-    """편차 4 — qa_service.preflight 내 hook. admin은 skip.
+) -> bool:
+    """qa_service.preflight 내 hook. admin 은 skip.
 
-    Redis fixed window `rapid:user:{id}:{minute_bucket}` INCR →
-    임계 3건/1분 도달 시 멱등 INSERT (`rapid_flagged:user:{id}` 60초 NX).
+    동작:
+      1. Redis 에서 직전 답변 완료 시각 (``qa:last_done:user:{id}``) 조회.
+      2. last_done 이 없거나 (now - last_done) > 3초 → streak 카운터 리셋(DEL) 후 return.
+      3. (now - last_done) <= 3초 → streak INCR (24h TTL). 3 도달 시 anomaly 발생.
 
-    멱등 flag TTL은 60초 — fixed window 길이와 동일. 5분 TTL은 다음 정상 burst까지
-    탐지를 가려 어뷰저 우대 효과가 있으므로(P13) 단일 윈도우 단위로만 묶는다.
+    Anomaly 발생 시:
+      - INSERT AnomalyEvent(type='rapid_followup_questions', target_user_id=user_id)
+      - UPDATE users SET anomaly_throttled_at = NOW() (이미 채워져 있으면 유지)
+      - DEL streak 키 (재발 시 새로 카운트)
+      - 관리자 알림톡 schedule
+
+    반환: 본 호출에서 throttle 이 새로 적용되었는지(True/False). 이미 적용 중인
+    사용자는 False (qa_service 가 user.anomaly_throttled_at 으로 적용 분기).
     """
     if subscription_status == "admin":
-        return
+        return False
 
-    minute_bucket = int(time.time() // 60)
-    rapid_key = f"rapid:user:{user_id}:{minute_bucket}"
+    last_done_key = _RAPID_FOLLOWUP_LAST_DONE_KEY.format(user_id=user_id)
+    streak_key = _RAPID_FOLLOWUP_STREAK_KEY.format(user_id=user_id)
 
     try:
-        rapid_count = await redis_quota.incr(rapid_key)
-        if rapid_count == 1:
-            await redis_quota.expire(rapid_key, 65)
+        raw_last_done = await redis_quota.get(last_done_key)
+    except Exception:
+        logger.error("anomaly.rapid_followup.redis_read_failed", exc_info=True)
+        return False
 
-        if rapid_count < 3:
-            return
+    if raw_last_done is None:
+        # 직전 답변이 없으면 신규 세션 — streak 리셋.
+        try:
+            await redis_quota.delete(streak_key)
+        except Exception:
+            pass
+        return False
 
-        flag_key = f"rapid_flagged:user:{user_id}"
-        flag_ok = await redis_quota.set(flag_key, "1", ex=60, nx=True)
-        if not flag_ok:
-            return
+    try:
+        last_done_ts = float(raw_last_done)
+    except (TypeError, ValueError):
+        last_done_ts = 0.0
 
+    now_ts = time.time()
+    delta = now_ts - last_done_ts
+
+    if delta > RAPID_FOLLOWUP_WINDOW_SECONDS or delta < 0:
+        # 윈도우 밖 — streak 리셋. 다음 답변 완료 시점부터 새로 시작.
+        try:
+            await redis_quota.delete(streak_key)
+        except Exception:
+            pass
+        return False
+
+    # 윈도우 안 → streak INCR.
+    try:
+        streak = await redis_quota.incr(streak_key)
+        if streak == 1:
+            await redis_quota.expire(streak_key, _RAPID_FOLLOWUP_STREAK_TTL)
+    except Exception:
+        logger.error("anomaly.rapid_followup.streak_incr_failed", exc_info=True)
+        return False
+
+    if streak < RAPID_FOLLOWUP_STREAK_THRESHOLD:
+        return False
+
+    # 임계 도달 — anomaly 기록 + throttle 적용.
+    try:
+        # 사용자 throttle flag 가 이미 채워져 있으면 멱등: anomaly INSERT 만 skip.
+        from sqlalchemy import update as sa_update
+
+        from api.src.models.user import User as _User
+
+        user_row = (
+            await db.execute(select(_User).where(_User.id == user_id))
+        ).scalar_one_or_none()
+        if user_row is None:
+            return False
+
+        already_throttled = user_row.anomaly_throttled_at is not None
+        if not already_throttled:
+            now_dt = datetime.now(tz=timezone.utc)
+            await db.execute(
+                sa_update(_User)
+                .where(_User.id == user_id)
+                .values(anomaly_throttled_at=now_dt)
+            )
+
+        # rapid_followup 은 시스템이 즉시 자동조치(throttle)를 적용하므로
+        # 등록 시점에 바로 actioned + 자동검토 처리. reviewed_by_admin_id=None 이
+        # "시스템 자동조치" 표식 — 24h/7d/영구차단 액션 분기와 구분된다.
+        now_dt2 = datetime.now(tz=timezone.utc)
         event = AnomalyEvent(
-            type="rapid_questions",
+            type="rapid_followup_questions",
             target_user_id=user_id,
             ip=None,
             ua=None,
             details={
-                "count_in_window": int(rapid_count),
-                "window_minute_bucket": minute_bucket,
+                "streak": int(streak),
+                "window_seconds": RAPID_FOLLOWUP_WINDOW_SECONDS,
+                "last_done_delta_seconds": round(delta, 3),
+                "already_throttled": already_throttled,
+                "auto_actioned": True,
             },
-            status="new",
-            created_at=datetime.now(tz=timezone.utc),
+            status="actioned",
+            reviewed_by_admin_id=None,
+            reviewed_at=now_dt2,
+            created_at=now_dt2,
         )
         db.add(event)
         try:
             await db.flush()
         except Exception:
             await db.rollback()
-            logger.error("anomaly.rapid_questions.insert_failed", exc_info=True)
-            return
+            logger.error("anomaly.rapid_followup.insert_failed", exc_info=True)
+            return False
+
+        # 재발 시 다시 0부터 카운트.
+        try:
+            await redis_quota.delete(streak_key)
+        except Exception:
+            pass
 
         logger.info(
-            "anomaly.rapid_questions.detected",
+            "anomaly.rapid_followup.detected",
             user_id=user_id,
-            count_in_window=int(rapid_count),
+            streak=int(streak),
+            delta_seconds=round(delta, 3),
+            already_throttled=already_throttled,
             anomaly_id=event.id,
         )
 
         schedule_admin_anomaly_alimtalk(
             anomaly_event_id=event.id,
-            anomaly_type="rapid_questions",
+            anomaly_type="rapid_followup_questions",
             target_user_id=user_id,
         )
-        # rapid_questions는 severity='medium' — SSE publish skip (편차 6).
-        # 알림톡은 카카오 검수 통과 시 즉시 발송 (severity 와 무관).
+        # severity='medium' — SSE publish skip.
+        return not already_throttled
     except Exception:
-        logger.error("anomaly.rapid_questions.hook_failed", exc_info=True)
+        logger.error("anomaly.rapid_followup.hook_failed", exc_info=True)
+        return False
+
+
+async def record_stream_done(
+    *,
+    user_id: int,
+    subscription_status: str,
+    redis_quota,
+) -> None:
+    """qa_service.stream 의 stream 종료 직후 호출 — 마지막 답변 완료 시각 기록.
+
+    admin 은 throttle 대상이 아니므로 기록하지 않는다 (Redis 키 증가 방지).
+    """
+    if subscription_status == "admin":
+        return
+    key = _RAPID_FOLLOWUP_LAST_DONE_KEY.format(user_id=user_id)
+    try:
+        await redis_quota.set(key, str(time.time()), ex=_RAPID_FOLLOWUP_LAST_DONE_TTL)
+    except Exception:
+        # last_done 기록 실패는 silent — 다음 답변 완료에서 다시 채워진다.
+        logger.error("anomaly.rapid_followup.record_done_failed", exc_info=True)
+
+
+async def clear_user_anomaly_throttle(
+    *,
+    user_id: int,
+    db: AsyncSession,
+    redis_quota=None,
+) -> bool:
+    """관리자 수동 해제 — users.anomaly_throttled_at = NULL + Redis streak/last_done 정리.
+
+    호출자: 라우터 (/admin/users/{id}/anomaly-throttle DELETE) 또는 user_service.unblock.
+    반환: 실제 해제가 이루어졌는지(True=이전에 throttled, False=원래 NULL).
+    """
+    from sqlalchemy import update as sa_update
+
+    from api.src.models.user import User as _User
+
+    user_row = (
+        await db.execute(select(_User).where(_User.id == user_id))
+    ).scalar_one_or_none()
+    if user_row is None or user_row.anomaly_throttled_at is None:
+        return False
+
+    await db.execute(
+        sa_update(_User)
+        .where(_User.id == user_id)
+        .values(anomaly_throttled_at=None)
+    )
+
+    # rapid_followup_questions actioned 이벤트도 동반 unblocked 처리 →
+    # 이상탐지 리스트에서 자동 제외. 다른 타입(IP·반복질문 등)으로 인한
+    # actioned 이력은 건드리지 않는다.
+    await mark_user_anomalies_unblocked(
+        db, user_id=user_id, type_in=["rapid_followup_questions"]
+    )
+
+    if redis_quota is not None:
+        try:
+            await redis_quota.delete(
+                _RAPID_FOLLOWUP_STREAK_KEY.format(user_id=user_id)
+            )
+        except Exception:
+            pass
+
+    return True
 
 
 # ── SSE publish ────────────────────────────────────────────────────────────────
@@ -463,11 +670,17 @@ async def _serialize_event_with_email(
 __all__ = [
     "ANOMALY_TYPES",
     "ANOMALY_STATUSES",
+    "RAPID_FOLLOWUP_WINDOW_SECONDS",
+    "RAPID_FOLLOWUP_STREAK_THRESHOLD",
     "list_anomaly_events",
     "mark_anomaly_reviewed",
     "mark_anomaly_actioned",
+    "mark_anomaly_unblocked",
+    "mark_user_anomalies_unblocked",
     "check_concurrent_ip_login",
-    "check_rapid_questions",
+    "check_rapid_followup_questions",
+    "record_stream_done",
+    "clear_user_anomaly_throttle",
     "schedule_admin_anomaly_alimtalk",
 ]
 

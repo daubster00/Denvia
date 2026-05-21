@@ -9,12 +9,12 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type AnomalyType =
   | "login_brute_force"
-  | "rapid_questions"
   | "concurrent_ip_login"
   | "repeated_question"
-  | "recovery_abuse";
+  | "recovery_abuse"
+  | "rapid_followup_questions";
 
-export type AnomalyStatus = "new" | "reviewed" | "actioned";
+export type AnomalyStatus = "new" | "reviewed" | "actioned" | "unblocked";
 
 export interface AnomalyEventItem {
   id: number;

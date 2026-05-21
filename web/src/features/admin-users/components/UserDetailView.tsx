@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { UserDetailResponse } from "@/features/admin-users/api/users";
+import { type UserDetailResponse } from "@/features/admin-users/api/users";
 import {
   formatAnomalyType,
   formatSegment,
@@ -18,6 +18,10 @@ interface Props {
   onRetry: () => void;
   onPermissionUpdated?: () => void;
 }
+
+// rapid_followup_questions actioned 행만 거른 이상탐지 페이지 링크.
+const ANOMALY_THROTTLE_LIST_URL =
+  "/admin/anomaly?type=rapid_followup_questions&status=actioned";
 
 const KST_DATETIME = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
@@ -68,6 +72,7 @@ export function UserDetailView({
   const user = detail.user;
   const subscription = detail.subscription_summary;
   const isWithdrawn = user.withdrawn_at !== null && user.withdrawn_at !== undefined;
+  const isAnomalyThrottled = Boolean(user.anomaly_throttled_at);
 
   return (
     <div className={styles.root} data-testid="user-detail-view">
@@ -120,6 +125,23 @@ export function UserDetailView({
                 ) : null}
               </dd>
             </div>
+            {isAnomalyThrottled ? (
+              <div className={styles.infoRow}>
+                <dt>속도 제한</dt>
+                <dd className={styles.throttleCell}>
+                  <span className={styles.chipBlocked}>이상탐지 적용 중</span>
+                  <span className={styles.throttleSince}>
+                    {formatDateTime(user.anomaly_throttled_at ?? null)}
+                  </span>
+                  <Link
+                    href={ANOMALY_THROTTLE_LIST_URL}
+                    className={styles.throttleLink}
+                  >
+                    이상탐지에서 해제
+                  </Link>
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </section>
 
