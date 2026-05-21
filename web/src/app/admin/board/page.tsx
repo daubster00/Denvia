@@ -30,6 +30,18 @@ function formatKoreanDate(iso: string): string {
   return d.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function buildPageWindow(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const window: (number | "…")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) window.push("…");
+  for (let i = start; i <= end; i++) window.push(i);
+  if (end < total - 1) window.push("…");
+  window.push(total);
+  return window;
+}
+
 export default function AdminBoardListPage() {
   const router = useRouter();
   const [category, setCategory] = useState<BoardCategory | "">("");
@@ -190,28 +202,65 @@ export default function AdminBoardListPage() {
         </table>
       </div>
 
-      {listQuery.data && listQuery.data.total > PER_PAGE && (
-        <div className={styles.pager}>
+      {listQuery.data && listQuery.data.total > 0 && (
+        <nav className={styles.pager} aria-label="페이지네이션">
           <button
             type="button"
-            className={styles.secondaryBtn}
+            className={styles.pagerBtn}
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+            aria-label="첫 페이지"
+          >
+            «
+          </button>
+          <button
+            type="button"
+            className={styles.pagerBtn}
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
+            aria-label="이전 페이지"
           >
-            이전
+            ‹
           </button>
-          <span className={styles.pagerInfo}>
-            {page} / {totalPages}
-          </span>
+          {buildPageWindow(page, totalPages).map((p, idx) =>
+            p === "…" ? (
+              <span key={`gap-${idx}`} className={styles.pagerGap}>
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                className={`${styles.pagerBtn} ${p === page ? styles.pagerBtnActive : ""}`}
+                onClick={() => setPage(p)}
+                aria-current={p === page ? "page" : undefined}
+              >
+                {p}
+              </button>
+            ),
+          )}
           <button
             type="button"
-            className={styles.secondaryBtn}
+            className={styles.pagerBtn}
             disabled={page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            aria-label="다음 페이지"
           >
-            다음
+            ›
           </button>
-        </div>
+          <button
+            type="button"
+            className={styles.pagerBtn}
+            disabled={page >= totalPages}
+            onClick={() => setPage(totalPages)}
+            aria-label="마지막 페이지"
+          >
+            »
+          </button>
+          <span className={styles.pagerInfo}>
+            총 {listQuery.data.total.toLocaleString("ko-KR")}개
+          </span>
+        </nav>
       )}
     </div>
   );
