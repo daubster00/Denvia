@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { fetchUserTokens } from "@/features/admin-dashboard/api/analytics";
 import { UserTokensTable } from "@/features/admin-dashboard/components/UserTokensTable";
 import styles from "./page.module.css";
@@ -44,7 +45,12 @@ export default function TokenBreakdownPage() {
   return (
     <section className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>사용자별 토큰 사용</h1>
+        <div className={styles.titleGroup}>
+          <Link href="/admin" className={styles.backLink}>
+            ← 대시보드 홈으로
+          </Link>
+          <h1 className={styles.title}>사용자별 토큰 사용</h1>
+        </div>
       </header>
 
       <div className={styles.filters}>
