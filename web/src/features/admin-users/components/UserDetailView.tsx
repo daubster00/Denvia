@@ -155,7 +155,7 @@ export function UserDetailView({
               </dl>
             ) : (
               <p className={styles.placeholderText}>
-                PG 연동 후 표시됩니다.
+                결제 정보가 없습니다.
               </p>
             )}
           </section>
