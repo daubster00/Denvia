@@ -155,9 +155,19 @@ async def set_inbox_preview_max_count(
 # =============================================================================
 
 KEY_USD_TO_KRW = "runtime:usd_to_krw"
+# 자동 갱신 메타키 — forex_tasks 가 매일 09:00 KST SET. 관리자 UI 에서 마지막 갱신 시각 표시.
+KEY_USD_TO_KRW_UPDATED_AT = "runtime:usd_to_krw_updated_at"
+KEY_USD_TO_KRW_SEARCH_DATE = "runtime:usd_to_krw_search_date"
 DEFAULT_USD_TO_KRW = 1400
 USD_TO_KRW_MIN = 1000
 USD_TO_KRW_MAX = 3000
+
+
+@dataclass(frozen=True)
+class UsdKrwSnapshot:
+    rate: int
+    updated_at: str | None  # ISO8601 UTC, 한 번도 자동 갱신 안 됐으면 None
+    search_date: str | None  # YYYY-MM-DD, API 가 실제로 데이터를 반환한 영업일
 
 
 async def get_usd_to_krw(redis_runtime: AsyncRedis) -> int:
@@ -172,6 +182,18 @@ async def get_usd_to_krw(redis_runtime: AsyncRedis) -> int:
     if not (USD_TO_KRW_MIN <= v <= USD_TO_KRW_MAX):
         return DEFAULT_USD_TO_KRW
     return v
+
+
+async def get_usd_to_krw_snapshot(redis_runtime: AsyncRedis) -> UsdKrwSnapshot:
+    """환율 + 자동 갱신 메타데이터 묶음 조회 — 관리자 UI 표시용."""
+    rate = await get_usd_to_krw(redis_runtime)
+    updated_at = await redis_runtime.get(KEY_USD_TO_KRW_UPDATED_AT)
+    search_date = await redis_runtime.get(KEY_USD_TO_KRW_SEARCH_DATE)
+    return UsdKrwSnapshot(
+        rate=rate,
+        updated_at=updated_at,
+        search_date=search_date,
+    )
 
 
 # =============================================================================

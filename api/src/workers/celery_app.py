@@ -22,6 +22,7 @@ celery_app = Celery(
         "api.src.workers.billing_tasks",       # Story 3.3: 자동 갱신 배치
         "api.src.workers.anomaly_tasks",       # Story 6.2: 차단 자동 만료
         "api.src.workers.content_schedule_tasks",  # Story 4.2: F-502 야간 차단 토글
+        "api.src.workers.forex_tasks",         # Story 5.5 후속: USD→KRW 환율 일일 자동 갱신
     ],
 )
 
@@ -99,6 +100,13 @@ celery_app.conf.update(
         "toggle-night-block-off-0800": {
             "task": "content_schedule_tasks.toggle_night_block_off",
             "schedule": crontab(hour=8, minute=0),
+        },
+        # USD→KRW 환율 자동 갱신 — 매일 09:00 KST 1회 (한국수출입은행 영업일 11:00 게시
+        # 이전 호출 시 직전 영업일 데이터로 폴백). 09시는 장 시작 직후이고 분 슬롯이
+        # 비어 있어 다른 태스크와 충돌 없음.
+        "forex-update-usd-krw-daily-0900": {
+            "task": "forex_tasks.update_usd_krw",
+            "schedule": crontab(hour=9, minute=0),
         },
     },
 )

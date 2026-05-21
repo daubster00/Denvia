@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     # WebOTP API — Android Chrome SMS 자동 입력용 도메인 바운드 (예: "denvia.com"). 비우면 마커 라인 미부착.
     webotp_bound_origin: str = ""
 
+    # 한국수출입은행 환율 API — USD→KRW 매일 09:00 KST 자동 갱신용 (Story 5.5 후속)
+    # 미설정 시 forex_tasks 가 no-op 처리 → Redis 기존값 유지, 폴백 1,400.
+    koreaexim_api_key: str = ""
+    koreaexim_base_url: str = "https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON"
+
     # RAG 통합 (Story 2.1)
     faiss_current_path: str = "data/faiss/current"
     faiss_index_a_path: str = "data/faiss/index_a"

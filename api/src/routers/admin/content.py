@@ -19,6 +19,7 @@
 - PUT    /admin/runtime-config           서비스 전체 토글 4종 일괄 저장
 - GET    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 조회 + 허용 목록
 - PUT    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 변경 (화이트리스트)
+- GET    /admin/runtime-config/forex       USD→KRW 환율 + 자동 갱신 메타 (read-only)
 """
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
@@ -62,6 +63,7 @@ from api.src.schemas.admin.popup import (
 from api.src.schemas.admin.runtime_config import (
     ChatModelConfigResponse,
     ChatModelConfigUpdateRequest,
+    ForexConfigResponse,
     RuntimeConfigResponse,
     RuntimeConfigUpdateRequest,
 )
@@ -234,6 +236,29 @@ async def update_chat_model_config(
         chat_model=after,
         allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
         default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
+    )
+
+
+@router.get("/runtime-config/forex", response_model=ForexConfigResponse)
+async def get_forex_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> ForexConfigResponse:
+    """USD→KRW 환율 + 자동 갱신 메타 조회 (read-only).
+
+    자동 갱신은 Celery beat ``forex_tasks.update_usd_krw`` 가 매일 09:00 KST 수행.
+    PUT/PATCH 미제공 — "자동이 항상 덮어쓰기" 정책. 운영자 직개입 필요 시 redis-cli SET.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    snap = await runtime_config_service.get_usd_to_krw_snapshot(redis_runtime)
+    source = "auto" if snap.updated_at is not None else "fallback"
+    return ForexConfigResponse(
+        rate=snap.rate,
+        default_rate=runtime_config_service.DEFAULT_USD_TO_KRW,
+        updated_at=snap.updated_at,
+        search_date=snap.search_date,
+        source=source,
     )
 
 

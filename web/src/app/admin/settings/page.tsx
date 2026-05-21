@@ -11,8 +11,26 @@ import {
   updateChatModelConfig,
   type ChatModelConfig,
 } from "@/features/admin-dashboard/api/chatModel";
+import { fetchForexConfig } from "@/features/admin-dashboard/api/forex";
 import { formatKRW, usdToKrwInt } from "@/lib/format-currency";
 import styles from "./page.module.css";
+
+// "2026-05-21T08:00:12.345Z" → "2026-05-21 17:00 KST" (사용자 친화)
+function formatKstFromIso(iso: string | null): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  const fmt = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${fmt.format(d).replace(/\. /g, "-").replace(/\./g, "")} KST`;
+}
 
 // 모델별 사용자 안내 카피 — 응답 속도/품질/비용 특성을 비전문가에게 설명.
 const MODEL_DESCRIPTIONS: Record<string, { title: string; speed: string; quality: string; note: string }> = {
@@ -66,6 +84,13 @@ export default function SettingsPage() {
     queryKey: ["admin", "runtime-config", "chat-model"],
     queryFn: fetchChatModelConfig,
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const forexQuery = useQuery({
+    queryKey: ["admin", "runtime-config", "forex"],
+    queryFn: fetchForexConfig,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 
@@ -189,6 +214,26 @@ export default function SettingsPage() {
                 <span className={styles.unitNote}>
                   (USD ${currentLimit.toFixed(2)} · 환율 ₩{usdToKrw.toLocaleString("ko-KR")}/$)
                 </span>
+                <div className={styles.forexMeta}>
+                  {forexQuery.data?.source === "auto" ? (
+                    <span className={styles.forexMetaTag}>자동 갱신</span>
+                  ) : (
+                    <span
+                      className={`${styles.forexMetaTag} ${styles.forexMetaTagFallback}`}
+                    >
+                      기본값 사용 중
+                    </span>
+                  )}
+                  <span>
+                    한국수출입은행 매일 09:00 KST 자동 반영
+                    {forexQuery.data?.updated_at
+                      ? ` · 최근 갱신 ${formatKstFromIso(forexQuery.data.updated_at)}`
+                      : ""}
+                    {forexQuery.data?.search_date
+                      ? ` · 기준 영업일 ${forexQuery.data.search_date}`
+                      : ""}
+                  </span>
+                </div>
               </dd>
             </div>
             <div className={styles.summaryRow}>

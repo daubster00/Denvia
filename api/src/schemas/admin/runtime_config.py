@@ -37,3 +37,17 @@ class ChatModelConfigResponse(BaseModel):
 
 class ChatModelConfigUpdateRequest(BaseModel):
     chat_model: str = Field(min_length=1, max_length=64)
+
+
+class ForexConfigResponse(BaseModel):
+    """USD→KRW 환율 + 자동 갱신 메타 — 관리자 UI 표시 전용 (read-only).
+
+    자동 갱신 정책: Celery beat 가 매일 09:00 KST 한국수출입은행 API 호출.
+    실패·미설정 시 ``DEFAULT_USD_TO_KRW``(1400) 폴백.
+    """
+
+    rate: int
+    default_rate: int
+    updated_at: str | None  # ISO8601 UTC, 한 번도 자동 갱신 안 됐으면 None
+    search_date: str | None  # YYYY-MM-DD, API 가 데이터 반환한 영업일
+    source: str  # "auto" | "fallback" — auto_renew 우선 정책 명시
