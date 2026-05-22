@@ -20,15 +20,20 @@ def encode_session_jwt(
     subscription_status: str,
     *,
     persist: bool = False,
+    session_id: str | None = None,
 ) -> str:
     """denvia_session 쿠키에 삽입할 JWT를 생성한다.
 
     persist=True → 1일 TTL, persist=False → 1시간 TTL.
     persist 값은 payload에도 함께 저장돼서, 슬라이딩 미들웨어가 갱신 시 동일 TTL을 재적용한다.
+
+    session_id: users.current_session_id 와 매칭하기 위한 nonce. 동일 계정의 새 로그인이
+    발생하면 DB의 nonce만 갱신되고, 이전 쿠키의 sid는 자동으로 mismatch → deps.auth 에서
+    401 AUTH_SESSION_SUPERSEDED 처리한다.
     """
     ttl = SESSION_TTL_LONG if persist else SESSION_TTL_SHORT
     now = datetime.now(tz=timezone.utc)
-    payload = {
+    payload: dict = {
         "sub": str(user_id),
         "role": role,
         "sub_status": subscription_status,
@@ -36,6 +41,8 @@ def encode_session_jwt(
         "iat": now,
         "exp": now + ttl,
     }
+    if session_id:
+        payload["sid"] = session_id
     return pyjwt.encode(
         payload,
         settings.denvia_jwt_secret,

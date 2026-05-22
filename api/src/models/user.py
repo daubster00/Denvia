@@ -60,6 +60,9 @@ class User(Base):
         Boolean, nullable=False, default=False
     )
     last_login_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # 단일 세션(later wins) — 로그인 시점에 nonce를 발급하고 JWT의 sid 클레임과 매칭한다.
+    # 새 로그인이 일어나면 값이 갱신돼 이전 쿠키의 sid는 자동으로 mismatch → 401.
+    current_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     withdrawn_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     updated_at: Mapped[datetime] = mapped_column(nullable=False)

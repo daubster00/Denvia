@@ -89,6 +89,9 @@ class SessionRefreshMiddleware(BaseHTTPMiddleware):
                 role=user_payload["role"],
                 subscription_status=user_payload["sub_status"],
                 persist=persist,
+                # sid 는 단일 세션(later wins) 매칭용 — 슬라이딩 갱신 시 그대로 보존해야
+                # 새 토큰도 users.current_session_id 와 동일하게 유지된다.
+                session_id=user_payload.get("sid"),
             )
             cookie_kwargs: dict = dict(
                 key=USER_SESSION_COOKIE,

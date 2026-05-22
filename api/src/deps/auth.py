@@ -21,6 +21,15 @@ from api.src.utils.jwt import (
 )
 
 
+_SESSION_SUPERSEDED = HTTPException(
+    status_code=401,
+    detail={
+        "code": "AUTH_SESSION_SUPERSEDED",
+        "message": "다른 장소에서 로그인되어 로그아웃되었습니다.",
+    },
+)
+
+
 def _decode_session_cookie(denvia_session: str | None) -> dict:
     """JWT 디코딩 공통 로직 — 401 분기. 동기 함수."""
     if not denvia_session:
@@ -42,6 +51,25 @@ def _decode_session_cookie(denvia_session: str | None) -> dict:
         )
 
 
+def _enforce_session_match(payload: dict, user: User) -> None:
+    """단일 세션(later wins) 매칭. 새 로그인이 일어나 user.current_session_id 가 갱신됐는데
+    쿠키 쪽 sid 가 그것과 다르면 401 AUTH_SESSION_SUPERSEDED 로 거부한다.
+
+    user.current_session_id 가 NULL 이면(레거시·로그아웃 직후) 매칭하지 않고 통과시킨다.
+    payload 에 sid 가 없는 토큰(기존 발급분)도 sid 비교를 강제하지 않는다 — 이런 토큰들은
+    자연 만료 후 새 로그인부터 sid 가 박힌다.
+    """
+    server_sid = user.current_session_id
+    if server_sid is None:
+        return
+    cookie_sid = payload.get("sid")
+    if cookie_sid is None:
+        # 서버는 sid 를 갖고 있는데 쿠키에는 없다 → 이 쿠키는 더 이상의 활성 세션을 대표하지 않는다.
+        raise _SESSION_SUPERSEDED
+    if cookie_sid != server_sid:
+        raise _SESSION_SUPERSEDED
+
+
 async def get_current_user(
     denvia_session: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_session),
@@ -54,6 +82,7 @@ async def get_current_user(
             status_code=401,
             detail={"code": "AUTH_NOT_AUTHENTICATED", "message": "로그인이 필요합니다."},
         )
+    _enforce_session_match(payload, user)
     if user.subscription_status == "blocked":
         raise HTTPException(
             status_code=403,
@@ -74,6 +103,7 @@ async def get_current_user_allow_blocked(
             status_code=401,
             detail={"code": "AUTH_NOT_AUTHENTICATED", "message": "로그인이 필요합니다."},
         )
+    _enforce_session_match(payload, user)
     return user
 
 

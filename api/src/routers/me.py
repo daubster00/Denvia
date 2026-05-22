@@ -716,6 +716,8 @@ async def change_password(
 
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_reset_password = False
+    # 비밀번호 변경 시 단일 세션 nonce 도 회전 — 다른 기기에 남아있던 세션은 sid mismatch 로 자동 무효화.
+    current_user.current_session_id = _secrets.token_urlsafe(24)
     current_user.updated_at = datetime.now(tz=timezone.utc)
     await db.commit()
 
@@ -724,6 +726,7 @@ async def change_password(
         role=current_user.role,
         subscription_status=current_user.subscription_status,
         persist=False,  # NFR-S4: 비밀번호 변경 시 비지속 세션 재발급
+        session_id=current_user.current_session_id,
     )
     response.set_cookie(
         key="denvia_session",
@@ -975,6 +978,8 @@ async def change_password_with_current(
 
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_reset_password = False
+    # 비밀번호 변경 시 단일 세션 nonce 회전 — 다른 기기에 남아있던 세션은 sid mismatch 로 자동 무효화.
+    current_user.current_session_id = _secrets.token_urlsafe(24)
     current_user.updated_at = datetime.now(tz=timezone.utc)
     await db.commit()
 
@@ -983,6 +988,7 @@ async def change_password_with_current(
         role=current_user.role,
         subscription_status=current_user.subscription_status,
         persist=False,
+        session_id=current_user.current_session_id,
     )
     response.set_cookie(
         key="denvia_session",

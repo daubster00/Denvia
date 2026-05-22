@@ -286,6 +286,8 @@ async def signup_user(
         password_hash=password_hash,
         phone_verified=True,
         subscription_status="free",
+        # 가입 직후 자동 로그인 — 단일 세션 nonce 박제(라우터의 JWT 발급도 동일 값 사용).
+        current_session_id=secrets.token_urlsafe(24),
         created_at=now,
         updated_at=now,
     )
@@ -493,6 +495,8 @@ async def login_user(
 
     # Story 6.2: 로그인 성공 시 last_login_at 업데이트 (편차 2)
     user.last_login_at = datetime.now(tz=timezone.utc)
+    # 단일 세션(later wins) — 새 nonce 발급. 이전 쿠키는 sid mismatch 로 자동 무효화된다.
+    user.current_session_id = secrets.token_urlsafe(24)
     try:
         await db.commit()
     except Exception:

@@ -22,6 +22,21 @@ async function handleErrorResponse(res: Response, path: string): Promise<never> 
   const code = (body["code"] as string | undefined) ?? "UNKNOWN_ERROR";
   const message = (body["message"] as string | undefined) ?? res.statusText;
 
+  // 단일 세션(later wins) — 다른 곳에서 같은 계정으로 로그인되어 이 세션이 무효화된 케이스.
+  // /api/v1/me 호출의 결과로 잡혀도 모달을 띄워야 하므로 ME_PATH 예외에 포함시키지 않는다.
+  if (res.status === 401 && code === "AUTH_SESSION_SUPERSEDED") {
+    if (typeof window !== "undefined") {
+      const { useSessionStore } = await import("@/stores/session-store");
+      useSessionStore.getState().clearSession();
+      // 이미 /?login=superseded 위에 있으면 재진입을 막아 무한 모달을 피한다.
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("login") !== "superseded") {
+        window.location.replace("/?login=superseded");
+      }
+      throw new ApiError({ code, message, trace_id: traceId });
+    }
+  }
+
   if (res.status === 401 && path !== ME_PATH) {
     // 401 감지: 세션 클리어 + 메인(/)으로 이동 후 로그인 팝업 자동 오픈.
     // 이미 메인이면 페이지 이동 없이 팝업만 띄움. /admin/* 경로는 이 핸들러를 타지 않음(별도 admin-auth/api.ts).

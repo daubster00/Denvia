@@ -10,6 +10,7 @@ import sentry_sdk
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import get_current_user
@@ -48,7 +49,12 @@ from api.src.services.auth_service import (
     verify_sms_otp_flow,
 )
 from api.src.settings import settings
-from api.src.utils.jwt import encode_session_jwt
+from api.src.utils.jwt import (
+    JWTDecodeError,
+    SessionExpired,
+    decode_session_jwt,
+    encode_session_jwt,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -110,6 +116,7 @@ async def signup(
         user_id=user.id,
         role=user.role,
         subscription_status=user.subscription_status,
+        session_id=user.current_session_id,
     )
 
     secure = _is_secure_env()
@@ -172,6 +179,7 @@ async def login(
         role=user.role,
         subscription_status=user.subscription_status,
         persist=body.persist_session,
+        session_id=user.current_session_id,
     )
 
     secure = _is_secure_env()
@@ -254,9 +262,32 @@ async def find_id(
 
 
 @router.post("/logout", status_code=200)
-async def logout(response: Response) -> dict:
-    """로그아웃 — 세션·CSRF 쿠키 삭제."""
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """로그아웃 — 세션·CSRF 쿠키 삭제 + DB 의 current_session_id 도 비워 동일 쿠키 도용을 봉쇄."""
     secure = _is_secure_env()
+    # DB 쪽 nonce 도 즉시 비운다. 쿠키만 만료시키면 같은 쿠키 값을 보존한 채 다른 디바이스가
+    # 그대로 가져다 쓰는 시나리오가 남으므로, 단일 세션 매칭의 신뢰성을 위해 서버 nonce 도 끊는다.
+    raw_cookie = request.cookies.get("denvia_session")
+    if raw_cookie:
+        try:
+            payload = decode_session_jwt(raw_cookie)
+        except (SessionExpired, JWTDecodeError):
+            payload = None
+        if payload is not None:
+            user_id = int(payload["sub"])
+            try:
+                u_row = await db.execute(select(User).where(User.id == user_id))
+                user = u_row.scalar_one_or_none()
+                if user is not None:
+                    user.current_session_id = None
+                    await db.commit()
+            except Exception:
+                await db.rollback()
+
     response.set_cookie(
         key="denvia_session",
         value="",
@@ -313,6 +344,7 @@ def _set_session_cookies(response: RedirectResponse, user: User, persist: bool =
         role=user.role,
         subscription_status=user.subscription_status,
         persist=persist,
+        session_id=user.current_session_id,
     )
     secure = _is_secure_env()
     max_age = 86400 if persist else 3600
@@ -442,6 +474,9 @@ async def oauth_callback_endpoint(
         if user is not None and action == "login_completed":
             from datetime import datetime as _dt, timezone as _tz
             user.last_login_at = _dt.now(tz=_tz.utc)
+        # 단일 세션(later wins) — OAuth 로그인/가입에도 새 nonce 박제. 이전 쿠키는 자동 무효화.
+        if user is not None:
+            user.current_session_id = _secrets.token_urlsafe(24)
         await db.commit()
 
         # Story 6.5 — concurrent_ip_login 자동 탐지 hook (편차 3, OAuth 진입점)
@@ -512,12 +547,15 @@ async def oauth_complete(
         redis_url=settings.redis_url,
         db=db,
     )
+    # 단일 세션(later wins) — SMS 보충 후 첫 진입에 새 nonce 박제.
+    user.current_session_id = _secrets.token_urlsafe(24)
     await db.commit()
 
     token = encode_session_jwt(
         user_id=user.id,
         role=user.role,
         subscription_status=user.subscription_status,
+        session_id=user.current_session_id,
     )
     secure = _is_secure_env()
     response.set_cookie(

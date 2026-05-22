@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMe } from "./api";
+import { useAlertStore } from "@/stores/alert-store";
 import { useSessionStore } from "@/stores/session-store";
 
 /**
@@ -75,6 +76,8 @@ export function SessionBootstrap({ children }: { children: React.ReactNode }) {
 
 function LoginRequiredHandler() {
   const openPopup = useSessionStore((s) => s.openPopup);
+  const clearSession = useSessionStore((s) => s.clearSession);
+  const showAlert = useAlertStore((s) => s.show);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -82,18 +85,36 @@ function LoginRequiredHandler() {
 
   const loginRequired = searchParams.get("login");
   useEffect(() => {
-    if (loginRequired !== "required") {
+    if (loginRequired !== "required" && loginRequired !== "superseded") {
       popupHandledRef.current = false;
       return;
     }
     if (popupHandledRef.current) return;
     popupHandledRef.current = true;
-    openPopup("email");
+
+    if (loginRequired === "superseded") {
+      // 다른 장소에서 같은 계정으로 로그인되어 이 세션이 무효화된 경우.
+      clearSession();
+      showAlert({
+        level: "warning",
+        title: "다른 장소에서 로그인되어 로그아웃되었습니다.",
+        dedupeKey: "session-superseded",
+        actions: [
+          {
+            label: "확인",
+            onClick: () => openPopup("email"),
+          },
+        ],
+      });
+    } else {
+      openPopup("email");
+    }
+
     const remaining = new URLSearchParams(searchParams.toString());
     remaining.delete("login");
     const nextQuery = remaining.toString();
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname || "/");
-  }, [loginRequired, openPopup, pathname, router, searchParams]);
+  }, [loginRequired, openPopup, clearSession, showAlert, pathname, router, searchParams]);
 
   return null;
 }
