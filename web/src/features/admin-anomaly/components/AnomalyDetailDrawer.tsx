@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  clearLoginLockout,
   fetchAnomalyDetail,
   saveAnomalyMemo,
   type AnomalyDetailResponse,
@@ -40,11 +41,14 @@ function formatDateTime(value: string | null): string {
 
 const DETECTION_CRITERIA: Record<AnomalyType, string> = {
   login_brute_force:
-    "동일 계정에 대해 짧은 시간 내 비밀번호 오류가 연속 누적되면 탐지됩니다.",
+    "비밀번호를 연속 3회 틀리면 1차 탐지(노란색) + 10분간 계정이 잠깁니다. " +
+    "10분 후 1회 재시도가 가능하며, 그마저 실패하면 2차 탐지(빨간색)가 발생하고 " +
+    "비밀번호 찾기로 재설정할 때까지 로그인이 차단됩니다.",
   concurrent_ip_login:
     "동일 IP에서 10분 이내 서로 다른 3개 이상의 계정 로그인이 성공하면 탐지됩니다.",
   repeated_question:
-    "동일·유사 질문을 짧은 시간 내 반복적으로 던질 때 탐지됩니다.",
+    "완전히 동일한 텍스트의 질문을 연속 3회 던지면 자동으로 탐지됩니다. " +
+    "시스템이 즉시 자동 쿨다운(질문 속도 제한)을 적용합니다.",
   recovery_abuse:
     "비밀번호 재설정·아이디 찾기 요청을 비정상적으로 반복할 때 탐지됩니다.",
   rapid_followup_questions:
@@ -52,26 +56,41 @@ const DETECTION_CRITERIA: Record<AnomalyType, string> = {
     "시스템이 즉시 자동 쿨다운(질문 속도 제한)을 적용합니다.",
 };
 
-const LOGIN_ANOMALY_TYPES: AnomalyType[] = [
-  "login_brute_force",
-  "concurrent_ip_login",
-];
-
-function isLoginAnomaly(type: AnomalyType): boolean {
-  return LOGIN_ANOMALY_TYPES.includes(type);
-}
-
-function deriveBlockState(detail: AnomalyDetailResponse): {
-  isFullBlocked: boolean;
-  isQuestionBlocked: boolean;
+/**
+ * 상세 응답에서 "지금" 차단/자동제한 활성 여부를 도출. 리스트의 user_blocked_now /
+ * user_auto_throttled_now 와 동일 규칙(서버 사이드 계산을 클라이언트에서 재현).
+ */
+function deriveActiveState(detail: AnomalyDetailResponse): {
+  blockedNow: boolean;
+  throttledNow: boolean;
 } {
   const now = Date.now();
-  const isFullBlocked = detail.user_subscription_status === "blocked";
-  const qbUntil = detail.user_question_blocked_until
-    ? new Date(detail.user_question_blocked_until).getTime()
-    : null;
-  const isQuestionBlocked = qbUntil !== null && qbUntil > now;
-  return { isFullBlocked, isQuestionBlocked };
+  const parse = (iso: string | null): number | null =>
+    iso ? new Date(iso).getTime() : null;
+
+  const bu = parse(detail.user_blocked_until);
+  const blockedNow =
+    detail.user_subscription_status === "blocked" ||
+    (bu !== null && bu > now);
+
+  let throttledNow = detail.user_anomaly_throttled_at !== null;
+  if (detail.type === "login_brute_force") {
+    const lbf = parse(detail.login_auto_lockout_until);
+    if (detail.login_hard_locked || (lbf !== null && lbf > now)) {
+      throttledNow = true;
+    }
+  }
+
+  return { blockedNow, throttledNow };
+}
+
+/** login_brute_force 탐지의 단계(1/2) 를 details 에서 안전하게 추출. */
+function loginBruteForceStage(detail: AnomalyDetailResponse): 1 | 2 | null {
+  if (detail.type !== "login_brute_force") return null;
+  const stage = (detail.details as { stage?: unknown })?.stage;
+  if (stage === 1) return 1;
+  if (stage === 2) return 2;
+  return null;
 }
 
 export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
@@ -130,6 +149,27 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
     }
   }
 
+  async function handleClearLoginLockout() {
+    if (!detail?.target_user_id) return;
+    const ok = window.confirm(
+      "로그인 자동 잠금을 해제하시겠습니까? 사용자가 즉시 로그인 재시도가 가능해집니다.",
+    );
+    if (!ok) return;
+    setActionPending(true);
+    try {
+      await clearLoginLockout(detail.target_user_id);
+      await qc.invalidateQueries({ queryKey: ["admin", "anomaly"] });
+      showToast("로그인 자동 잠금이 해제되었습니다.");
+      await reload();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "로그인 잠금 해제에 실패했습니다.";
+      showToast(message);
+    } finally {
+      setActionPending(false);
+    }
+  }
+
   async function handleClearThrottle() {
     if (!detail?.target_user_id) return;
     const ok = window.confirm(
@@ -162,12 +202,7 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
         : durationHours === 24
           ? "24시간 차단"
           : "7일 차단";
-    const scope = isLoginAnomaly(detail.type) ? "all" : "question_only";
-    const scopeNote =
-      scope === "question_only"
-        ? "\n(질문만 차단됩니다. 로그인 등 다른 활동은 가능합니다.)"
-        : "";
-    const ok = window.confirm(`${label} 처리하시겠습니까?${scopeNote}`);
+    const ok = window.confirm(`${label} 처리하시겠습니까?`);
     if (!ok) return;
     setActionPending(true);
     try {
@@ -178,7 +213,6 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
             duration_hours: durationHours,
             reason: `이상행동 탐지 (${formatAnomalyType(detail.type)})`,
             anomaly_id: detail.id,
-            scope,
           },
         },
       });
@@ -254,6 +288,25 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
               <span className={styles.label}>탐지유형</span>
               <span className={styles.value}>{formatAnomalyType(detail.type)}</span>
 
+              {(() => {
+                const stage = loginBruteForceStage(detail);
+                if (stage === null) return null;
+                const cls =
+                  stage === 2 ? styles.stageLabelRed : styles.stageLabelYellow;
+                const label =
+                  stage === 2
+                    ? "2차 (재시도 또 실패 · 비번찾기 필수)"
+                    : "1차 (3회 실패 · 10분 잠금)";
+                return (
+                  <>
+                    <span className={styles.label}>단계</span>
+                    <span className={styles.value}>
+                      <span className={cls}>{label}</span>
+                    </span>
+                  </>
+                );
+              })()}
+
               <span className={styles.label}>탐지일시</span>
               <span className={styles.value}>{formatDateTime(detail.created_at)}</span>
 
@@ -276,7 +329,16 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
 
               <span className={styles.label}>상태</span>
               <span className={styles.value}>
-                <AnomalyStatusBadge status={detail.status} />
+                {(() => {
+                  const { blockedNow, throttledNow } = deriveActiveState(detail);
+                  return (
+                    <AnomalyStatusBadge
+                      status={detail.status}
+                      blockedNow={blockedNow}
+                      throttledNow={throttledNow}
+                    />
+                  );
+                })()}
               </span>
 
               <span className={styles.label}>자동조치</span>
@@ -297,6 +359,61 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
               <div className={styles.criterionTitle}>탐지기준</div>
               <div>{DETECTION_CRITERIA[detail.type]}</div>
             </div>
+
+            {detail.history.length > 1 ? (
+              <div className={styles.historySection}>
+                <div className={styles.historyTitle}>
+                  내역 ({detail.history.length}회)
+                </div>
+                <ul className={styles.historyList}>
+                  {detail.history.map((row) => (
+                    <li
+                      key={row.id}
+                      className={
+                        row.id === detail.id
+                          ? styles.historyItemCurrent
+                          : styles.historyItem
+                      }
+                      data-testid={`anomaly-history-${row.id}`}
+                    >
+                      <span className={styles.historyDate}>
+                        {formatDateTime(row.created_at)}
+                      </span>
+                      <span className={styles.historyMeta}>
+                        {/*
+                         * history row 는 과거 시점 기록이라 "지금" 활성 상태를 알 수 없다.
+                         * 현재 row 만 사용자 상태를 동봉해 표시하고, 그 외 과거 row 는
+                         * 이벤트 자체의 status(new/reviewed/actioned/unblocked) 기반 라벨로 표시.
+                         */}
+                        {row.id === detail.id
+                          ? (() => {
+                              const { blockedNow, throttledNow } =
+                                deriveActiveState(detail);
+                              return (
+                                <AnomalyStatusBadge
+                                  status={row.status}
+                                  blockedNow={blockedNow}
+                                  throttledNow={throttledNow}
+                                />
+                              );
+                            })()
+                          : (
+                            <AnomalyStatusBadge status={row.status} />
+                          )}
+                        {row.ip ? (
+                          <span className={styles.historyIp}>{row.ip}</span>
+                        ) : null}
+                        {row.id === detail.id ? (
+                          <span className={styles.historyCurrentTag}>
+                            현재
+                          </span>
+                        ) : null}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div className={styles.memoSection}>
               <label htmlFor="anomaly-memo" className={styles.memoLabel}>
@@ -324,37 +441,83 @@ export function AnomalyDetailDrawer({ anomalyId, onClose }: Props) {
               <div className={styles.actionSection}>
                 <div className={styles.actionGroup}>
                   <div className={styles.actionTitle}>자동 제한 조치</div>
-                  {detail.user_anomaly_throttled_at ? (
-                    <div className={styles.actionRow}>
-                      <button
-                        type="button"
-                        className={styles.unblockButton}
-                        onClick={handleClearThrottle}
-                        disabled={actionPending}
-                      >
-                        자동제한 해제
-                      </button>
-                    </div>
-                  ) : (
-                    <div className={styles.disabledHint}>
-                      현재 자동 제한이 적용되어 있지 않습니다.
-                    </div>
-                  )}
+                  {(() => {
+                    // login_brute_force 는 Redis 락아웃, 그 외는 users.anomaly_throttled_at 기반.
+                    // 두 종류 모두 이 한 섹션에서 통합 표시·해제한다.
+                    if (detail.type === "login_brute_force") {
+                      const hardLocked = detail.login_hard_locked;
+                      const lockoutUntilRaw = detail.login_auto_lockout_until;
+                      const lockoutUntilMs = lockoutUntilRaw
+                        ? new Date(lockoutUntilRaw).getTime()
+                        : null;
+                      const lockoutActive =
+                        lockoutUntilMs !== null && lockoutUntilMs > Date.now();
+                      const anyLock = hardLocked || lockoutActive;
+
+                      if (!anyLock) {
+                        return (
+                          <div className={styles.disabledHint}>
+                            현재 자동 잠금이 적용되어 있지 않습니다.
+                          </div>
+                        );
+                      }
+                      const stageLabel = hardLocked
+                        ? "2차 잠금 (비밀번호 재설정 전까지)"
+                        : `1차 잠금 (잔여 약 ${Math.max(
+                            1,
+                            Math.ceil(
+                              ((lockoutUntilMs as number) - Date.now()) / 60000,
+                            ),
+                          )}분)`;
+                      const chipClass = hardLocked
+                        ? styles.lockoutChipHard
+                        : styles.lockoutChipActive;
+                      return (
+                        <>
+                          <div className={styles.actionRow}>
+                            <span className={chipClass}>{stageLabel}</span>
+                          </div>
+                          <div className={styles.actionRow}>
+                            <button
+                              type="button"
+                              className={styles.unblockButton}
+                              onClick={handleClearLoginLockout}
+                              disabled={actionPending}
+                            >
+                              로그인 잠금 해제
+                            </button>
+                          </div>
+                        </>
+                      );
+                    }
+
+                    if (detail.user_anomaly_throttled_at) {
+                      return (
+                        <div className={styles.actionRow}>
+                          <button
+                            type="button"
+                            className={styles.unblockButton}
+                            onClick={handleClearThrottle}
+                            disabled={actionPending}
+                          >
+                            자동제한 해제
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className={styles.disabledHint}>
+                        현재 자동 제한이 적용되어 있지 않습니다.
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className={styles.actionGroup}>
-                  <div className={styles.actionTitle}>
-                    차단 조치{" "}
-                    {!isLoginAnomaly(detail.type) ? (
-                      <span className={styles.disabledHint}>
-                        (질문만 차단됩니다)
-                      </span>
-                    ) : null}
-                  </div>
+                  <div className={styles.actionTitle}>차단 조치</div>
                   {(() => {
-                    const { isFullBlocked, isQuestionBlocked } =
-                      deriveBlockState(detail);
-                    const blockedNow = isFullBlocked || isQuestionBlocked;
+                    const blockedNow =
+                      detail.user_subscription_status === "blocked";
                     if (blockedNow) {
                       return (
                         <div className={styles.actionRow}>

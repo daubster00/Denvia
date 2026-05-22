@@ -15,10 +15,12 @@ from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from redis.asyncio import Redis as AsyncRedis
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import require_admin
+from api.src.deps.redis import get_redis_rate_limit
 from api.src.middleware.audit_actions import AUDIT_ANOMALY_REVIEW
 from api.src.middleware.rate_limit import limiter
 from api.src.models.base import get_session
@@ -86,6 +88,7 @@ async def list_anomalies(
     per_page: int = Query(20, ge=1, le=100),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_rl: AsyncRedis = Depends(get_redis_rate_limit),
 ) -> AnomalyListResponse:
     """epics AC-4 — 이상 이벤트 list. GET 전용 → audit_logs INSERT 없음."""
     types = _parse_csv(type_in, anomaly_service.ANOMALY_TYPES)
@@ -100,6 +103,7 @@ async def list_anomalies(
         to_dt=to_dt,
         page=page,
         per_page=per_page,
+        redis_rl=redis_rl,
     )
 
     logger.info(
@@ -124,9 +128,15 @@ async def get_anomaly(
     anomaly_id: int,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_rl: AsyncRedis = Depends(get_redis_rate_limit),
 ) -> AnomalyDetailResponse:
-    """상세 드로어용 — 단건 + 누적 통계 + 대상 사용자 현황."""
-    detail = await anomaly_service.get_anomaly_detail(db, anomaly_id=anomaly_id)
+    """상세 드로어용 — 단건 + 누적 통계 + 대상 사용자 현황.
+
+    login_brute_force 의 Redis 자동 락아웃 상태도 함께 포함한다(redis_rl).
+    """
+    detail = await anomaly_service.get_anomaly_detail(
+        db, anomaly_id=anomaly_id, redis_rl=redis_rl
+    )
     logger.info(
         "admin.anomaly.detail",
         actor_user_id=admin.id,
@@ -155,6 +165,8 @@ async def patch_anomaly_memo(
     request.state.audit_skip = True
 
     detail = await anomaly_service.get_anomaly_detail(db, anomaly_id=event.id)
+    # memo 갱신 응답에는 Redis 락아웃 상태를 재조회하지 않는다 — 메모 저장은 락아웃과 무관하고,
+    # 드로어 측에서 닫고 다시 열 때 GET /{id} 가 최신 상태를 가져온다.
     logger.info(
         "admin.anomaly.memo_updated",
         actor_user_id=admin.id,

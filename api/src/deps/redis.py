@@ -4,11 +4,17 @@ from collections.abc import AsyncGenerator
 
 import redis.asyncio as aioredis
 
-from api.src.settings import settings, REDIS_DB_QUOTA, REDIS_DB_RUNTIME_CONFIG
+from api.src.settings import (
+    REDIS_DB_QUOTA,
+    REDIS_DB_RATE_LIMIT,
+    REDIS_DB_RUNTIME_CONFIG,
+    settings,
+)
 
 _redis_pool: aioredis.Redis | None = None
 _redis_quota_pool: aioredis.Redis | None = None
 _redis_runtime_pool: aioredis.Redis | None = None
+_redis_rate_limit_pool: aioredis.Redis | None = None
 
 
 def get_redis_client() -> aioredis.Redis:
@@ -49,3 +55,17 @@ async def get_redis_quota() -> AsyncGenerator[aioredis.Redis, None]:
 
 async def get_redis_runtime() -> AsyncGenerator[aioredis.Redis, None]:
     yield get_redis_runtime_client()
+
+
+def get_redis_rate_limit_client() -> aioredis.Redis:
+    """Redis DB 2 — 브루트포스 카운터·락아웃 (auth_service 의 _make_redis_rl 과 동일 DB)."""
+    global _redis_rate_limit_pool
+    if _redis_rate_limit_pool is None:
+        _redis_rate_limit_pool = aioredis.from_url(
+            settings.redis_url, db=REDIS_DB_RATE_LIMIT, decode_responses=True
+        )
+    return _redis_rate_limit_pool
+
+
+async def get_redis_rate_limit() -> AsyncGenerator[aioredis.Redis, None]:
+    yield get_redis_rate_limit_client()

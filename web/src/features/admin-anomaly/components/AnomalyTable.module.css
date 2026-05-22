@@ -27,6 +27,29 @@
   text-align: center;
 }
 
+/* 비밀번호 다회 오류 — 1차(노란색) / 2차(빨간색) 단계 텍스트 색상.
+   행 전체 td 텍스트를 단계별로 구분 (a/button 의 본래 색은 유지). */
+.rowSeverityYellow td {
+  color: #ca8a04; /* amber-600 */
+}
+
+.rowSeverityRed td {
+  color: #dc2626; /* red-600 */
+}
+
+.countBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-warning-soft, #fef3c7);
+  color: var(--color-warning, #b45309);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
 .userLink {
   color: var(--color-brand, #6366f1);
   text-decoration: none;

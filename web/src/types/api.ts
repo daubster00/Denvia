@@ -23,9 +23,6 @@ export interface QuotaResponse {
   delay_seconds: number;
   /** 빈 문자열이면 안내 영역 미렌더(관리자가 지연 토글 OFF로 두었거나 문구가 비어있을 때) */
   free_delay_notice_text: string;
-  /** 관리자 차단(question_only scope) 만료 시각 ISO 8601. null=차단 없음. */
-  question_blocked_until: string | null;
-  question_block_reason: string | null;
 }
 
 export interface SessionUser {

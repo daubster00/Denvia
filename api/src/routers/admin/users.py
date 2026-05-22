@@ -24,9 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis as AsyncRedis
 
 from api.src.deps.auth import require_admin
-from api.src.deps.redis import get_redis_quota
+from api.src.deps.redis import get_redis_quota, get_redis_rate_limit
 from api.src.middleware.audit_actions import (
     AUDIT_ANOMALY_THROTTLE_CLEAR,
+    AUDIT_LOGIN_LOCKOUT_CLEAR,
     audit_action,
 )
 from api.src.middleware.rate_limit import limiter
@@ -364,6 +365,55 @@ async def clear_anomaly_throttle(
 
     logger.info(
         "admin.users.anomaly_throttle_cleared",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        cleared=cleared,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+
+
+@router.delete("/{user_id}/login-lockout", status_code=204)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+@audit_action(AUDIT_LOGIN_LOCKOUT_CLEAR)
+async def clear_login_lockout(
+    request: Request,
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+    redis_rl: AsyncRedis = Depends(get_redis_rate_limit),
+) -> None:
+    """login_brute_force 자동 락아웃 수동 해제 — Redis fail/lockout/stage/hard_lock 키 일괄 정리.
+
+    DB 컬럼은 건드리지 않는다 — 락아웃은 전적으로 Redis 만 사용한다. 사용자는
+    해제 즉시 로그인 재시도 가능하며, 실패 카운터도 0 으로 리셋된다.
+    이미 해제된 상태였더라도 멱등으로 200/204 응답.
+    """
+    await _require_user_exists(db, user_id)
+    user_row = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if user_row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_USER_NOT_FOUND",
+                "message": "사용자를 찾을 수 없습니다.",
+            },
+        )
+
+    cleared = await anomaly_service.clear_user_login_lockout(
+        email=user_row.email, redis_rl=redis_rl
+    )
+
+    request.state.audit_target_type = "user"
+    request.state.audit_target_id = user_id
+    request.state.audit_diff = {
+        "before": {"login_lockout_keys": "auto-managed by redis"},
+        "after": cleared,
+    }
+
+    logger.info(
+        "admin.users.login_lockout_cleared",
         actor_user_id=admin.id,
         target_user_id=user_id,
         cleared=cleared,

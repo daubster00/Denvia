@@ -29,12 +29,20 @@ export function SessionBootstrap({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const queryClient = useQueryClient();
 
+  // /admin/* 페이지에서는 user me 호출 자체를 막는다.
+  // 같은 브라우저에 남아 있던 일반 사이트 쿠키가 다른 디바이스 로그인으로 SUPERSEDED 401 을 받으면
+  // api-client 가 /?login=superseded 로 강제 리다이렉트하면서 관리자 작업 화면이 튕기고,
+  // 죽은 쿠키가 그대로 다시 전송되어 무한 루프가 된다. admin 페이지는 별도 admin layout 이
+  // ["admin-session"] 쿼리로 자기 인증을 관리하므로 여기서는 user me 가 불필요.
+  const isAdminRoute = pathname?.startsWith("/admin") ?? false;
+
   const { data, isError } = useQuery({
     queryKey: ["session"],
     queryFn: fetchMe,
     retry: 1,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
+    enabled: !isAdminRoute,
   });
 
   useEffect(() => {

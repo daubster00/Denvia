@@ -21,7 +21,12 @@ type Mode = "login" | "signup";
  */
 export function LoginPopup() {
   const closePopup = useSessionStore((s) => s.closePopup);
-  const [view, setView] = useState<View>("buttons");
+  const forcePasswordReset = useSessionStore((s) => s.forcePasswordReset);
+  // 비번찾기 강제 모드면 팝업을 곧장 find-password 뷰로 시작 (안내 모달 확인 후 모든
+  // 후속 트리거가 비번찾기로 들어와야 한다는 요구사항).
+  const [view, setView] = useState<View>(
+    forcePasswordReset ? "find-password" : "buttons"
+  );
   const [mode, setMode] = useState<Mode>("login");
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -106,9 +111,12 @@ export function LoginPopup() {
         aria-labelledby="login-popup-title"
         className={styles.dialog}
       >
-        {/* 헤더 — 뒤로 버튼(email/find-password/find-id 뷰) + 제목 + 닫기 */}
+        {/* 헤더 — 뒤로 버튼(email/find-password/find-id 뷰) + 제목 + 닫기.
+            forcePasswordReset 모드(2차 escalation 후)에서는 find-password 뷰의 뒤로가기를
+            숨긴다 — 뒤로 가도 로그인이 즉시 다시 막혀 알림이 반복되기 때문. */}
         <div className={styles.header}>
-          {(view === "email" || view === "find-password" || view === "find-id") && (
+          {((view === "email" || view === "find-id") ||
+            (view === "find-password" && !forcePasswordReset)) && (
             <button
               type="button"
               onClick={() => setView(view === "email" ? "buttons" : "email")}

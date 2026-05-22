@@ -28,6 +28,29 @@ export interface AnomalyEventItem {
   reviewed_by_admin_id: number | null;
   reviewed_at: string | null;
   created_at: string;
+  occurrence_count: number;
+  last_occurred_at: string | null;
+  /**
+   * 대상 사용자의 "지금" 차단 활성 여부.
+   * 24h/7d/영구(subscription_status='blocked') 또는 blocked_until > now 면 true.
+   */
+  user_blocked_now: boolean;
+  /**
+   * 대상 사용자의 "지금" 자동제한 활성 여부.
+   * users.anomaly_throttled_at IS NOT NULL, 또는 login_brute_force 의 Redis 자동 락아웃 활성.
+   */
+  user_auto_throttled_now: boolean;
+}
+
+export interface AnomalyHistoryItem {
+  id: number;
+  status: AnomalyStatus;
+  ip: string | null;
+  ua: string | null;
+  details: Record<string, unknown>;
+  reviewed_by_admin_id: number | null;
+  reviewed_at: string | null;
+  created_at: string;
 }
 
 export interface AnomalyListResponse {
@@ -117,14 +140,18 @@ export async function fetchAnomalyList(
 export interface AnomalyDetailResponse extends AnomalyEventItem {
   admin_memo: string | null;
   auto_actioned: boolean;
-  occurrence_count: number;
-  last_occurred_at: string | null;
+  history: AnomalyHistoryItem[];
   user_subscription_status: "free" | "pro" | "blocked" | null;
   user_blocked_until: string | null;
   user_block_reason: string | null;
-  user_question_blocked_until: string | null;
-  user_question_block_reason: string | null;
   user_anomaly_throttled_at: string | null;
+  /**
+   * login_brute_force 의 Redis 자동 락아웃 상태(이메일 기반).
+   * - login_auto_lockout_until: 1차(10분) 잠금 만료 시각. 없으면 null.
+   * - login_hard_locked: 2차(비번찾기 전까지) 잠금 활성 여부.
+   */
+  login_auto_lockout_until: string | null;
+  login_hard_locked: boolean;
 }
 
 export async function fetchAnomalyDetail(
@@ -161,6 +188,28 @@ export async function saveAnomalyMemo(
     await _throwFromResponse(res, "메모 저장에 실패했습니다.");
   }
   return res.json() as Promise<AnomalyDetailResponse>;
+}
+
+/**
+ * login_brute_force 자동 락아웃(Redis fail/lockout/stage/hard_lock) 수동 해제.
+ * 사용자가 즉시 로그인 재시도 가능하게 된다.
+ */
+export async function clearLoginLockout(userId: number): Promise<void> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  const headers: Record<string, string> = {};
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/users/${userId}/login-lockout`,
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers,
+    },
+  );
+  if (!res.ok && res.status !== 204) {
+    await _throwFromResponse(res, "로그인 잠금 해제에 실패했습니다.");
+  }
 }
 
 export async function markAnomalyReviewed(

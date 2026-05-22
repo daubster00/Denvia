@@ -21,6 +21,10 @@ function makeEvent(
     reviewed_by_admin_id: null,
     reviewed_at: null,
     created_at: "2026-05-01T03:00:00Z",
+    occurrence_count: 1,
+    last_occurred_at: "2026-05-01T03:00:00Z",
+    user_blocked_now: false,
+    user_auto_throttled_now: false,
     ...overrides,
   };
 }
@@ -87,6 +91,102 @@ describe("AnomalyTable", () => {
       />,
     );
     expect(screen.getByText("이상 이벤트가 없습니다.")).toBeInTheDocument();
+  });
+
+  it("렌더링: 차단X + 자동제한X + status=new → '검토필요'", () => {
+    render(
+      <AnomalyTable
+        data={makeData([makeEvent()])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onShowDetail={noop}
+        onRetry={noop}
+      />,
+    );
+    const el = screen.getByTestId("anomaly-status-needs-review");
+    expect(el).toBeDefined();
+    expect(el.textContent).toBe("검토필요");
+  });
+
+  it("렌더링: 차단X + 자동제한O → '자동제한'", () => {
+    render(
+      <AnomalyTable
+        data={makeData([makeEvent({ user_auto_throttled_now: true })])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onShowDetail={noop}
+        onRetry={noop}
+      />,
+    );
+    const el = screen.getByTestId("anomaly-status-auto-throttle");
+    expect(el).toBeDefined();
+    expect(el.textContent).toBe("자동제한");
+  });
+
+  it("렌더링: 차단O + 자동제한X → '차단'", () => {
+    render(
+      <AnomalyTable
+        data={makeData([makeEvent({ user_blocked_now: true, status: "actioned" })])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onShowDetail={noop}
+        onRetry={noop}
+      />,
+    );
+    const el = screen.getByTestId("anomaly-status-blocked");
+    expect(el).toBeDefined();
+    expect(el.textContent).toBe("차단");
+  });
+
+  it("렌더링: 차단O + 자동제한O → '차단 및 제한'", () => {
+    render(
+      <AnomalyTable
+        data={makeData([
+          makeEvent({
+            user_blocked_now: true,
+            user_auto_throttled_now: true,
+            status: "actioned",
+          }),
+        ])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onShowDetail={noop}
+        onRetry={noop}
+      />,
+    );
+    const el = screen.getByTestId("anomaly-status-blocked-throttled");
+    expect(el).toBeDefined();
+    expect(el.textContent).toBe("차단 및 제한");
+  });
+
+  it("렌더링: 둘 다 X + status≠new (한 번 걸렸다 풀린 상태) → '해제'", () => {
+    render(
+      <AnomalyTable
+        data={makeData([makeEvent({ status: "unblocked" })])}
+        isLoading={false}
+        isError={false}
+        page={1}
+        perPage={20}
+        onPageChange={noop}
+        onShowDetail={noop}
+        onRetry={noop}
+      />,
+    );
+    const el = screen.getByTestId("anomaly-status-resolved");
+    expect(el).toBeDefined();
+    expect(el.textContent).toBe("해제");
   });
 
   it("renders error state with retry button", () => {

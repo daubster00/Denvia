@@ -21,6 +21,10 @@ from api.src.utils.jwt import (
 )
 
 
+# 이 예외의 detail.code == "AUTH_SESSION_SUPERSEDED" 면 main.py 의 HTTPException 핸들러가
+# 응답에 죽은 쿠키 만료 Set-Cookie 헤더를 자동으로 동봉한다(무한 루프 차단).
+# FastAPI 의존성에서 Response.set_cookie 후 raise 하면 헤더가 응답에 반영되지 않는 한계 때문에
+# 만료 처리는 의존성 안이 아니라 exception handler 단에서 일괄 수행한다.
 _SESSION_SUPERSEDED = HTTPException(
     status_code=401,
     detail={

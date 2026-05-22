@@ -24,9 +24,6 @@ interface ChatShellProps {
     delay_seconds: number;
     /** 입력창 위 회색 안내문구 — 빈 문자열이면 미노출 (관리자가 콘텐츠 페이지에서 편집) */
     free_delay_notice_text: string;
-    /** 관리자 차단(question_only) 만료 시각 ISO. null=차단 없음. */
-    question_blocked_until?: string | null;
-    question_block_reason?: string | null;
   } | null;
 }
 
@@ -68,8 +65,6 @@ export function ChatShell({
   }, [messages, isHero]);
 
   const isPro = quotaData?.subscription_status === "pro";
-  const blockedUntil = quotaData?.question_blocked_until ?? null;
-  const blockReason = quotaData?.question_block_reason ?? null;
   const delayNoticeText = quotaData?.free_delay_notice_text?.trim() ?? "";
   const delayNotice = delayNoticeText ? (
     <p role="note" className={styles.delayNotice}>
@@ -99,8 +94,6 @@ export function ChatShell({
             onChange={onInputChange}
             onSubmit={onSubmit}
             loading={isStreaming}
-            blockedUntil={blockedUntil}
-            blockReason={blockReason}
           />
           {remainingCaption}
         </div>
@@ -139,8 +132,6 @@ export function ChatShell({
           onSubmit={onSubmit}
           loading={isStreaming}
           inputRef={inputRef}
-          blockedUntil={blockedUntil}
-          blockReason={blockReason}
         />
         {remainingCaption}
       </div>

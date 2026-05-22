@@ -38,6 +38,20 @@ function formatDateTime(value: string | null): string {
   }
 }
 
+/**
+ * 비밀번호 다회 오류(login_brute_force) 의 단계별 행 클래스를 결정.
+ * - stage 1 (3회 실패 → 10분 락) → 노란색
+ * - stage 2 (락 해제 후 재시도 또 실패) → 빨간색
+ * 그 외 타입은 기본 색상.
+ */
+function rowSeverityClass(item: AnomalyEventItem): string {
+  if (item.type !== "login_brute_force") return "";
+  const stage = (item.details as { stage?: unknown })?.stage;
+  if (stage === 2) return styles.rowSeverityRed;
+  if (stage === 1) return styles.rowSeverityYellow;
+  return "";
+}
+
 export function AnomalyTable({
   data,
   isLoading,
@@ -111,18 +125,35 @@ export function AnomalyTable({
               "—"
             );
 
+            const severityClass = rowSeverityClass(item);
             return (
               <tr
                 key={item.id}
-                className={styles.row}
+                className={
+                  severityClass ? `${styles.row} ${severityClass}` : styles.row
+                }
                 data-testid={`anomaly-row-${item.id}`}
               >
                 <td>{formatDateTime(item.created_at)}</td>
-                <td>{formatAnomalyType(item.type)}</td>
+                <td>
+                  {formatAnomalyType(item.type)}
+                  {item.occurrence_count > 1 ? (
+                    <span
+                      className={styles.countBadge}
+                      data-testid={`anomaly-count-${item.id}`}
+                    >
+                      {item.occurrence_count}회
+                    </span>
+                  ) : null}
+                </td>
                 <td>{userCell}</td>
                 <td>{item.ip ?? "—"}</td>
                 <td>
-                  <AnomalyStatusBadge status={item.status} />
+                  <AnomalyStatusBadge
+                    status={item.status}
+                    blockedNow={item.user_blocked_now}
+                    throttledNow={item.user_auto_throttled_now}
+                  />
                 </td>
                 <td>
                   <button

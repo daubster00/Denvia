@@ -16,10 +16,11 @@ import styles from "./page.module.css";
 const PER_PAGE = 20;
 
 const STATUS_OPTIONS: { label: string; value: AnomalyStatus[] }[] = [
+  // 자동제한/차단 해제 처리 후에도 이력은 사라지지 않게 — 'unblocked' 포함.
+  { label: "전체", value: ["new", "reviewed", "actioned", "unblocked"] },
   { label: "미검토", value: ["new"] },
   { label: "검토완료", value: ["reviewed"] },
   { label: "처리됨", value: ["actioned"] },
-  { label: "전체", value: ["new", "reviewed", "actioned"] },
 ];
 
 const VALID_TYPES: AnomalyType[] = [
@@ -45,7 +46,7 @@ export default function AnomalyPage() {
     if (raw && (VALID_STATUSES as string[]).includes(raw)) {
       return [raw as AnomalyStatus];
     }
-    return ["new"] as AnomalyStatus[];
+    return ["new", "reviewed", "actioned", "unblocked"] as AnomalyStatus[];
   })();
 
   const [activeType, setActiveType] = useState<AnomalyType | null>(initialType);

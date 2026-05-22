@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { requestPasswordReset } from "./api";
 import { PhoneNumberField } from "./PhoneNumberField";
+import { useSessionStore } from "@/stores/session-store";
 import styles from "@/styles/auth-forms.module.css";
 
 const emailOnlySchema = z.object({
@@ -25,6 +26,7 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
   const [phoneValue, setPhoneValue] = useState("");
   const [phoneError, setPhoneError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const setForcePasswordReset = useSessionStore((s) => s.setForcePasswordReset);
 
   const {
     register,
@@ -50,6 +52,9 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
     } finally {
       setIsSubmitting(false);
       setSubmitted(true);
+      // 2차 escalation 강제 모드 해제 — 임시 비번이 발송된 시점부터 로그인 락이 풀려
+      // 사용자가 받은 임시 비번으로 다시 정상 로그인할 수 있음.
+      setForcePasswordReset(false);
     }
   };
 

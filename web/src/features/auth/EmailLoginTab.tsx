@@ -45,6 +45,7 @@ export function EmailLoginTab({ onSignup, onFindPassword, onFindId }: EmailLogin
   const preferPersist = useSessionStore((s) => s.preferPersist);
   const setUser = useSessionStore((s) => s.setUser);
   const closePopup = useSessionStore((s) => s.closePopup);
+  const setForcePasswordReset = useSessionStore((s) => s.setForcePasswordReset);
   const [serverError, setServerError] = useState<string | null>(null);
   const [oauthOnlyHint, setOauthOnlyHint] = useState<OAuthOnlyHintState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,8 +74,30 @@ export function EmailLoginTab({ onSignup, onFindPassword, onFindId }: EmailLogin
       closePopup();
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        if (err.code === "AUTH_TEMPORARILY_LOCKED" || err.code === "RATE_LIMITED") {
-          setServerError("잠시 후 다시 시도해주세요.");
+        if (err.code === "AUTH_MUST_RESET_PASSWORD") {
+          // 2차 escalation — 안내 후 확인 누르면 비번찾기 강제 모드 진입.
+          setOauthOnlyHint(null);
+          setServerError(null);
+          if (typeof window !== "undefined") {
+            window.alert(
+              "비밀번호 오류가 반복되어 더 이상 로그인할 수 없습니다.\n비밀번호 찾기로 비밀번호를 재설정해 주세요."
+            );
+          }
+          setForcePasswordReset(true);
+          onFindPassword?.();
+        } else if (err.code === "ACCOUNT_BLOCKED") {
+          // 관리자에 의해 차단된 계정. 세션을 발급하지 않고 안내 후 팝업을 닫는다.
+          setOauthOnlyHint(null);
+          setServerError(null);
+          if (typeof window !== "undefined") {
+            window.alert(
+              err.message || "차단된 계정입니다. 관리자에게 문의하세요.",
+            );
+          }
+          setUser(null);
+          closePopup();
+        } else if (err.code === "AUTH_TEMPORARILY_LOCKED" || err.code === "RATE_LIMITED") {
+          setServerError(err.message || "비밀번호 오류가 반복되어 10분간 로그인이 잠겼습니다. 잠시 후 다시 시도하거나 비밀번호 찾기를 이용하세요.");
           setOauthOnlyHint(null);
         } else if (
           err.code === "AUTH_ACCOUNT_OAUTH_ONLY" &&

@@ -39,6 +39,7 @@ AUDIT_KILLSWITCH_MANUAL_TOTAL_DEACTIVATE = "killswitch.manual_total.deactivate" 
 AUDIT_ANOMALY_REVIEW = "anomaly.review"                 # Story 6.5 — 이상 이벤트 검토 처리
 AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE = "anomaly_throttle_config.update"  # 이상 질문 패턴 throttle 설정 편집
 AUDIT_ANOMALY_THROTTLE_CLEAR = "user.anomaly_throttle_clear"  # 사용자 throttle 수동 해제
+AUDIT_LOGIN_LOCKOUT_CLEAR = "user.login_lockout_clear"  # 로그인 자동 락아웃 수동 해제(브루트포스 1차/2차 동시)
 AUDIT_RUNTIME_CONFIG_UPDATE = "runtime_config.update"   # A-303/A-305 (Story 7.3/7.4 부분) — 서비스 전체 토글 편집
 AUDIT_BUDGET_LIMIT_UPDATE = "budget.monthly_limit.update"  # 관리자 설정 — 당월 KST 예산 한도 조정
 AUDIT_SEO_CONFIG_UPDATE = "seo_config.update"           # 관리자 설정 → SEO — 사이트 이름/설명/키워드/OG/파비콘 편집

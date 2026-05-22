@@ -119,6 +119,7 @@ class QAService:
         redis_quota: Redis,
         redis_runtime: Redis,
         db: AsyncSession,
+        question_text: str | None = None,
     ) -> PreflightResult:
         """Quota INCR + 의도적 지연. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
 
@@ -129,6 +130,9 @@ class QAService:
         rapid_followup_questions 탐지(편차 +1) — 답변 완료 후 3초 이내 후속
         질문 연속 3회. 임계 도달 시 users.anomaly_throttled_at 채워 다음 질의부터
         runtime:anomaly_throttle_{free,pro}_delay 만큼 sleep.
+
+        repeated_question 탐지 — 동일 텍스트(trim 일치) 연속 3회. 임계 도달 시
+        rapid_followup 과 동일 조치(즉시 throttle + 자동 actioned).
         """
         if user.subscription_status == "admin":
             return PreflightResult(throttled=False, throttle_just_applied=False)
@@ -142,6 +146,19 @@ class QAService:
             redis_quota=redis_quota,
             db=db,
         )
+
+        # repeated_question 탐지 (동일 텍스트 연속 3회) — question_text 제공 시에만.
+        if question_text is not None:
+            repeated_just_applied = await anomaly_service.check_repeated_question(
+                user_id=user.id,
+                subscription_status=user.subscription_status,
+                question_text=question_text,
+                redis_quota=redis_quota,
+                db=db,
+            )
+            # 두 hook 중 하나라도 새로 throttle 을 걸었으면 팝업 트리거.
+            throttle_just_applied = throttle_just_applied or repeated_just_applied
+
         if throttle_just_applied:
             # 메모리상 user 객체에도 반영 — 아래 throttle 분기에서 즉시 사용.
             user.anomaly_throttled_at = datetime.now(tz=timezone.utc)

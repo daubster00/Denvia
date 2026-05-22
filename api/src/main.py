@@ -114,6 +114,10 @@ async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONR
     """HTTPException의 detail을 Denvia 표준 에러 포맷으로 변환한다.
     FastAPI 기본 {"detail": ...} 포맷 사용 금지 (architecture.md §416).
     Story 2.3: details 필드 지원 추가 (quota 초과 등 추가 정보 전달).
+
+    AUTH_SESSION_SUPERSEDED 응답에는 죽은 쿠키 만료 헤더(denvia_session, denvia_csrf)를
+    동봉한다. httponly 쿠키는 JS 가 못 지우므로, 서버가 만료시키지 않으면 클라이언트가
+    같은 쿠키로 계속 요청을 보내 무한 401 → /?login=superseded 리다이렉트 루프가 발생한다.
     """
     trace_id = getattr(request.state, "trace_id", None)
     detail = exc.detail
@@ -131,11 +135,34 @@ async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONR
     if extras:
         body["details"] = extras
 
-    return JSONResponse(
+    response = JSONResponse(
         status_code=exc.status_code,
         content=body,
         headers=getattr(exc, "headers", None),
     )
+
+    if code == "AUTH_SESSION_SUPERSEDED":
+        secure = settings.environment.lower() in {"production", "staging"}
+        response.set_cookie(
+            key="denvia_session",
+            value="",
+            httponly=True,
+            secure=secure,
+            samesite="lax",
+            path="/",
+            max_age=0,
+        )
+        response.set_cookie(
+            key="denvia_csrf",
+            value="",
+            httponly=False,
+            secure=secure,
+            samesite="lax",
+            path="/",
+            max_age=0,
+        )
+
+    return response
 
 
 # 라우터 등록

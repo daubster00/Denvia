@@ -2,12 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ChatInput } from "../ChatInput";
 import { useSessionStore } from "@/stores/session-store";
-import { useAlertStore } from "@/stores/alert-store";
 
 // matchMedia 기본 모킹 — 데스크톱 가정 (자동 포커스 허용)
 beforeEach(() => {
   useSessionStore.setState({ isPopupOpen: false, popupInitialTab: "email" });
-  useAlertStore.setState({ current: null });
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     configurable: true,
@@ -75,57 +73,6 @@ describe("ChatInput — hero variant + interactive=true (로그인 후 활성)",
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     expect(onSubmit).toHaveBeenCalledWith("치주염 치료");
     expect(useSessionStore.getState().isPopupOpen).toBe(false);
-  });
-});
-
-describe("ChatInput — blockedUntil (관리자 차단)", () => {
-  it("UI는 평소와 동일(placeholder=무엇이든 물어보세요)하지만 클릭(mousedown) 시 차단 안내 모달이 뜬다", () => {
-    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    render(
-      <ChatInput
-        variant="inline"
-        value=""
-        blockedUntil={future}
-        blockReason="이상 질문 패턴이 감지되었습니다."
-      />,
-    );
-    const input = screen.getByRole("textbox", { name: "질문 입력 — 일시 제한" });
-    expect(input.hasAttribute("readonly")).toBe(true);
-    expect((input as HTMLTextAreaElement).placeholder).toBe("무엇이든 물어보세요");
-    fireEvent.mouseDown(input);
-    const alert = useAlertStore.getState().current;
-    expect(alert?.title).toContain("일시 제한");
-    expect(alert?.description ?? "").toContain("이상 질문 패턴");
-    expect(alert?.description ?? "").toContain("해제 예정\n");
-  });
-
-  it("hero interactive 모드라도 차단 시 잠금 입력으로 덮어쓴다", () => {
-    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    render(
-      <ChatInput
-        variant="hero"
-        interactive
-        value=""
-        blockedUntil={future}
-        blockReason={null}
-      />,
-    );
-    expect(
-      screen.getByRole("textbox", { name: "질문 입력 — 일시 제한" }),
-    ).toBeTruthy();
-  });
-
-  it("과거 시각(만료)이면 차단을 적용하지 않는다", () => {
-    const past = new Date(Date.now() - 60 * 1000).toISOString();
-    render(
-      <ChatInput
-        variant="inline"
-        value=""
-        blockedUntil={past}
-        blockReason="만료된 차단"
-      />,
-    );
-    expect(screen.getByRole("textbox", { name: "질문 입력" })).toBeTruthy();
   });
 });
 

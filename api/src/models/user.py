@@ -53,11 +53,6 @@ class User(Base):
     block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 차단 전 subscription_status 보존 — 만료/해제 시 복원에 사용 (Story 6.2 fix)
     pre_block_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    # 질문(Q&A) 전용 차단 — 로그인 이상(login_brute_force / concurrent_ip_login) 외
-    # 분류에서 관리자가 차단하면 이 컬럼만 채워 다른 활동(로그인·결제·마이페이지)은 허용.
-    # NULL=차단 없음. NULL이 아니고 NOW() 미만이면 만료된 차단.
-    question_blocked_until: Mapped[datetime | None] = mapped_column(nullable=True)
-    question_block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 이상 질문 패턴(연속 3회 3초 이내 후속 질문) 탐지 시 자동 throttle 시각.
     # NULL = throttle 미적용. 관리자가 수동 해제할 때까지 지속.
     anomaly_throttled_at: Mapped[datetime | None] = mapped_column(nullable=True)

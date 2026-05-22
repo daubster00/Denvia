@@ -58,8 +58,6 @@ export function AuthenticatedQAExperience() {
   // 한도 차단(429): useQAStream 이 useAlertStore.show() 로 글로벌 AppAlert 모달을
   // 띄우고 clearMessages 로 shellHero 로 자동 복귀시킨다.
   const isHero = pathname === "/";
-  const blockedUntil = quotaData?.question_blocked_until ?? null;
-  const blockReason = quotaData?.question_block_reason ?? null;
 
   return (
     <>
@@ -76,8 +74,6 @@ export function AuthenticatedQAExperience() {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               loading={isStreaming}
-              blockedUntil={blockedUntil}
-              blockReason={blockReason}
             />
           </HeroSection>
           <Footer />

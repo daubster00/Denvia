@@ -72,9 +72,16 @@ _DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$dummyhash0000000000000000$dummyhas
 # 브루트포스 Redis 키
 _LOGIN_FAIL_KEY = "login_fail:{email}"
 _LOGIN_LOCKOUT_KEY = "login_lockout:{email}"
-_LOGIN_LOCKOUT_TTL = 300   # 5분
-_LOGIN_FAIL_WINDOW = 300   # 카운터 TTL도 5분 (성공 시 초기화)
-_LOGIN_BRUTE_THRESHOLD = 3  # 3회 이상 실패 → anomaly + 4번째부터 lockout
+# 1차 락아웃을 한 번이라도 거친 이메일을 표식 — 락 TTL 만료 후 단 1회의 재시도가
+# 또 실패하면 stage=2 로 escalate. lockout(10m) 보다 훨씬 길게 유지해야 의미가 있음.
+_LOGIN_STAGE_KEY = "login_stage:{email}"
+# 2차 escalation 발생 시 세팅 — 비밀번호 찾기로 임시 비번이 발송되기 전까지 풀리지 않음.
+_LOGIN_HARD_LOCK_KEY = "login_hard_lock:{email}"
+_LOGIN_LOCKOUT_TTL = 600     # 10분
+_LOGIN_FAIL_WINDOW = 600     # 카운터 TTL도 10분 (성공 시 초기화)
+_LOGIN_STAGE_TTL = 86400     # 24h — 1차 락 이후 stage 표식 유지 기간
+_LOGIN_HARD_LOCK_TTL = 2592000  # 30일 — 비번찾기 전까지 사실상 영구 (안전망)
+_LOGIN_BRUTE_THRESHOLD = 3   # 3회 이상 실패 → anomaly + 10분 lockout (stage=1)
 
 # OAuth provider → 한국어 라벨 매핑 (AC-1, AC-6)
 _PROVIDER_LABEL_KO: dict[str, str] = {
@@ -314,27 +321,49 @@ async def login_user(
     ua: str | None,
     redis_url: str,
     db: AsyncSession,
+    *,
+    rotate_session: bool = True,
 ) -> User:
     """이메일 로그인 처리.
+
+    Args:
+        rotate_session: True면 users.current_session_id 를 새 nonce 로 회전(=일반 사이트 로그인의
+            "later wins" 단일 세션 정책 적용). False면 회전하지 않는다 — 관리자 콘솔 로그인처럼
+            별도 쿠키(denvia_admin_session)로 진입하는 케이스가 이 옵션을 쓴다. 동일 계정으로
+            같은 브라우저에 일반 사이트 로그인 쿠키(denvia_session)가 남아 있는 상태에서
+            관리자 로그인이 user nonce 를 갈아엎으면 사용자의 일반 쿠키가 즉시 SUPERSEDED 되어
+            루트 SessionBootstrap 의 /api/v1/me 호출이 401 로 튕기는 회귀가 발생한다.
 
     Returns:
         인증된 User 객체
 
     Raises:
-        HTTPException 429 AUTH_TEMPORARILY_LOCKED — 락아웃 중
+        HTTPException 429 AUTH_TEMPORARILY_LOCKED — 1차 10분 락아웃 중
+        HTTPException 423 AUTH_MUST_RESET_PASSWORD — 2차 escalation(락 해제 후 재시도도 실패) — 비번찾기로만 해제
         HTTPException 401 AUTH_INVALID_CREDENTIALS — 인증 실패 (이메일 존재 여부 비노출)
+        HTTPException 403 ACCOUNT_BLOCKED — 관리자에 의해 차단된 계정 (admin role 제외)
     """
     fail_key = _LOGIN_FAIL_KEY.format(email=email)
     lockout_key = _LOGIN_LOCKOUT_KEY.format(email=email)
+    stage_key = _LOGIN_STAGE_KEY.format(email=email)
+    hard_lock_key = _LOGIN_HARD_LOCK_KEY.format(email=email)
 
-    # 락아웃 체크
+    # 락아웃 체크 — hard_lock(2차) 이 lockout(1차)보다 강함이므로 먼저 확인.
     async with _make_redis_rl(redis_url) as r:
+        if await r.exists(hard_lock_key):
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "code": "AUTH_MUST_RESET_PASSWORD",
+                    "message": "비밀번호 오류가 반복되어 더 이상 로그인할 수 없습니다. 비밀번호 찾기로 재설정해 주세요.",
+                },
+            )
         if await r.exists(lockout_key):
             raise HTTPException(
                 status_code=429,
                 detail={
                     "code": "AUTH_TEMPORARILY_LOCKED",
-                    "message": "잠시 후 다시 시도해주세요.",
+                    "message": "비밀번호 오류가 반복되어 10분간 로그인이 잠겼습니다. 잠시 후 다시 시도하거나 비밀번호 찾기를 이용하세요.",
                 },
             )
 
@@ -390,7 +419,12 @@ async def login_user(
                         target_user_id=user.id,
                         ip=ip,
                         ua=ua,
-                        details={"attempt_count": count, "reason": "oauth_only_hint"},
+                        details={
+                            "stage": 1,
+                            "severity": "medium",
+                            "attempt_count": count,
+                            "reason": "oauth_only_hint",
+                        },
                         status="new",
                         created_at=now,
                     )
@@ -400,6 +434,8 @@ async def login_user(
                     except Exception:
                         await db.rollback()
 
+                    # OAuth-only enumeration 은 stage_key 를 세팅하지 않는다 —
+                    # password verify 경로가 없으므로 stage-2 escalation 이 발생할 수 없음.
                     await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
 
             raise HTTPException(
@@ -421,21 +457,22 @@ async def login_user(
         verify_password(password, "$argon2id$v=19$m=65536,t=3,p=4$dummyhash0000000000000000$dummyhash0000000000000000000000000000000000")
 
     if not password_correct:
-        # 실패 카운터 증가
         async with _make_redis_rl(redis_url) as r:
-            count_raw = await r.get(fail_key)
-            count = int(count_raw) + 1 if count_raw else 1
-            await r.set(fail_key, str(count), ex=_LOGIN_FAIL_WINDOW)
-
-            if count >= _LOGIN_BRUTE_THRESHOLD:
-                # anomaly_events INSERT (3회째부터)
+            # 이전에 이미 1차 락(10분)을 한 번 거친 이메일인지 확인.
+            # 거쳤다면 — 락 해제 후의 단 1회 재시도가 또 실패한 것이므로 2차 escalation.
+            stage_raw = await r.get(stage_key)
+            if stage_raw == "1":
                 now = datetime.now(tz=timezone.utc)
                 event = AnomalyEvent(
                     type="login_brute_force",
                     target_user_id=user.id if user else None,
                     ip=ip,
                     ua=ua,
-                    details={"attempt_count": count},
+                    details={
+                        "stage": 2,
+                        "severity": "high",
+                        "reason": "retry_after_lockout_failed",
+                    },
                     status="new",
                     created_at=now,
                 )
@@ -445,14 +482,73 @@ async def login_user(
                 except Exception:
                     await db.rollback()
 
-                # 4회째부터 lockout (3회째 기록 후 다음 요청부터 차단)
-                await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
+                # hard_lock — 비번찾기로 임시 비번이 발송될 때까지 풀리지 않음.
+                await r.set(hard_lock_key, "1", ex=_LOGIN_HARD_LOCK_TTL)
+                # fail counter / stage / 임시 lockout 정리 (의미 상실)
+                await r.delete(fail_key)
+                await r.delete(stage_key)
+                await r.delete(lockout_key)
 
                 logger.warning(
-                    "auth.login.brute_force",
+                    "auth.login.brute_force.stage2",
+                    email=f"****{email[-4:]}",
+                    ip=ip,
+                )
+
+                raise HTTPException(
+                    status_code=423,
+                    detail={
+                        "code": "AUTH_MUST_RESET_PASSWORD",
+                        "message": "비밀번호 오류가 반복되어 더 이상 로그인할 수 없습니다. 비밀번호 찾기로 재설정해 주세요.",
+                    },
+                )
+
+            # 1차 단계 — 실패 카운터 증가
+            count_raw = await r.get(fail_key)
+            count = int(count_raw) + 1 if count_raw else 1
+            await r.set(fail_key, str(count), ex=_LOGIN_FAIL_WINDOW)
+
+            if count >= _LOGIN_BRUTE_THRESHOLD:
+                # 1차 anomaly INSERT
+                now = datetime.now(tz=timezone.utc)
+                event = AnomalyEvent(
+                    type="login_brute_force",
+                    target_user_id=user.id if user else None,
+                    ip=ip,
+                    ua=ua,
+                    details={
+                        "stage": 1,
+                        "severity": "medium",
+                        "attempt_count": count,
+                    },
+                    status="new",
+                    created_at=now,
+                )
+                db.add(event)
+                try:
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+
+                # 10분 lockout + 24h stage 표식
+                await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
+                await r.set(stage_key, "1", ex=_LOGIN_STAGE_TTL)
+                await r.delete(fail_key)
+
+                logger.warning(
+                    "auth.login.brute_force.stage1",
                     email=f"****{email[-4:]}",
                     attempt_count=count,
                     ip=ip,
+                )
+
+                # 임계 도달 즉시 락 안내 (4번째 요청을 기다리지 않고).
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "AUTH_TEMPORARILY_LOCKED",
+                        "message": "비밀번호 오류가 반복되어 10분간 로그인이 잠겼습니다. 잠시 후 다시 시도하거나 비밀번호 찾기를 이용하세요.",
+                    },
                 )
 
         raise HTTPException(
@@ -463,14 +559,42 @@ async def login_user(
             },
         )
 
-    # 로그인 성공 — 실패 카운터 초기화
+    # 비밀번호는 맞았지만 관리자에 의해 차단된 계정이면 세션을 발급하지 않는다.
+    # role=='admin' 은 차단 대상이 아니다 — 관리자 콘솔 진입을 막지 않도록 분기.
+    # (admin 라우터는 별도 쿠키이지만, login_user 자체는 일반/관리자 공용이라 여기서 안전망.)
+    if user.role != "admin" and user.subscription_status == "blocked":
+        # 실패 카운터/락 키는 정리한다 — 비밀번호 자체는 맞았으므로 브루트포스 누적 의미 없음.
+        async with _make_redis_rl(redis_url) as r:
+            await r.delete(fail_key)
+            await r.delete(stage_key)
+            await r.delete(lockout_key)
+            await r.delete(hard_lock_key)
+        logger.info(
+            "auth.login.blocked_account",
+            user_id=user.id,
+            ip=ip,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ACCOUNT_BLOCKED",
+                "message": "차단된 계정입니다. 관리자에게 문의하세요.",
+            },
+        )
+
+    # 로그인 성공 — 실패 카운터/락 키 일괄 초기화
     async with _make_redis_rl(redis_url) as r:
         await r.delete(fail_key)
+        await r.delete(stage_key)
+        await r.delete(lockout_key)
+        await r.delete(hard_lock_key)
 
     # Story 6.2: 로그인 성공 시 last_login_at 업데이트 (편차 2)
     user.last_login_at = datetime.now(tz=timezone.utc)
     # 단일 세션(later wins) — 새 nonce 발급. 이전 쿠키는 sid mismatch 로 자동 무효화된다.
-    user.current_session_id = secrets.token_urlsafe(24)
+    # rotate_session=False 면 회전을 건너뛴다(관리자 콘솔 로그인은 별도 쿠키 사용 — 일반 쿠키 무효화 방지).
+    if rotate_session:
+        user.current_session_id = secrets.token_urlsafe(24)
     try:
         await db.commit()
     except Exception:
@@ -565,6 +689,19 @@ async def request_password_reset(
 
         body = f"Denvia 임시 비밀번호: {temp_password} (로그인 후 즉시 변경됩니다)"
         await messaging.send_sms(phone, body)
+
+        # 브루트포스 락 키 일괄 정리 — 임시 비번이 발송된 시점부터 사용자가
+        # 그 비번으로 즉시 로그인할 수 있어야 한다(hard_lock 이 걸려 있으면 무한 루프).
+        try:
+            async with _make_redis_rl(redis_url) as r:
+                matched_email = user.email
+                await r.delete(_LOGIN_FAIL_KEY.format(email=matched_email))
+                await r.delete(_LOGIN_LOCKOUT_KEY.format(email=matched_email))
+                await r.delete(_LOGIN_STAGE_KEY.format(email=matched_email))
+                await r.delete(_LOGIN_HARD_LOCK_KEY.format(email=matched_email))
+        except RedisError:
+            # 락 키 정리 실패는 silent — 다음 임시 비번 발송이나 30일 TTL 만료로 자연 해제.
+            logger.exception("auth.password_reset.lock_cleanup_failed")
 
         logger.info(
             "auth.password_reset.requested",

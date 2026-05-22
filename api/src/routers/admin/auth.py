@@ -203,6 +203,10 @@ async def admin_login(
     ua = request.headers.get("user-agent")
 
     # 일반 로그인 서비스를 재사용 — argon2 검증·브루트포스 락아웃 정책 동일 적용
+    # rotate_session=False: 관리자 콘솔은 별도 쿠키(denvia_admin_session)로 진입하므로
+    # 일반 사이트 단일 세션 nonce(users.current_session_id) 를 갈아엎지 않는다. 같은 사람이
+    # 같은 브라우저에서 일반 로그인도 해둔 상태에서 admin 로그인이 nonce 를 회전시키면
+    # SessionBootstrap 의 /api/v1/me 가 SUPERSEDED 401 로 튕겨 무한 루프가 발생한다.
     user = await login_user(
         email=body.email,
         password=body.password,
@@ -211,6 +215,7 @@ async def admin_login(
         ua=ua,
         redis_url=settings.redis_url,
         db=db,
+        rotate_session=False,
     )
     await db.commit()
 

@@ -11,7 +11,6 @@ import pytest
 from api.src.models.notification_queue import STATUS_SENT
 from api.src.workers.budget_tasks import (
     _check_thresholds_async,
-    _resolve_admin_target,
     _try_notify,
 )
 

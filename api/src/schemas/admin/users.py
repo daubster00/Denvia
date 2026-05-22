@@ -101,7 +101,11 @@ class UserDetailResponse(BaseModel):
 
 # Story 6.2 — PATCH /api/v1/admin/users/{user_id} 요청 스키마
 class BlockActionRequest(BaseModel):
-    """차단 적용 요청 — block_action 필드의 중첩 모델."""
+    """차단 적용 요청 — block_action 필드의 중첩 모델.
+
+    차단은 항상 전체 계정 차단(subscription_status='blocked')으로 통일.
+    로그인 이상이든 질문 패턴 이상이든 동일하게 로그인부터 막는다.
+    """
 
     duration_hours: int | None = Field(
         default=None,
@@ -115,14 +119,6 @@ class BlockActionRequest(BaseModel):
         ge=1,
         description="이상탐지 UI에서 차단을 적용한 경우, 해당 anomaly_event.id. "
         "전달 시 해당 이벤트를 'actioned' 상태로 전이한다. 일반 권한 수정 시 생략.",
-    )
-    scope: Literal["all", "question_only"] = Field(
-        default="all",
-        description="차단 범위. 'all'=전체 계정(subscription_status=blocked), "
-        "'question_only'=Q&A 질문만 차단(users.question_blocked_until 사용, "
-        "로그인·결제·마이페이지 등 다른 활동은 허용). 이상탐지 UI에서 "
-        "로그인 이상(login_brute_force / concurrent_ip_login) 외 분류는 "
-        "question_only 로 호출한다.",
     )
 
 

@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from api.src.integrations.messaging.adapters import get_adapter
+from api.src.integrations.messaging.admin_recipient import resolve_admin_target
 from api.src.integrations.messaging.notification_service import NotificationService, SendResult
 from api.src.models.notification_queue import STATUS_SENT
 from api.src.models.budget_threshold import BudgetThreshold
@@ -62,7 +63,7 @@ async def _check_thresholds_async() -> dict:
             spent_krw_text = f"₩{spent_krw_int:,}"
             limit_krw_text = f"₩{limit_krw_int:,}"
 
-            admin_user, admin_phone = await _resolve_admin_target(session)
+            admin_user, admin_phone = await resolve_admin_target(session)
 
             row = (await session.execute(
                 select(BudgetThreshold).where(BudgetThreshold.year_month == ym)
@@ -170,21 +171,6 @@ async def _check_thresholds_async() -> dict:
         await redis.aclose()
         await runtime_redis.aclose()
         await engine.dispose()
-
-
-async def _resolve_admin_target(session) -> tuple[User | None, str | None]:
-    env_phone = settings.denvia_admin_phone
-    if env_phone:
-        admin = (await session.execute(
-            select(User).where(User.role == "admin").order_by(User.id).limit(1)
-        )).scalar_one_or_none()
-        if admin:
-            return admin, env_phone
-    admin = (await session.execute(
-        select(User).where(User.role == "admin", User.phone.is_not(None))
-        .order_by(User.id).limit(1)
-    )).scalar_one_or_none()
-    return admin, (admin.phone if admin else None)
 
 
 async def _try_notify(
