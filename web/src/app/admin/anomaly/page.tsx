@@ -2,19 +2,15 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { AnomalyTabs } from "@/features/admin-anomaly/components/AnomalyTabs";
 import { AnomalyTable } from "@/features/admin-anomaly/components/AnomalyTable";
+import { AnomalyDetailDrawer } from "@/features/admin-anomaly/components/AnomalyDetailDrawer";
 import { useAnomalyList } from "@/features/admin-anomaly/hooks/useAnomalyList";
-import { useMarkReviewed } from "@/features/admin-anomaly/hooks/useMarkReviewed";
 import type {
   AnomalyEventItem,
   AnomalyStatus,
   AnomalyType,
 } from "@/features/admin-anomaly/api/anomaly";
-import { useUpdatePermission } from "@/features/admin-users/hooks/useUpdatePermission";
-import { clearAnomalyThrottle } from "@/features/admin-users/api/users";
-import { useToastStore } from "@/stores/toast-store";
 import styles from "./page.module.css";
 
 const PER_PAGE = 20;
@@ -55,9 +51,7 @@ export default function AnomalyPage() {
   const [activeType, setActiveType] = useState<AnomalyType | null>(initialType);
   const [statusIn, setStatusIn] = useState<AnomalyStatus[]>(initialStatus);
   const [page, setPage] = useState(1);
-
-  const qc = useQueryClient();
-  const showToast = useToastStore((s) => s.show);
+  const [openedAnomalyId, setOpenedAnomalyId] = useState<number | null>(null);
 
   const { data, isLoading, isError, refetch } = useAnomalyList({
     type_in: activeType ? [activeType] : undefined,
@@ -65,9 +59,6 @@ export default function AnomalyPage() {
     page,
     per_page: PER_PAGE,
   });
-
-  const markReviewed = useMarkReviewed();
-  const updatePermission = useUpdatePermission();
 
   function handleTypeChange(next: AnomalyType | null) {
     setActiveType(next);
@@ -79,90 +70,8 @@ export default function AnomalyPage() {
     setPage(1);
   }
 
-  async function handleApplyBlock(
-    anomaly: AnomalyEventItem,
-    durationHours: number | null,
-  ) {
-    if (!anomaly.target_user_id) {
-      showToast("IP 기반 이벤트는 사용자 차단을 적용할 수 없습니다.");
-      return;
-    }
-    const label =
-      durationHours === null
-        ? "영구 차단"
-        : durationHours === 24
-          ? "24시간 차단"
-          : "7일 차단";
-    try {
-      await updatePermission.mutateAsync({
-        userId: anomaly.target_user_id,
-        payload: {
-          block_action: {
-            duration_hours: durationHours,
-            reason: `이상행동 탐지 (${anomaly.type})`,
-            anomaly_id: anomaly.id,
-          },
-        },
-      });
-      await qc.invalidateQueries({ queryKey: ["admin", "anomaly"] });
-      showToast(`${label} 처리되었습니다.`);
-    } catch {
-      showToast("차단 처리에 실패했습니다. 다시 시도해주세요.");
-    }
-  }
-
-  function handleMarkReviewed(anomaly: AnomalyEventItem) {
-    markReviewed.mutate(anomaly.id, {
-      onSuccess: () => showToast("검토 완료 처리되었습니다."),
-      onError: () => showToast("검토 처리에 실패했습니다."),
-    });
-  }
-
-  async function handleUnblock(anomaly: AnomalyEventItem) {
-    if (!anomaly.target_user_id) {
-      showToast("대상 사용자가 없는 이벤트입니다.");
-      return;
-    }
-
-    // rapid_followup_questions 는 시스템 자동조치(throttle) — 차단이 아니므로
-    // 별도 엔드포인트(DELETE /admin/users/{id}/anomaly-throttle) 호출.
-    if (anomaly.type === "rapid_followup_questions") {
-      const ok = window.confirm(
-        "쿨다운(자동 속도 제한)을 해제하시겠습니까? 사용자가 즉시 다시 질의할 수 있습니다.",
-      );
-      if (!ok) return;
-      try {
-        await clearAnomalyThrottle(anomaly.target_user_id);
-        await qc.invalidateQueries({ queryKey: ["admin", "anomaly"] });
-        showToast("쿨다운이 해제되었습니다.");
-      } catch {
-        showToast("쿨다운 해제에 실패했습니다. 다시 시도해주세요.");
-      }
-      return;
-    }
-
-    const ok = window.confirm(
-      "차단을 해제하시겠습니까? 사용자가 즉시 다시 이용할 수 있습니다.",
-    );
-    if (!ok) return;
-    try {
-      await updatePermission.mutateAsync({
-        userId: anomaly.target_user_id,
-        payload: { unblock: true },
-      });
-      await qc.invalidateQueries({ queryKey: ["admin", "anomaly"] });
-      showToast("차단이 해제되었습니다.");
-    } catch (err) {
-      const code =
-        err && typeof err === "object" && "code" in err
-          ? (err as { code: string }).code
-          : undefined;
-      if (code === "UNBLOCK_TARGET_NOT_BLOCKED") {
-        showToast("이미 차단이 해제된 사용자입니다.");
-      } else {
-        showToast("차단 해제에 실패했습니다. 다시 시도해주세요.");
-      }
-    }
+  function handleShowDetail(anomaly: AnomalyEventItem) {
+    setOpenedAnomalyId(anomaly.id);
   }
 
   const isStatusActive = (opt: AnomalyStatus[]) =>
@@ -217,11 +126,16 @@ export default function AnomalyPage() {
         page={page}
         perPage={PER_PAGE}
         onPageChange={setPage}
-        onApplyBlock={handleApplyBlock}
-        onMarkReviewed={handleMarkReviewed}
-        onUnblock={handleUnblock}
+        onShowDetail={handleShowDetail}
         onRetry={() => refetch()}
       />
+
+      {openedAnomalyId !== null ? (
+        <AnomalyDetailDrawer
+          anomalyId={openedAnomalyId}
+          onClose={() => setOpenedAnomalyId(null)}
+        />
+      ) : null}
     </section>
   );
 }

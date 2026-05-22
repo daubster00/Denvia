@@ -43,3 +43,4 @@ class AnomalyEvent(Base):
     reviewed_by_admin_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    admin_memo: Mapped[str | None] = mapped_column(Text, nullable=True)

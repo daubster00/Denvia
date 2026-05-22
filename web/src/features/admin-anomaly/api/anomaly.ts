@@ -114,6 +114,55 @@ export async function fetchAnomalyList(
   return res.json() as Promise<AnomalyListResponse>;
 }
 
+export interface AnomalyDetailResponse extends AnomalyEventItem {
+  admin_memo: string | null;
+  auto_actioned: boolean;
+  occurrence_count: number;
+  last_occurred_at: string | null;
+  user_subscription_status: "free" | "pro" | "blocked" | null;
+  user_blocked_until: string | null;
+  user_block_reason: string | null;
+  user_question_blocked_until: string | null;
+  user_question_block_reason: string | null;
+  user_anomaly_throttled_at: string | null;
+}
+
+export async function fetchAnomalyDetail(
+  anomalyId: number,
+): Promise<AnomalyDetailResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/anomaly/${anomalyId}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) {
+    await _throwFromResponse(res, "이상 이벤트 상세를 불러오지 못했습니다.");
+  }
+  return res.json() as Promise<AnomalyDetailResponse>;
+}
+
+export async function saveAnomalyMemo(
+  anomalyId: number,
+  memo: string,
+): Promise<AnomalyDetailResponse> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/anomaly/${anomalyId}/memo`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({ memo }),
+    },
+  );
+  if (!res.ok) {
+    await _throwFromResponse(res, "메모 저장에 실패했습니다.");
+  }
+  return res.json() as Promise<AnomalyDetailResponse>;
+}
+
 export async function markAnomalyReviewed(
   anomalyId: number,
 ): Promise<AnomalyEventItem> {

@@ -11,10 +11,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -40,16 +39,6 @@ _HIGH_SEVERITY_TYPES: frozenset[str] = frozenset(
     {"repeated_question", "concurrent_ip_login"}
 )
 
-# 관리자 알림톡(admin.anomaly_detected, UH_9849) 본문에 노출할 한국어 라벨.
-# 알리고 등록본은 자유 텍스트 변수이므로 카카오 심사에 영향 없음.
-_ANOMALY_TYPE_LABEL_KO: dict[str, str] = {
-    "login_brute_force": "비밀번호 다회 오류",
-    "concurrent_ip_login": "동일 IP 다수 계정 동시 로그인",
-    "repeated_question": "동일 질문 반복",
-    "recovery_abuse": "계정 복구 다회 시도",
-    "rapid_followup_questions": "답변 직후 3초 이내 연속 질의 (자동 throttle 적용)",
-}
-
 # 후속 질문 패턴 탐지 — 답변 완료 시각 기준 윈도우와 연속 임계.
 RAPID_FOLLOWUP_WINDOW_SECONDS = 3.0
 RAPID_FOLLOWUP_STREAK_THRESHOLD = 3
@@ -58,16 +47,6 @@ _RAPID_FOLLOWUP_LAST_DONE_KEY = "qa:last_done:user:{user_id}"
 _RAPID_FOLLOWUP_STREAK_KEY = "qa:rapid_followup_streak:user:{user_id}"
 _RAPID_FOLLOWUP_LAST_DONE_TTL = 3600
 _RAPID_FOLLOWUP_STREAK_TTL = 3600
-
-
-def _mask_email_for_alimtalk(email: str | None) -> str | None:
-    """앞 1자 + ** + @도메인 (anomaly_service._mask_email 와 동일 규칙)."""
-    if email is None or "@" not in email:
-        return email
-    local, _, domain = email.partition("@")
-    if len(local) <= 1:
-        return email
-    return f"{local[0]}**@{domain}"
 
 
 # ── List + filter ──────────────────────────────────────────────────────────────
@@ -205,6 +184,99 @@ async def mark_anomaly_reviewed(
     await db.flush()
     serialized = await _serialize_event_with_email(db, event)
     return {"event": serialized, "transitioned": True}
+
+
+async def get_anomaly_detail(
+    db: AsyncSession,
+    *,
+    anomaly_id: int,
+) -> dict[str, Any]:
+    """이상탐지 상세 드로어용 — 단건 + 누적 통계 + 대상 사용자 현황.
+
+    반환 dict 키:
+      - id, type, target_user_id, target_user_email_masked, ip, ua, details, status,
+        reviewed_by_admin_id, reviewed_at, created_at, admin_memo
+      - auto_actioned, occurrence_count, last_occurred_at
+      - user_subscription_status, user_blocked_until, user_block_reason,
+        user_question_blocked_until, user_question_block_reason,
+        user_anomaly_throttled_at
+    """
+    event = await db.get(AnomalyEvent, anomaly_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ANOMALY_NOT_FOUND",
+                "message": "이상 이벤트를 찾을 수 없습니다.",
+            },
+        )
+
+    base = await _serialize_event_with_email(db, event)
+    base["admin_memo"] = event.admin_memo
+    details_dict = event.details or {}
+    base["auto_actioned"] = bool(
+        details_dict.get("auto_actioned") or event.type == "rapid_followup_questions"
+    )
+
+    # 누적 탐지 — 같은 (target_user_id, type) 조합, target_user_id 가 NULL 이면 (ip, type) 로.
+    count_q = select(func.count()).select_from(AnomalyEvent).where(
+        AnomalyEvent.type == event.type
+    )
+    last_q = select(func.max(AnomalyEvent.created_at)).where(
+        AnomalyEvent.type == event.type
+    )
+    if event.target_user_id is not None:
+        count_q = count_q.where(AnomalyEvent.target_user_id == event.target_user_id)
+        last_q = last_q.where(AnomalyEvent.target_user_id == event.target_user_id)
+    elif event.ip is not None:
+        count_q = count_q.where(AnomalyEvent.ip == event.ip)
+        last_q = last_q.where(AnomalyEvent.ip == event.ip)
+
+    occurrence_count = int((await db.execute(count_q)).scalar_one() or 0)
+    last_at = (await db.execute(last_q)).scalar_one()
+    base["occurrence_count"] = occurrence_count
+    base["last_occurred_at"] = last_at
+
+    # 대상 사용자 현황.
+    if event.target_user_id is not None:
+        user_row = (
+            await db.execute(select(User).where(User.id == event.target_user_id))
+        ).scalar_one_or_none()
+        if user_row is not None:
+            base["user_subscription_status"] = user_row.subscription_status
+            base["user_blocked_until"] = user_row.blocked_until
+            base["user_block_reason"] = user_row.block_reason
+            base["user_question_blocked_until"] = user_row.question_blocked_until
+            base["user_question_block_reason"] = user_row.question_block_reason
+            base["user_anomaly_throttled_at"] = user_row.anomaly_throttled_at
+        else:
+            base["user_subscription_status"] = None
+    else:
+        base["user_subscription_status"] = None
+
+    return base
+
+
+async def update_anomaly_memo(
+    db: AsyncSession,
+    *,
+    anomaly_id: int,
+    memo: str,
+) -> AnomalyEvent:
+    """메모 저장 — 빈 문자열은 NULL 로 정규화."""
+    event = await db.get(AnomalyEvent, anomaly_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ANOMALY_NOT_FOUND",
+                "message": "이상 이벤트를 찾을 수 없습니다.",
+            },
+        )
+    normalized = memo.strip()
+    event.admin_memo = normalized if normalized else None
+    await db.flush()
+    return event
 
 
 async def mark_anomaly_unblocked(
@@ -347,13 +419,6 @@ async def check_concurrent_ip_login(
             ip=ip,
             distinct_user_count=len(distinct_user_ids),
             anomaly_id=event.id,
-        )
-
-        schedule_admin_anomaly_alimtalk(
-            anomaly_event_id=event.id,
-            anomaly_type="concurrent_ip_login",
-            target_user_id=None,
-            ip=ip,
         )
 
         if redis_pubsub is not None:
@@ -508,11 +573,6 @@ async def check_rapid_followup_questions(
             anomaly_id=event.id,
         )
 
-        schedule_admin_anomaly_alimtalk(
-            anomaly_event_id=event.id,
-            anomaly_type="rapid_followup_questions",
-            target_user_id=user_id,
-        )
         # severity='medium' — SSE publish skip.
         return not already_throttled
     except Exception:
@@ -673,6 +733,8 @@ __all__ = [
     "RAPID_FOLLOWUP_WINDOW_SECONDS",
     "RAPID_FOLLOWUP_STREAK_THRESHOLD",
     "list_anomaly_events",
+    "get_anomaly_detail",
+    "update_anomaly_memo",
     "mark_anomaly_reviewed",
     "mark_anomaly_actioned",
     "mark_anomaly_unblocked",
@@ -681,122 +743,4 @@ __all__ = [
     "check_rapid_followup_questions",
     "record_stream_done",
     "clear_user_anomaly_throttle",
-    "schedule_admin_anomaly_alimtalk",
 ]
-
-
-# ── Admin alimtalk (admin.anomaly_detected, UH_9849) ──────────────────────────
-
-
-def schedule_admin_anomaly_alimtalk(
-    *,
-    anomaly_event_id: int,
-    anomaly_type: str,
-    target_user_id: int | None = None,
-    ip: str | None = None,
-    phone_tail: str | None = None,
-) -> None:
-    """이상탐지 이벤트 INSERT 직후 호출. 관리자 알림톡을 fire-and-forget 예약.
-
-    asyncio.create_task 로 띄워 호출 흐름(로그인·QA 등) 지연을 막는다. 이벤트 루프 외부
-    호출(예: 동기 테스트 setup)은 silent.
-
-    멱등키: ``anomaly:{anomaly_event_id}`` — 동일 event 재발송 차단.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    loop.create_task(
-        _send_admin_anomaly_alimtalk(
-            anomaly_event_id=anomaly_event_id,
-            anomaly_type=anomaly_type,
-            target_user_id=target_user_id,
-            ip=ip,
-            phone_tail=phone_tail,
-        )
-    )
-
-
-def _build_user_identifier(
-    *,
-    email: str | None,
-    target_user_id: int | None,
-    ip: str | None,
-    phone_tail: str | None,
-) -> str:
-    parts: list[str] = []
-    if email:
-        parts.append(_mask_email_for_alimtalk(email) or email)
-    elif phone_tail:
-        parts.append(f"phone ****{phone_tail}")
-    elif target_user_id is not None:
-        parts.append(f"user_id {target_user_id}")
-    if ip:
-        parts.append(f"IP {ip}")
-    if not parts:
-        return "unknown"
-    return " · ".join(parts)
-
-
-async def _send_admin_anomaly_alimtalk(
-    *,
-    anomaly_event_id: int,
-    anomaly_type: str,
-    target_user_id: int | None,
-    ip: str | None,
-    phone_tail: str | None,
-) -> None:
-    """관리자 단일 발송 — 실패는 모두 swallow + warning 로그."""
-    try:
-        from api.src.integrations.messaging.admin_recipient import (
-            resolve_admin_target,
-        )
-        from api.src.integrations.messaging.notification_service import (
-            get_notification_service,
-        )
-        from api.src.models.base import async_session_factory
-
-        async with async_session_factory() as db:
-            admin, admin_phone = await resolve_admin_target(db)
-            if admin is None or not admin_phone:
-                logger.info(
-                    "anomaly.admin_notify_skipped",
-                    reason="admin_phone_missing",
-                    anomaly_event_id=anomaly_event_id,
-                    anomaly_type=anomaly_type,
-                )
-                return
-            user_email: str | None = None
-            if target_user_id is not None:
-                user_email = (
-                    await db.execute(
-                        select(User.email).where(User.id == target_user_id)
-                    )
-                ).scalar_one_or_none()
-
-        identifier = _build_user_identifier(
-            email=user_email,
-            target_user_id=target_user_id,
-            ip=ip,
-            phone_tail=phone_tail,
-        )
-        svc = get_notification_service()
-        await svc.send(
-            user_id=admin.id,
-            phone=admin_phone,
-            template_code="admin.anomaly_detected",
-            variables={
-                "anomaly_type": _ANOMALY_TYPE_LABEL_KO.get(
-                    anomaly_type, anomaly_type
-                ),
-                "user_identifier": identifier,
-            },
-            idempotency_key=f"anomaly:{anomaly_event_id}",
-        )
-    except Exception:
-        logger.warning(
-            "anomaly.admin_notify_failed",
-            anomaly_event_id=anomaly_event_id,
-            anomaly_type=anomaly_type,
-        )

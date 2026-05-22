@@ -24,9 +24,11 @@ from api.src.middleware.rate_limit import limiter
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.anomaly import (
+    AnomalyDetailResponse,
     AnomalyListResponse,
     AnomalyMarkReviewedRequest,
     AnomalyMarkReviewedResponse,
+    AnomalyMemoUpdateRequest,
 )
 from api.src.services import anomaly_service
 from api.src.utils.jwt import (
@@ -113,6 +115,53 @@ async def list_anomalies(
         total=result["total"],
     )
     return AnomalyListResponse(**result)
+
+
+@router.get("/{anomaly_id}", response_model=AnomalyDetailResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def get_anomaly(
+    request: Request,
+    anomaly_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AnomalyDetailResponse:
+    """상세 드로어용 — 단건 + 누적 통계 + 대상 사용자 현황."""
+    detail = await anomaly_service.get_anomaly_detail(db, anomaly_id=anomaly_id)
+    logger.info(
+        "admin.anomaly.detail",
+        actor_user_id=admin.id,
+        anomaly_id=anomaly_id,
+    )
+    return AnomalyDetailResponse(**detail)
+
+
+@router.patch("/{anomaly_id}/memo", response_model=AnomalyDetailResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def patch_anomaly_memo(
+    request: Request,
+    anomaly_id: int,
+    payload: AnomalyMemoUpdateRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AnomalyDetailResponse:
+    """관리자 메모 저장. 빈 문자열은 NULL 로 정규화.
+
+    audit_logs INSERT 는 별도 액션을 만들지 않고 본 라우터에서 skip — 메모는 운영 흔적.
+    """
+    event = await anomaly_service.update_anomaly_memo(
+        db, anomaly_id=anomaly_id, memo=payload.memo
+    )
+    await db.commit()
+    request.state.audit_skip = True
+
+    detail = await anomaly_service.get_anomaly_detail(db, anomaly_id=event.id)
+    logger.info(
+        "admin.anomaly.memo_updated",
+        actor_user_id=admin.id,
+        anomaly_id=anomaly_id,
+        memo_len=len(payload.memo or ""),
+    )
+    return AnomalyDetailResponse(**detail)
 
 
 @router.patch("/{anomaly_id}", response_model=AnomalyMarkReviewedResponse)

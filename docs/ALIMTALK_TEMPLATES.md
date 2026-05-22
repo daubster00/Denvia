@@ -125,7 +125,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 17 | 시스템 | `admin.budget_warning.95` | 월 OpenAI 비용이 예산의 95% 도달 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9845 승인, 2026-05-21) — `workers/budget_tasks.py` |
 | 18 | 시스템 | `admin.budget_hard_cap_reached` | 월 예산 100% 소진 → 무료 질의 자동 차단 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9846 승인, 2026-05-21) — `workers/budget_tasks.py` |
 | 19 | 시스템 | `admin.support_inquiry_created` | 사용자가 1:1 문의를 등록한 직후 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9848 승인, 2026-05-20) — `routers/support.py` background_tasks |
-| 20 | 시스템 | `admin.anomaly_detected` | 이상탐지(비밀번호 다회 오류·동시 로그인·답변 직후 연속 질의·계정 복구 다회 시도 등) 발생 시 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9849 승인, 2026-05-20) — `anomaly_service.schedule_admin_anomaly_alimtalk` (login_brute_force / concurrent_ip_login / rapid_followup_questions / recovery_abuse 4종 트리거 · repeated_question 은 enum 정의만, 트리거 미구현) |
+| 20 | 시스템 | `admin.anomaly_detected` | (자동 발송 폐기 — 2026-05-22) 이상탐지 발생만으로는 더 이상 발송하지 않음. 관리자가 직접 차단 버튼을 누른 시점에만 발송하는 정책으로 변경 — 차단 트리거 연결은 후속 작업 | 관리자 | 🟡 템플릿 등록(UH_9849)·`templates.py` 정의는 유지. **이상탐지 자동 발송 호출 4종 모두 제거(2026-05-22)** — `anomaly_service.schedule_admin_anomaly_alimtalk` 헬퍼 삭제. 차단 시점 발송 연결은 후속 작업 |
 | 21 | ~~구독~~ | ~~`subscription.extended_due_to_killswitch`~~ | ~~킬스위치 발동으로 구독 기간 자동 연장됐을 때~~ | ~~사용자~~ | **❌ 폐기 — 2026-05-18** — 클라이언트 v4 검수서(Google Docs 2026-05-15) 미포함. 카탈로그·호출처·docs 본문 섹션 제거. 킬스위치 시 구독 기간 연장 자체는 유지하되 사용자 안내는 인앱 공지·1:1 쪽지로 대체 |
 
 > SMS OTP(회원가입·아이디찾기·비밀번호찾기 인증번호 발송)와 임시 비밀번호 발송은 **알림톡이 아니라 일반 SMS**로 보냅니다. 알리고 콘솔에서는 별도 템플릿 등록이 필요 없습니다(SMS는 자유 텍스트). 본 문서 제일 아래 §8에 정리합니다.
@@ -757,20 +757,13 @@ Denvia RAG 재빌드가 실패했습니다.
 
 ### 20) `admin.anomaly_detected` — 이상탐지 발생 알림 (관리자) (신규 — 2026-05-18 v4)
 
-- **언제**: 사용자 계정에서 이상탐지가 감지된 직후 (비밀번호 3회 오류 / 동시 로그인 / 동일 질문 반복 / 답변 출력 후 3초 이내 연속 질문 / 중복 IP 등 모든 이상탐지 패턴)
+- **언제**: ~~사용자 계정에서 이상탐지가 감지된 직후~~ → **(정책 변경 2026-05-22)** 관리자가 이상탐지 페이지에서 **직접 차단 버튼을 누른 시점**에만 발송. 탐지 자체로는 발송하지 않음.
 - **수신자**: 관리자 (수신 번호: `DENVIA_ADMIN_PHONE`)
-- **무료/유료 구분**: 없음 — 무료·유료 사용자 모두 동일하게 관리자에게 알림 발송
 - **사용자 측 알림톡**: 발송 안 함 (고객 v4 검수 추가요청 — 사용자에게는 카톡 전송 X). 차단 조치 시 사용자 안내는 인앱 1:1 쪽지 + 차단 페이지 팝업으로 별도 전달.
 - **알리고 분류**: 정보성 / 회원·계정 안내
 - **야간 발송**: 즉시 (운영 알림)
 - **알리고 tpl_code**: `UH_9849` (✅ 카카오 심사 통과)
-- **구현 상태**: ✅ 코드 반영 + 발송 연결 완료 (2026-05-20). `services/anomaly_service.py` 의 `schedule_admin_anomaly_alimtalk()` 헬퍼가 `asyncio.create_task` 로 fire-and-forget 예약. 트리거 4종 연결:
-  - `login_brute_force` ([api/src/services/auth_service.py](../api/src/services/auth_service.py)) — 비밀번호 다회 오류 (oauth_only_hint 변형 + 일반 변형 2개 분기)
-  - `recovery_abuse` ([api/src/services/auth_service.py](../api/src/services/auth_service.py)) — 계정 복구(find-id/find-password) 다회 시도
-  - `concurrent_ip_login` ([api/src/services/anomaly_service.py](../api/src/services/anomaly_service.py)) — 동일 IP 다수 계정 동시 로그인
-  - `rapid_followup_questions` ([api/src/services/anomaly_service.py](../api/src/services/anomaly_service.py)) — 답변 직후 3초 이내 연속 질의
-  - `repeated_question` — enum 정의만 존재. 탐지 로직 미구현 (Story 6.2 후속).
-  멱등 키 `anomaly:{anomaly_event_id}` — 동일 이벤트 재발송 차단.
+- **구현 상태**: 🟡 템플릿 정의(`templates.py`)는 유지하되 **이상탐지 자동 발송은 모두 폐기 (2026-05-22)**. `services/anomaly_service.py` 의 `schedule_admin_anomaly_alimtalk()` / `_send_admin_anomaly_alimtalk()` 헬퍼 및 4종 호출 지점(login_brute_force × 2 / recovery_abuse / concurrent_ip_login / rapid_followup_questions)을 모두 제거. 관리자가 `PATCH /admin/users/{id}` 의 `block_action` 으로 차단을 적용하는 시점에 발송하도록 후속 작업 필요.
 
 **제목**
 ```

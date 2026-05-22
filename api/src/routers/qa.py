@@ -1,5 +1,6 @@
 """QA 라우터 — POST /api/v1/qa/echo (Story 2.1) + POST /api/v1/qa/stream (Story 2.2/2.3) + POST /api/v1/qa/feedback (Story 2.4)."""
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -55,6 +56,23 @@ async def qa_stream(
             detail={
                 "code": "KILLSWITCH_ACTIVE",
                 "message": "서비스가 일시 중단되었습니다. 재개 시 알림톡으로 안내드립니다.",
+            },
+        )
+
+    # 이상탐지(질문 전용 차단) — 로그인 외 분류에서 관리자가 차단 적용 시
+    # users.question_blocked_until 만 채워 Q&A 만 막는다.
+    if (
+        user.question_blocked_until is not None
+        and user.question_blocked_until > datetime.now(tz=timezone.utc)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "QUESTION_BLOCKED",
+                "message": (
+                    user.question_block_reason
+                    or "관리자에 의해 일시적으로 질문이 제한되었습니다."
+                ),
             },
         )
 

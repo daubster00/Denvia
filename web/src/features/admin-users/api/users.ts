@@ -129,6 +129,12 @@ export interface BlockActionPayload {
   reason: string;
   /** 이상탐지 UI에서 차단 시 해당 anomaly_event.id. 백엔드가 status='actioned'로 전이. */
   anomaly_id?: number;
+  /**
+   * 'all'=전체 계정 차단(기본), 'question_only'=Q&A 질문만 차단.
+   * 이상탐지 UI에서 로그인 이상(login_brute_force / concurrent_ip_login) 외 분류는
+   * 'question_only' 로 호출한다.
+   */
+  scope?: "all" | "question_only";
 }
 
 export interface UserPermissionUpdatePayload {

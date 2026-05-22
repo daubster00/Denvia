@@ -87,6 +87,14 @@ async def get_my_quota(
         else ""
     )
 
+    # 관리자 차단(question_only) 상태 — 만료된 시각은 NULL로 정규화해 내려준다.
+    # 프론트는 question_blocked_until 이 미래 시각이면 입력창을 readonly 로 잠금.
+    qb_until = current_user.question_blocked_until
+    if qb_until is not None and qb_until <= datetime.now(tz=timezone.utc):
+        qb_until = None
+    qb_until_iso = qb_until.isoformat() if qb_until is not None else None
+    qb_reason = current_user.question_block_reason if qb_until is not None else None
+
     if current_user.subscription_status == "admin":
         return QuotaResponse(
             subscription_status="admin",
@@ -98,6 +106,8 @@ async def get_my_quota(
             show_subscribe_button=False,
             delay_seconds=0.0,
             free_delay_notice_text=notice_text,
+            question_blocked_until=qb_until_iso,
+            question_block_reason=qb_reason,
         )
 
     raw = await redis_quota.get(_today_key_kst(current_user.id))
@@ -125,6 +135,8 @@ async def get_my_quota(
         show_subscribe_button=show_subscribe,
         delay_seconds=float(delay),
         free_delay_notice_text=notice_text,
+        question_blocked_until=qb_until_iso,
+        question_block_reason=qb_reason,
     )
 
 

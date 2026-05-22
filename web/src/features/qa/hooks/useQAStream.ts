@@ -121,6 +121,28 @@ export function useQAStream() {
         signal: controller.signal,
         openWhenHidden: true,
         async onopen(response) {
+          // 관리자 차단(question_only) — quota 폴링 간격(60s) 사이에 차단이 들어오면
+          // 프론트가 readonly 로 잠그기 전에 사용자가 전송할 수 있다. 그 경우 403 으로
+          // 응답하므로 동일한 안내 모달을 띄우고 quota 캐시를 무효화해 즉시 잠근다.
+          if (response.status === 403) {
+            const body = await response.json().catch(() => ({}));
+            const code = body?.code as string | undefined;
+            if (code === "QUESTION_BLOCKED") {
+              const msg =
+                (body?.message as string | undefined) ??
+                "관리자에 의해 일시적으로 질문이 제한되었습니다.";
+              useAlertStore.getState().show({
+                level: "warning",
+                title: "이상 활동이 감지되어 질문이 일시 제한되었습니다.",
+                description: msg,
+                dedupeKey: "question_blocked",
+              });
+              clearMessages();
+              queryClient.invalidateQueries({ queryKey: ["me", "quota"] });
+              controller.abort();
+              return;
+            }
+          }
           // Story 2.3: SSE 시작 전 429 분기 (일반 JSON 응답 — SSE 아님)
           if (response.status === 429) {
             const body = await response.json().catch(() => ({}));

@@ -24,6 +24,7 @@ from api.src.middleware.audit_actions import (
     AUDIT_USER_PERMISSION_EDIT,
     AUDIT_USER_SPEED_OVERRIDE,
 )
+from api.src.models.inbox_message import InboxMessage
 from api.src.models.user import User
 from api.src.schemas.admin.users import (
     BlockActionRequest,
@@ -31,6 +32,8 @@ from api.src.schemas.admin.users import (
     UserSearchItem,
 )
 from api.src.services import admin_user_service, anomaly_service
+from api.src.utils.html_sanitize import sanitize_body_html
+from api.src.utils.korean_time import KST
 
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
@@ -133,6 +136,7 @@ def _validate_payload(
     if (
         payload.unblock is True
         and user.subscription_status != "blocked"
+        and user.question_blocked_until is None
     ):
         raise _http_422(
             "UNBLOCK_TARGET_NOT_BLOCKED",
@@ -152,9 +156,20 @@ def _validate_payload(
 def _apply_block(user: User, block_action: BlockActionRequest, now: datetime) -> None:
     """user를 차단 상태로 갱신.
 
-    이미 blocked가 아닐 때만 pre_block_status에 이전 상태를 보존한다.
-    re-block(기간/사유 수정)이라면 기존 pre_block_status를 유지한다.
+    scope='all' (기본): 전체 계정 차단 — subscription_status='blocked'.
+    scope='question_only': 질문(Q&A)만 차단 — users.question_blocked_until 만 채움,
+      subscription_status 는 그대로 유지.
     """
+    if block_action.scope == "question_only":
+        if block_action.duration_hours is None:
+            user.question_blocked_until = datetime.max.replace(tzinfo=timezone.utc)
+            # NULL=차단없음 / max=영구 차단. 영구 차단을 datetime.max 로 표기해
+            # 단일 컬럼으로 '없음/한시/영구' 3-state 를 모두 표현.
+        else:
+            user.question_blocked_until = now + timedelta(hours=block_action.duration_hours)
+        user.question_block_reason = block_action.reason
+        return
+
     if user.subscription_status != "blocked":
         user.pre_block_status = user.subscription_status
     user.subscription_status = "blocked"
@@ -165,12 +180,62 @@ def _apply_block(user: User, block_action: BlockActionRequest, now: datetime) ->
     user.block_reason = block_action.reason
 
 
+def _format_question_block_inbox_body(
+    *, reason: str, blocked_until: datetime
+) -> str:
+    """질문 차단 안내 쪽지 본문 — 프론트 AppAlert 와 동일한 문구 형식.
+
+    영구 차단(datetime.max)은 "해제 예정" 라인 대신 "영구 차단" 문구로 노출.
+    한시 차단은 KST `YYYY-MM-DD HH:MM` 형식으로 표기.
+    """
+    reason_clean = reason.strip() if reason else ""
+    reason_line = (
+        f"사유: {reason_clean}"
+        if reason_clean
+        else "사유: 관리자에 의해 일시적으로 질문이 제한되었습니다."
+    )
+    if blocked_until >= datetime.max.replace(tzinfo=timezone.utc):
+        expiry_line = "해제 예정: 영구 차단"
+    else:
+        expiry_kst = blocked_until.astimezone(KST).strftime("%Y-%m-%d %H:%M")
+        expiry_line = f"해제 예정<br>{expiry_kst}"
+    return (
+        "<p>이상 활동이 감지되어 질문이 일시 제한되었습니다.</p>"
+        f"<p>{reason_line}</p>"
+        f"<p>{expiry_line}</p>"
+    )
+
+
+def _build_question_block_inbox_message(user: User) -> InboxMessage:
+    """`question_only` 차단 직후 사용자 쪽지함에 동일 안내를 발송한다."""
+    return InboxMessage(
+        user_id=user.id,
+        notice_id=None,
+        popup_id=None,
+        type="system",
+        title="이상 활동이 감지되어 질문이 일시 제한되었습니다.",
+        body_html=sanitize_body_html(
+            _format_question_block_inbox_body(
+                reason=user.question_block_reason or "",
+                blocked_until=user.question_blocked_until
+                or datetime.max.replace(tzinfo=timezone.utc),
+            )
+        ),
+    )
+
+
 def _apply_unblock(user: User) -> None:
-    """user 차단 해제 — pre_block_status에서 이전 상태를 복원 (없으면 free)."""
+    """user 차단 해제 — pre_block_status에서 이전 상태를 복원 (없으면 free).
+
+    질문전용 차단(question_blocked_until)도 함께 초기화 — 사용자관리 또는
+    이상탐지 페이지의 차단 해제가 어느 컬럼에 적용되어 있든 모두 풀린다.
+    """
     user.subscription_status = user.pre_block_status if user.pre_block_status is not None else "free"
     user.pre_block_status = None
     user.blocked_until = None
     user.block_reason = None
+    user.question_blocked_until = None
+    user.question_block_reason = None
 
 
 def _diff_value(before: Any, after: Any) -> bool:
@@ -230,6 +295,7 @@ async def update_permission(
     before_blocked_until = user.blocked_until
     before_pro_granted = user.pro_granted_by_admin
     before_is_blocked = before_status == "blocked"
+    before_question_blocked_until = user.question_blocked_until
 
     # 1) 차단 해제 (unblock=true 단독 분기)
     if payload.unblock is True:
@@ -240,7 +306,19 @@ async def update_permission(
 
     # 2) 차단 적용 (block_action — subscription_status='blocked' 자동 설정)
     if payload.block_action is not None:
+        was_already_question_blocked = (
+            before_question_blocked_until is not None
+            and before_question_blocked_until > now
+        )
         _apply_block(user, payload.block_action, now)
+        # 질문 전용 차단(question_only) 신규 적용 시 동일 안내를 사용자 쪽지함으로 발송.
+        # 전체 계정 차단(scope='all')은 사용자가 로그인 자체를 못 하므로 쪽지함 미발송.
+        # 이미 차단된 사용자의 차단 시각만 갱신하는 케이스는 중복 발송 방지로 skip.
+        if (
+            payload.block_action.scope == "question_only"
+            and not was_already_question_blocked
+        ):
+            db.add(_build_question_block_inbox_message(user))
         # 이상탐지 UI에서 호출된 경우, 해당 anomaly_event를 'actioned' 로 전이.
         if payload.block_action.anomaly_id is not None:
             await anomaly_service.mark_anomaly_actioned(
@@ -296,6 +374,7 @@ async def update_permission(
     after_blocked_until = user.blocked_until
     after_pro_granted = user.pro_granted_by_admin
     after_is_blocked = after_status == "blocked"
+    after_question_blocked_until = user.question_blocked_until
 
     # diff_json 구성 — 변경된 필드만 before/after 양쪽에 포함
     before_diff: dict[str, Any] = {}
@@ -328,6 +407,10 @@ async def update_permission(
     if _diff_value(before_blocked_until, after_blocked_until):
         before_diff["blocked_until"] = _serialize_dt(before_blocked_until)
         after_diff["blocked_until"] = _serialize_dt(after_blocked_until)
+
+    if _diff_value(before_question_blocked_until, after_question_blocked_until):
+        before_diff["question_blocked_until"] = _serialize_dt(before_question_blocked_until)
+        after_diff["question_blocked_until"] = _serialize_dt(after_question_blocked_until)
 
     metadata: dict[str, Any] = {}
     if payload.block_action is not None:

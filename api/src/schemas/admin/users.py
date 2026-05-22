@@ -116,6 +116,14 @@ class BlockActionRequest(BaseModel):
         description="이상탐지 UI에서 차단을 적용한 경우, 해당 anomaly_event.id. "
         "전달 시 해당 이벤트를 'actioned' 상태로 전이한다. 일반 권한 수정 시 생략.",
     )
+    scope: Literal["all", "question_only"] = Field(
+        default="all",
+        description="차단 범위. 'all'=전체 계정(subscription_status=blocked), "
+        "'question_only'=Q&A 질문만 차단(users.question_blocked_until 사용, "
+        "로그인·결제·마이페이지 등 다른 활동은 허용). 이상탐지 UI에서 "
+        "로그인 이상(login_brute_force / concurrent_ip_login) 외 분류는 "
+        "question_only 로 호출한다.",
+    )
 
 
 class UserPermissionUpdateRequest(BaseModel):

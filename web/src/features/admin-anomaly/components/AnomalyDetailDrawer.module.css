@@ -1,0 +1,199 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: 480px;
+  max-width: 100vw;
+  background: #fff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary, #111827);
+}
+
+.closeButton {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  row-gap: 10px;
+  column-gap: 12px;
+  font-size: 13px;
+}
+
+.label {
+  color: var(--color-text-secondary, #6b7280);
+  font-weight: 500;
+}
+
+.value {
+  color: var(--color-text-primary, #111827);
+  word-break: break-all;
+}
+
+.criterionBox {
+  background: var(--color-surface-muted, #f9fafb);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #4b5563);
+  line-height: 1.6;
+}
+
+.criterionTitle {
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+  margin-bottom: 6px;
+}
+
+.memoSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memoLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+}
+
+.memoTextarea {
+  width: 100%;
+  min-height: 96px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.memoTextarea:focus {
+  outline: none;
+  border-color: var(--color-brand, #6366f1);
+}
+
+.saveButton {
+  align-self: flex-end;
+  background: var(--color-brand, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actionSection {
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.actionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actionButton {
+  background: var(--color-warning-soft, #fef3c7);
+  color: var(--color-warning, #b45309);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actionButton:hover {
+  background: var(--color-warning, #d97706);
+  color: #fff;
+}
+
+.unblockButton {
+  background: var(--color-success-soft, #ecfdf5);
+  color: var(--color-success, #047857);
+  border: 1px solid var(--color-success, #047857);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.unblockButton:hover {
+  background: var(--color-success, #047857);
+  color: #fff;
+}
+
+.disabledHint {
+  font-size: 12px;
+  color: var(--color-text-secondary, #9ca3af);
+}
+
+.loadingBox {
+  padding: 40px 22px;
+  text-align: center;
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 14px;
+}

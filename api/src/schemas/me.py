@@ -18,6 +18,10 @@ class QuotaResponse(BaseModel):
     delay_seconds: float
     # 답변 지연 안내문구 — 관리자 콘텐츠 페이지에서 편집. 빈 문자열이면 미노출.
     free_delay_notice_text: str
+    # 관리자 차단(question_only scope) 상태 — 프론트가 입력창을 readonly 처리하기 위해 사전 노출.
+    # NULL = 차단 없음. 만료된 차단(과거 시각)은 백엔드에서 NULL로 정규화해 내려준다.
+    question_blocked_until: str | None = None
+    question_block_reason: str | None = None
 
 
 class UsageSummaryResponse(BaseModel):

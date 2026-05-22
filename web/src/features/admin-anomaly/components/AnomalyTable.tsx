@@ -16,12 +16,7 @@ interface Props {
   page: number;
   perPage: number;
   onPageChange: (next: number) => void;
-  onApplyBlock: (
-    anomaly: AnomalyEventItem,
-    durationHours: number | null,
-  ) => void;
-  onMarkReviewed: (anomaly: AnomalyEventItem) => void;
-  onUnblock: (anomaly: AnomalyEventItem) => void;
+  onShowDetail: (anomaly: AnomalyEventItem) => void;
   onRetry: () => void;
 }
 
@@ -50,9 +45,7 @@ export function AnomalyTable({
   page,
   perPage,
   onPageChange,
-  onApplyBlock,
-  onMarkReviewed,
-  onUnblock,
+  onShowDetail,
   onRetry,
 }: Props) {
   const items = data?.items ?? [];
@@ -101,7 +94,7 @@ export function AnomalyTable({
             <th scope="col">대상 사용자</th>
             <th scope="col">IP</th>
             <th scope="col">상태</th>
-            <th scope="col">액션</th>
+            <th scope="col">상세</th>
           </tr>
         </thead>
         <tbody>
@@ -110,6 +103,7 @@ export function AnomalyTable({
               <a
                 href={`/admin/users/${item.target_user_id}`}
                 className={styles.userLink}
+                onClick={(e) => e.stopPropagation()}
               >
                 {item.target_user_email_masked ?? `#${item.target_user_id}`}
               </a>
@@ -131,61 +125,14 @@ export function AnomalyTable({
                   <AnomalyStatusBadge status={item.status} />
                 </td>
                 <td>
-                  <div className={styles.actions}>
-                    {item.status === "actioned" ? (
-                      item.target_user_id ? (
-                        <button
-                          type="button"
-                          className={styles.unblockButton}
-                          onClick={() => onUnblock(item)}
-                          data-testid={`anomaly-unblock-${item.id}`}
-                        >
-                          {item.type === "rapid_followup_questions"
-                            ? "쿨다운 해제"
-                            : "차단 해제"}
-                        </button>
-                      ) : (
-                        <span className={styles.muted}>—</span>
-                      )
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className={styles.actionButton}
-                          onClick={() => onApplyBlock(item, 24)}
-                          data-testid={`anomaly-block-24h-${item.id}`}
-                        >
-                          24h 차단
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.actionButton}
-                          onClick={() => onApplyBlock(item, 24 * 7)}
-                          data-testid={`anomaly-block-7d-${item.id}`}
-                        >
-                          7d 차단
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.actionButton}
-                          onClick={() => onApplyBlock(item, null)}
-                          data-testid={`anomaly-block-perm-${item.id}`}
-                        >
-                          영구 차단
-                        </button>
-                        {item.status === "new" ? (
-                          <button
-                            type="button"
-                            className={styles.reviewButton}
-                            onClick={() => onMarkReviewed(item)}
-                            data-testid={`anomaly-review-${item.id}`}
-                          >
-                            검토 완료
-                          </button>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    className={styles.detailButton}
+                    onClick={() => onShowDetail(item)}
+                    data-testid={`anomaly-detail-${item.id}`}
+                  >
+                    상세보기
+                  </button>
                 </td>
               </tr>
             );

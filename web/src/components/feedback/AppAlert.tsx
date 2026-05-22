@@ -60,7 +60,14 @@ export function AppAlert() {
           </span>
           <AlertHeading align="center">{title}</AlertHeading>
           {description && (
-            <AlertDescription align="center">{description}</AlertDescription>
+            <AlertDescription align="center">
+              {description.split("\n").map((line, i, arr) => (
+                <span key={i}>
+                  {line}
+                  {i < arr.length - 1 && <br />}
+                </span>
+              ))}
+            </AlertDescription>
           )}
         </AlertContent>
         <AlertActionArea sx={{ justifyContent: "center", gap: "8px" }}>

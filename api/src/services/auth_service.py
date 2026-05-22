@@ -395,25 +395,12 @@ async def login_user(
                         created_at=now,
                     )
                     db.add(event)
-                    committed = False
                     try:
                         await db.commit()
-                        committed = True
                     except Exception:
                         await db.rollback()
 
                     await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
-
-                    if committed:
-                        from api.src.services.anomaly_service import (
-                            schedule_admin_anomaly_alimtalk,
-                        )
-                        schedule_admin_anomaly_alimtalk(
-                            anomaly_event_id=event.id,
-                            anomaly_type="login_brute_force",
-                            target_user_id=user.id,
-                            ip=ip,
-                        )
 
             raise HTTPException(
                 status_code=409,
@@ -453,10 +440,8 @@ async def login_user(
                     created_at=now,
                 )
                 db.add(event)
-                committed = False
                 try:
                     await db.commit()
-                    committed = True
                 except Exception:
                     await db.rollback()
 
@@ -469,17 +454,6 @@ async def login_user(
                     attempt_count=count,
                     ip=ip,
                 )
-
-                if committed:
-                    from api.src.services.anomaly_service import (
-                        schedule_admin_anomaly_alimtalk,
-                    )
-                    schedule_admin_anomaly_alimtalk(
-                        anomaly_event_id=event.id,
-                        anomaly_type="login_brute_force",
-                        target_user_id=user.id if user else None,
-                        ip=ip,
-                    )
 
         raise HTTPException(
             status_code=401,
@@ -545,24 +519,10 @@ async def _check_recovery_abuse(
                 created_at=now,
             )
             db.add(event)
-            flushed = False
             try:
                 await db.flush()
-                flushed = True
             except Exception:
                 await db.rollback()
-
-            if flushed:
-                from api.src.services.anomaly_service import (
-                    schedule_admin_anomaly_alimtalk,
-                )
-                schedule_admin_anomaly_alimtalk(
-                    anomaly_event_id=event.id,
-                    anomaly_type="recovery_abuse",
-                    target_user_id=None,
-                    ip=ip,
-                    phone_tail=phone[-4:],
-                )
 
 
 async def request_password_reset(

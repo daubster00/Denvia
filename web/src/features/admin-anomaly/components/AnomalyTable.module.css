@@ -14,7 +14,7 @@
 
 .thead th {
   padding: 10px 12px;
-  text-align: left;
+  text-align: center;
   font-weight: 600;
   color: var(--color-text-secondary, #6b7280);
   border-bottom: 1px solid var(--color-border, #e5e7eb);
@@ -24,6 +24,7 @@
   padding: 12px;
   border-bottom: 1px solid var(--color-border, #e5e7eb);
   vertical-align: middle;
+  text-align: center;
 }
 
 .userLink {
@@ -35,73 +36,19 @@
   text-decoration: underline;
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.actionButton {
-  background: var(--color-warning-soft, #fef3c7);
-  color: var(--color-warning, #b45309);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.actionButton:hover {
-  background: var(--color-warning, #d97706);
-  color: #fff;
-}
-
-.reviewButton {
+.detailButton {
   background: transparent;
   color: var(--color-brand, #6366f1);
   border: 1px solid var(--color-brand, #6366f1);
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.reviewButton:hover {
+.detailButton:hover {
   background: var(--color-brand-soft, #eef2ff);
-}
-
-.unblockButton {
-  background: var(--color-success-soft, #ecfdf5);
-  color: var(--color-success, #047857);
-  border: 1px solid var(--color-success, #047857);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.unblockButton:hover {
-  background: var(--color-success, #047857);
-  color: #fff;
-}
-
-.unblockButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.linkButton {
-  color: var(--color-brand, #6366f1);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.linkButton:hover {
-  text-decoration: underline;
 }
 
 .muted {
