@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, type RefObject } from "react";
+import { useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
@@ -22,7 +22,6 @@ export function AuthenticatedQAExperience() {
   const clearMessages = useQAStore((s) => s.clearMessages);
   const stream = useQAStream();
   const lastUserTextRef = useRef<string>("");
-  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const { data: quotaData } = useQuota();
 
   const handleReset = useCallback(() => {
@@ -30,15 +29,6 @@ export function AuthenticatedQAExperience() {
     clearMessages();
     void postClientEvent("qa.conversation.reset");
   }, [stream, clearMessages]);
-
-  // Story 2.6: 새 질문 예시 클릭 → 입력창에 텍스트 삽입 + 포커스 이동 (자동 submit 미수행)
-  const handlePickReframeOption = useCallback((option: string) => {
-    setInputValue(option);
-    // setState 후 다음 paint frame에서 포커스 — 텍스트 갱신 후 안정적 포커스 보장
-    requestAnimationFrame(() => {
-      chatInputRef.current?.focus();
-    });
-  }, []);
 
   async function handleSubmit(text: string) {
     lastUserTextRef.current = text;
@@ -86,8 +76,6 @@ export function AuthenticatedQAExperience() {
           onSubmit={handleSubmit}
           isStreaming={isStreaming}
           onRetry={() => stream.submit(lastUserTextRef.current)}
-          onPickReframeOption={handlePickReframeOption}
-          inputRef={chatInputRef as RefObject<HTMLTextAreaElement | null>}
           quotaData={quotaData}
         />
       )}

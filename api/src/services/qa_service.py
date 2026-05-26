@@ -18,9 +18,8 @@ from api.src.integrations.openai.client import TokenUsage, _RETRY_EXCEPTIONS
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.rag_integration import query_runner
-from api.src.schemas.qa import QAEchoResponse, ReframePayload  # noqa: F401
-from api.src.services import anomaly_service, qa_reframe_service, runtime_config_service
-from api.src.services.qa_reframe_service import ReframeExtractionResult  # noqa: F401
+from api.src.schemas.qa import QAEchoResponse
+from api.src.services import anomaly_service, runtime_config_service
 
 logger = structlog.get_logger(__name__)
 
@@ -500,27 +499,8 @@ class QAService:
 
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
-            # Story 2.6: RAG 경로일 때만 reframe 후처리 (룰 경로 미적용)
-            reframe_result: ReframeExtractionResult | None = None
-            if not use_rule:
-                reframe_result = await qa_reframe_service.detect_and_extract(
-                    question_text=question_text, full_text=accumulated
-                )
-
-            reframe_payload = reframe_result.payload if reframe_result else None
-            structuring_usage = reframe_result.usage if reframe_result else None
-
-            # Story 2.6: answer_text 직렬화 분기
-            if reframe_payload is not None:
-                serialized_answer = (
-                    f"{reframe_payload.follow_up_question}\n\n"
-                    f"{json.dumps({'options': reframe_payload.options}, ensure_ascii=False)}"
-                )
-            else:
-                serialized_answer = accumulated
-
-            # AC-4: qa_logs UPDATE — RAG 본 체인 usage만 기록 (structuring usage 합산 금지)
-            log.answer_text = serialized_answer
+            # AC-4: qa_logs UPDATE
+            log.answer_text = accumulated
             log.rule_matched = use_rule
             log.input_tokens = usage.input_tokens
             log.output_tokens = usage.output_tokens
@@ -531,37 +511,6 @@ class QAService:
             log.normalized_query = normalized
             log.retrieved_docs = retrieved_docs_payload
             await db.commit()
-
-            # Story 2.6: structuring usage 별도 structlog 관측 (qa_logs 무합산)
-            if reframe_payload is not None and structuring_usage is not None:
-                logger.info(
-                    "qa.reframe.extracted",
-                    qa_log_id=qa_log_id,
-                    user_id=user.id,
-                    structuring_input_tokens=structuring_usage.input_tokens,
-                    structuring_output_tokens=structuring_usage.output_tokens,
-                    structuring_cost_usd=float(structuring_usage.cost_usd),
-                    option_count=len(reframe_payload.options),
-                )
-
-            # Story 2.6: reframe 이벤트는 done 직전 1회만 발행 (RAG 경로 한정)
-            if reframe_payload is not None:
-                yield {
-                    "event": "reframe",
-                    "data": json.dumps(
-                        {
-                            "follow_up_question": reframe_payload.follow_up_question,
-                            "options": reframe_payload.options,
-                        },
-                        ensure_ascii=False,
-                    ),
-                }
-                logger.info(
-                    "qa.stream.reframe",
-                    qa_log_id=qa_log_id,
-                    user_id=user.id,
-                    option_count=len(reframe_payload.options),
-                )
 
             # 신규 — 이상탐지 throttle 상태 전달. 무료 사용자는 throttle_just_applied=True 면
             # 프론트에서 팝업을 띄운다 (유료는 팝업 노출 없음).

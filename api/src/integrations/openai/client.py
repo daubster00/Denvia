@@ -67,23 +67,6 @@ def build_chat_llm(
     return ChatOpenAI(**kwargs)
 
 
-# Story 2.6: 역질문 응답 구조화 전용 모델 — RAG 본 체인의 o4-mini와 별도 운용.
-# ADR-0002 §결정 2 ③ 보호 대상은 RAG 본 체인이며, 본 모델은 웹 레이어 후처리 전용.
-STRUCTURING_MODEL = "gpt-4o-mini"
-
-
-def build_structuring_llm(callbacks: list | None = None) -> ChatOpenAI:
-    """Story 2.6: 역질문 구조화 전용 ChatOpenAI 팩토리.
-
-    외부 모듈(qa_reframe_service)이 langchain_openai.ChatOpenAI를 직접
-    import / 인스턴스화하지 않도록 어댑터 모듈 안에서만 ChatOpenAI를 만든다.
-    streaming=False 고정 (구조화 출력은 단발 호출). callbacks는 향후 커스텀
-    LangChain handler 주입용 hook (현재 capture_usage는 callback list가 아닌
-    TokenUsage를 yield하므로 본 팩토리에 callback list를 전달하지 않는다).
-    """
-    return ChatOpenAI(model=STRUCTURING_MODEL, streaming=False, callbacks=callbacks or [])
-
-
 def with_retry(fn):
     """OpenAI 호출 공통 재시도 데코레이터 (NFR-R3, AR12)."""
     return retry(

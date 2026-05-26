@@ -14,7 +14,6 @@ interface ChatShellProps {
   onSubmit: (text: string) => void;
   isStreaming: boolean;
   onRetry?: () => void;
-  onPickReframeOption?: (option: string) => void;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   /** useQuota 훅에서 내려받은 데이터 (AC-8, AC-9) */
   quotaData?: {
@@ -50,7 +49,6 @@ export function ChatShell({
   onSubmit,
   isStreaming,
   onRetry,
-  onPickReframeOption,
   inputRef,
   quotaData,
 }: ChatShellProps) {
@@ -118,7 +116,6 @@ export function ChatShell({
                 ? onRetry
                 : undefined
             }
-            onPickReframeOption={onPickReframeOption}
           />
         ))}
         <div ref={bottomRef} />

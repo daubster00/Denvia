@@ -15,9 +15,6 @@ import pytest
 from api.src.integrations.openai.client import TokenUsage
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
-from api.src.schemas.qa import ReframePayload
-from api.src.services import qa_reframe_service
-from api.src.services.qa_reframe_service import ReframeExtractionResult
 from api.src.services.qa_service import QAService
 
 
@@ -335,72 +332,6 @@ async def test_stream_cancelled_error_sets_status_aborted():
     assert added.latency_ms is not None
     # abort는 error 이벤트로 기록되지 않아야 함 — db.commit이 INSERT + abort UPDATE 두 번만 호출
     assert db.commit.await_count >= 2
-
-
-# ---------------------------------------------------------------------------
-# Story 2.6: reframe 분기 mock 회귀 테스트
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_stream_rag_with_reframe_yields_reframe_event():
-    """RAG 경로 + detect_and_extract가 payload 반환 시 event: reframe이 done 직전에 발행된다."""
-    svc = QAService()
-    db = _make_db(log_id=90)
-    user = _make_user()
-
-    payload = ReframePayload(
-        follow_up_question="어느 치아인지 알려주세요?",
-        options=["상악 전치", "하악 구치", "어금니"],
-    )
-    structuring_usage = TokenUsage(10, 20, 30, 0.001)
-    reframe_result = ReframeExtractionResult(payload=payload, usage=structuring_usage)
-
-    async def _mock_stream(query, on_complete):
-        yield "어느 치아인지?"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "어느 치아인지?", [])
-
-    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
-
-    with (
-        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
-        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
-        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream),
-        patch.object(qa_reframe_service, "detect_and_extract", new=AsyncMock(return_value=reframe_result)),
-    ):
-        events = await _collect(svc.stream(db=db, user=user, question_text="임플란트"))
-
-    event_names = [ev["event"] for ev in events]
-    assert "reframe" in event_names
-    assert "done" in event_names
-    reframe_idx = event_names.index("reframe")
-    done_idx = event_names.index("done")
-    assert reframe_idx < done_idx
-
-
-@pytest.mark.asyncio
-async def test_stream_rag_without_reframe_no_reframe_event():
-    """RAG 경로 + detect_and_extract가 None 반환 시 event: reframe 미발행."""
-    svc = QAService()
-    db = _make_db(log_id=91)
-    user = _make_user()
-
-    async def _mock_stream(query, on_complete):
-        yield "임플란트 치료 방법입니다."
-        on_complete(TokenUsage(5, 10, 15, 0.002), "임플란트 치료 방법입니다.", [])
-
-    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
-
-    with (
-        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
-        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
-        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream),
-        patch.object(qa_reframe_service, "detect_and_extract", new=AsyncMock(return_value=None)),
-    ):
-        events = await _collect(svc.stream(db=db, user=user, question_text="임플란트"))
-
-    event_names = [ev["event"] for ev in events]
-    assert "reframe" not in event_names
-    assert "done" in event_names
 
 
 @pytest.mark.asyncio

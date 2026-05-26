@@ -20,25 +20,6 @@ function typewriterDrainCount(remaining: number): number {
   return 1;
 }
 
-// Story 2.6: 백엔드 ReframePayload 검증과 동등한 schema 가드
-function isValidReframePayload(
-  raw: unknown,
-): raw is { follow_up_question: string; options: string[] } {
-  if (typeof raw !== "object" || raw === null) return false;
-  const candidate = raw as { follow_up_question?: unknown; options?: unknown };
-  if (typeof candidate.follow_up_question !== "string") return false;
-  if (candidate.follow_up_question.trim().length === 0) return false;
-  if (!Array.isArray(candidate.options)) return false;
-  if (candidate.options.length < 3 || candidate.options.length > 4) return false;
-  for (const opt of candidate.options) {
-    if (typeof opt !== "string") return false;
-    if (opt.includes("\n") || opt.includes("\r")) return false;
-    const trimmed = opt.trim();
-    if (trimmed.length < 1 || trimmed.length > 120) return false;
-  }
-  return true;
-}
-
 export function useQAStream() {
   const router = useRouter();
   const replaceMessages = useQAStore((s) => s.replaceMessages);
@@ -47,7 +28,6 @@ export function useQAStream() {
   const markRuleMatched = useQAStore((s) => s.markRuleMatched);
   const finalize = useQAStore((s) => s.finalize);
   const setError = useQAStore((s) => s.setError);
-  const markReframe = useQAStore((s) => s.markReframe);
   const abortRef = useRef<AbortController | null>(null);
   const queryClient = useQueryClient();
 
@@ -180,19 +160,6 @@ export function useQAStream() {
             startTypewriter();
           }
           else if (ev.event === "rule_matched") markRuleMatched(assistantId, data.procedure_count);
-          else if (ev.event === "reframe") {
-            // Story 2.6: snake_case → camelCase 매핑 + 백엔드와 동등한 schema 가드
-            if (isValidReframePayload(data)) {
-              // reframe은 content를 통째로 교체하므로 버퍼에 남은 글자는 의미 없다.
-              charBuffer.length = 0;
-              markReframe(assistantId, {
-                followUpQuestion: data.follow_up_question.trim().replace(/\s+/g, " "),
-                options: data.options.map((o: string) => o.trim()),
-              });
-            } else {
-              console.warn("[useQAStream] invalid reframe payload, ignoring", data);
-            }
-          }
           else if (ev.event === "done") {
             // 타자기 버퍼가 비워진 다음 finalize 한다.
             streamFinished = true;
