@@ -140,7 +140,8 @@ export function LoginPopup() {
           </button>
         </div>
 
-        {/* 컨텐츠 */}
+        {/* 컨텐츠 — 모달이 화면 높이를 초과하면 내부에서 스크롤. */}
+        <div className={styles.scrollBody}>
         {view === "buttons" ? (
           <>
             <div className={styles.buttonStack}>
@@ -228,6 +229,7 @@ export function LoginPopup() {
             onFindId={() => setView("find-id")}
           />
         )}
+        </div>
       </div>
     </>
   );

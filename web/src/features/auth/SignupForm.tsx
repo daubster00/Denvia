@@ -9,6 +9,7 @@ import { signupSchema, type SignupFormValues } from "./schemas";
 import { sendSmsOtp, verifySmsOtp, signup } from "./api";
 import { PhoneNumberField } from "./PhoneNumberField";
 import { SMSCodeInput } from "./SMSCodeInput";
+import { AddressLookupField } from "@/features/profile/AddressLookupField";
 import { useSessionStore } from "@/stores/session-store";
 import { ApiError } from "@/types/api";
 import styles from "@/styles/auth-forms.module.css";
@@ -29,8 +30,17 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
+function emptyToNull(v: string | undefined | null): string | null {
+  if (v == null) return null;
+  const trimmed = v.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 /**
- * 이메일 회원가입 폼 — 이메일·비밀번호·휴대폰 입력 → SMS OTP 인증 → 가입 완료.
+ * 이메일 회원가입 폼.
+ *
+ * 필수: 이메일·비밀번호·비밀번호 확인·휴대폰(SMS 인증)·약관 동의.
+ * 선택: 이름·생년월일·성별·주소(다음 우편번호).
  */
 export function SignupForm() {
   const router = useRouter();
@@ -59,8 +69,15 @@ export function SignupForm() {
     defaultValues: {
       email: "",
       password: "",
+      password_confirm: "",
       phone: "",
       phone_verification_token: "",
+      name: "",
+      birthdate: "",
+      gender: "",
+      postcode: "",
+      address_road: "",
+      address_detail: "",
       agreed_to_terms: false,
       agreed_to_privacy: false,
     },
@@ -69,6 +86,12 @@ export function SignupForm() {
   // 약관 동의 상태 — 가입 버튼 활성화 조건에 사용
   const agreedToTerms = watch("agreed_to_terms");
   const agreedToPrivacy = watch("agreed_to_privacy");
+
+  // 주소·성별은 setValue로 갱신하기 위해 watch로 현재 값을 읽는다 (controlled).
+  const genderValue = watch("gender");
+  const postcodeValue = watch("postcode") ?? "";
+  const addressRoadValue = watch("address_road") ?? "";
+  const addressDetailValue = watch("address_detail") ?? "";
 
   // SMS 발송
   const requestSms = useCallback(async () => {
@@ -120,6 +143,12 @@ export function SignupForm() {
         password: data.password,
         phone: normalizePhone(data.phone),
         phone_verification_token: phoneVerificationToken,
+        name: emptyToNull(data.name),
+        birthdate: emptyToNull(data.birthdate),
+        gender: data.gender === "" ? null : data.gender ?? null,
+        postcode: emptyToNull(data.postcode),
+        address_road: emptyToNull(data.address_road),
+        address_detail: emptyToNull(data.address_detail),
       });
       setUser(user);
       closePopup();
@@ -146,6 +175,8 @@ export function SignupForm() {
   const submitDisabled =
     submitting || !phoneVerificationToken || !agreedToTerms || !agreedToPrivacy;
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className={styles.formColumn}>
       {/* 이메일 */}
@@ -169,28 +200,7 @@ export function SignupForm() {
         )}
       </div>
 
-      {/* 비밀번호 */}
-      <div>
-        <label htmlFor="signup-password" className={styles.fieldLabel}>
-          비밀번호 <span aria-label="필수" className={styles.required}>*</span>
-        </label>
-        <input
-          id="signup-password"
-          type="password"
-          autoComplete="new-password"
-          aria-invalid={!!errors.password}
-          aria-describedby={errors.password ? "signup-password-error" : undefined}
-          className={inputClass(!!errors.password)}
-          {...register("password")}
-        />
-        {errors.password && (
-          <p id="signup-password-error" role="alert" className={styles.fieldError}>
-            {errors.password.message}
-          </p>
-        )}
-      </div>
-
-      {/* 휴대폰 번호 */}
+      {/* 휴대폰 번호 — 이메일 다음으로 올려, SMS 인증 단계 흐름이 자연스럽게 이어지도록. */}
       <div>
         <PhoneNumberField
           id="signup-phone"
@@ -244,6 +254,144 @@ export function SignupForm() {
       {smsError && step === "form" && (
         <p role="alert" className={styles.inlineErrorText}>{smsError}</p>
       )}
+
+      {/* 비밀번호 */}
+      <div>
+        <label htmlFor="signup-password" className={styles.fieldLabel}>
+          비밀번호 <span aria-label="필수" className={styles.required}>*</span>
+        </label>
+        <input
+          id="signup-password"
+          type="password"
+          autoComplete="new-password"
+          aria-invalid={!!errors.password}
+          aria-describedby={errors.password ? "signup-password-error" : undefined}
+          className={inputClass(!!errors.password)}
+          {...register("password")}
+        />
+        {errors.password && (
+          <p id="signup-password-error" role="alert" className={styles.fieldError}>
+            {errors.password.message}
+          </p>
+        )}
+      </div>
+
+      {/* 비밀번호 확인 */}
+      <div>
+        <label htmlFor="signup-password-confirm" className={styles.fieldLabel}>
+          비밀번호 확인 <span aria-label="필수" className={styles.required}>*</span>
+        </label>
+        <input
+          id="signup-password-confirm"
+          type="password"
+          autoComplete="new-password"
+          aria-invalid={!!errors.password_confirm}
+          aria-describedby={errors.password_confirm ? "signup-password-confirm-error" : undefined}
+          className={inputClass(!!errors.password_confirm)}
+          {...register("password_confirm")}
+        />
+        {errors.password_confirm && (
+          <p id="signup-password-confirm-error" role="alert" className={styles.fieldError}>
+            {errors.password_confirm.message}
+          </p>
+        )}
+      </div>
+
+      {/* 선택 입력 — 비워둬도 가입됨 */}
+      <div className={styles.optionalSection}>
+        <p className={styles.optionalSectionTitle}>추가 정보 (선택)</p>
+        <p className={styles.optionalSectionHint}>
+          비워두셔도 가입할 수 있습니다. 나중에 마이페이지에서 수정할 수 있어요.
+        </p>
+
+        {/* 이름 */}
+        <div>
+          <label htmlFor="signup-name" className={styles.fieldLabel}>이름</label>
+          <input
+            id="signup-name"
+            type="text"
+            autoComplete="name"
+            maxLength={50}
+            aria-invalid={!!errors.name}
+            className={inputClass(!!errors.name)}
+            {...register("name")}
+          />
+          {errors.name && (
+            <p role="alert" className={styles.fieldError}>{errors.name.message}</p>
+          )}
+        </div>
+
+        {/* 생년월일 */}
+        <div>
+          <label htmlFor="signup-birthdate" className={styles.fieldLabel}>생년월일</label>
+          <input
+            id="signup-birthdate"
+            type="date"
+            min="1900-01-01"
+            max={todayIso}
+            aria-invalid={!!errors.birthdate}
+            className={inputClass(!!errors.birthdate)}
+            {...register("birthdate")}
+          />
+          {errors.birthdate && (
+            <p role="alert" className={styles.fieldError}>{errors.birthdate.message}</p>
+          )}
+        </div>
+
+        {/* 성별 */}
+        <div>
+          <span className={styles.fieldLabel}>성별</span>
+          <div className={styles.genderRow} role="radiogroup" aria-label="성별">
+            <label className={styles.genderOption}>
+              <input
+                type="radio"
+                className={styles.genderRadio}
+                value="male"
+                checked={genderValue === "male"}
+                onChange={() => setValue("gender", "male", { shouldValidate: false })}
+              />
+              <span>남</span>
+            </label>
+            <label className={styles.genderOption}>
+              <input
+                type="radio"
+                className={styles.genderRadio}
+                value="female"
+                checked={genderValue === "female"}
+                onChange={() => setValue("gender", "female", { shouldValidate: false })}
+              />
+              <span>여</span>
+            </label>
+            {genderValue !== "" && genderValue != null && (
+              <button
+                type="button"
+                className={styles.genderClearBtn}
+                onClick={() => setValue("gender", "", { shouldValidate: false })}
+              >
+                선택 해제
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 주소 — 다음 우편번호 검색 */}
+        <AddressLookupField
+          idPrefix="signup"
+          value={{
+            postcode: postcodeValue,
+            address_road: addressRoadValue,
+            address_detail: addressDetailValue,
+          }}
+          onChange={(next) => {
+            setValue("postcode", next.postcode, { shouldValidate: false });
+            setValue("address_road", next.address_road, { shouldValidate: false });
+            setValue("address_detail", next.address_detail, { shouldValidate: false });
+          }}
+        />
+        {errors.postcode && (
+          <p role="alert" className={styles.fieldError}>{errors.postcode.message}</p>
+        )}
+      </div>
 
       {/* 약관 동의 — 회원가입 시 필수 */}
       <div className={styles.consentBlock}>

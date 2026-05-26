@@ -1,8 +1,17 @@
 """인증 관련 Pydantic 스키마 — snake_case, 래퍼 금지 (architecture.md §703)."""
 
+from datetime import date
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 import re
+
+
+def _empty_to_none(v: str | None) -> str | None:
+    """빈 문자열·공백만 입력은 NULL로 정규화 — me.py와 동일 규칙."""
+    if v is None:
+        return None
+    stripped = v.strip()
+    return stripped if stripped else None
 
 
 class SessionUserResponse(BaseModel):
@@ -70,10 +79,24 @@ class SmsVerifyResponse(BaseModel):
 # ── Signup ────────────────────────────────────────────────────────────────────
 
 class SignupRequest(BaseModel):
+    """이메일 회원가입 요청.
+
+    필수: email, password, phone, phone_verification_token.
+    선택: name, birthdate, gender, postcode, address_road, address_detail.
+    선택 필드의 검증 규칙은 ProfileUpdateRequest와 동일하게 유지(SSOT).
+    """
+
     email: str
     password: str
     phone: str
     phone_verification_token: str
+    # 선택 입력 — 빈 문자열은 NULL로 정규화.
+    name: str | None = None
+    birthdate: date | None = None
+    gender: Literal["male", "female"] | None = None
+    postcode: str | None = None
+    address_road: str | None = None
+    address_detail: str | None = None
 
     @field_validator("phone")
     @classmethod
@@ -95,6 +118,32 @@ class SignupRequest(BaseModel):
     def password_min_length(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("PASSWORD_TOO_SHORT")
+        return v
+
+    @field_validator("name", "address_road", "address_detail")
+    @classmethod
+    def _trim_or_none(cls, v: str | None) -> str | None:
+        return _empty_to_none(v)
+
+    @field_validator("postcode")
+    @classmethod
+    def _postcode_digits(cls, v: str | None) -> str | None:
+        v = _empty_to_none(v)
+        if v is None:
+            return None
+        if not re.match(r"^\d{5,10}$", v):
+            raise ValueError("우편번호 형식이 올바르지 않습니다.")
+        return v
+
+    @field_validator("birthdate")
+    @classmethod
+    def _birthdate_sane_range(cls, v: date | None) -> date | None:
+        if v is None:
+            return None
+        from datetime import date as _date
+        today = _date.today()
+        if v.year < 1900 or v > today:
+            raise ValueError("생년월일이 올바르지 않습니다.")
         return v
 
 

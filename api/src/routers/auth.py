@@ -109,6 +109,12 @@ async def signup(
         phone_verification_token=body.phone_verification_token,
         redis_url=settings.redis_url,
         db=db,
+        name=body.name,
+        birthdate=body.birthdate,
+        gender=body.gender,
+        postcode=body.postcode,
+        address_road=body.address_road,
+        address_detail=body.address_detail,
     )
     await db.commit()
 

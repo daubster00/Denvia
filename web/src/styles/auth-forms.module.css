@@ -224,3 +224,58 @@
 .consentLink:hover {
   color: #6d28d9;
 }
+
+/* SignupForm — 선택 입력 섹션 */
+.optionalSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f1;
+}
+
+.optionalSectionTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5a5c63;
+}
+
+.optionalSectionHint {
+  margin: 0;
+  font-size: 12px;
+  color: #8b8d94;
+}
+
+/* SignupForm — 성별 라디오 그룹 */
+.genderRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.genderOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+}
+
+.genderRadio {
+  width: 16px;
+  height: 16px;
+  accent-color: #7c3aed;
+  cursor: pointer;
+}
+
+.genderClearBtn {
+  background: none;
+  border: none;
+  color: #70737c;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}

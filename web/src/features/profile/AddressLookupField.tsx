@@ -23,10 +23,15 @@ interface AddressValue {
 interface Props {
   value: AddressValue;
   onChange: (next: AddressValue) => void;
+  /** input id prefix — 같은 페이지에 여러 폼이 있을 때 id 충돌 회피. 기본 'profile'. */
+  idPrefix?: string;
 }
 
-export function AddressLookupField({ value, onChange }: Props) {
+export function AddressLookupField({ value, onChange, idPrefix = "profile" }: Props) {
   const [open, setOpen] = useState(false);
+  const postcodeId = `${idPrefix}-postcode`;
+  const addressRoadId = `${idPrefix}-address-road`;
+  const addressDetailId = `${idPrefix}-address-detail`;
 
   useEffect(() => {
     if (!open) return;
@@ -51,11 +56,11 @@ export function AddressLookupField({ value, onChange }: Props) {
     <div className={styles.wrap}>
       <div className={styles.postcodeRow}>
         <div className={styles.postcodeInput}>
-          <label htmlFor="profile-postcode" className={authForm.fieldLabel}>
+          <label htmlFor={postcodeId} className={authForm.fieldLabel}>
             우편번호
           </label>
           <input
-            id="profile-postcode"
+            id={postcodeId}
             type="text"
             className={authForm.input}
             value={value.postcode}
@@ -73,11 +78,11 @@ export function AddressLookupField({ value, onChange }: Props) {
       </div>
 
       <div>
-        <label htmlFor="profile-address-road" className={authForm.fieldLabel}>
+        <label htmlFor={addressRoadId} className={authForm.fieldLabel}>
           도로명/지번 주소
         </label>
         <input
-          id="profile-address-road"
+          id={addressRoadId}
           type="text"
           className={authForm.input}
           value={value.address_road}
@@ -87,11 +92,11 @@ export function AddressLookupField({ value, onChange }: Props) {
       </div>
 
       <div>
-        <label htmlFor="profile-address-detail" className={authForm.fieldLabel}>
+        <label htmlFor={addressDetailId} className={authForm.fieldLabel}>
           상세주소
         </label>
         <input
-          id="profile-address-detail"
+          id={addressDetailId}
           type="text"
           className={authForm.input}
           value={value.address_detail}

@@ -19,7 +19,7 @@ export default function TermsPage() {
         <Link href="/" className={styles.backLink}>← 홈으로</Link>
 
         <h1 className={styles.title}>이용약관</h1>
-        <p className={styles.meta}>시행일자: 2026-04-30 · 버전 0.1</p>
+        <p className={styles.meta}>시행일자: 2026-04-30 (제4조 선택 입력 항목 신설 2026-05-26 시행 예정) · 버전 0.2</p>
 
         <p className={styles.draftBanner}>
           본 약관은 서비스 정식 출시 전 심사용 초안입니다. 정식 시행 시 사전 공지 후 적용됩니다.
@@ -82,6 +82,13 @@ export default function TermsPage() {
             <li>
               회원가입은 이용 신청자가 약관 및 개인정보 처리방침에 동의하고, 회사가 정한 가입 양식에 정보를 기입한
               후 휴대폰 SMS 인증을 완료함으로써 성립합니다.
+            </li>
+            <li>
+              회사는 회원가입 단계에서 <span className={styles.emphasis}>필수 정보</span>(이메일·비밀번호·휴대폰
+              번호) 외에 <span className={styles.emphasis}>선택 정보</span>(이름·생년월일·성별·주소)를 수집할 수
+              있습니다. 선택 정보는 입력하지 않아도 가입 및 서비스 이용에 제한이 없으며, 회원은 가입 후
+              마이페이지에서 언제든지 입력·수정·삭제할 수 있습니다. 선택 정보의 수집·이용에 관한 자세한 사항은{" "}
+              <Link href="/legal/privacy">개인정보 처리방침</Link>에 따릅니다.
             </li>
             <li>본 서비스는 만 14세 이상의 자에 한하여 가입할 수 있습니다.</li>
             <li>
@@ -262,7 +269,11 @@ export default function TermsPage() {
           </ol>
         </section>
 
-        <p className={styles.footer}>부칙 — 본 약관은 2026-04-30 부터 시행합니다.</p>
+        <p className={styles.footer}>
+          부칙 — 본 약관은 2026-04-30 부터 시행합니다. 제4조 제2항(회원가입 단계의 선택 정보 수집) 신설은
+          2026-05-26 부터 시행합니다. 회원에게 선택 정보(이름·생년월일·성별·주소)를 가입 단계에서 입력할 수 있는
+          옵션을 부여하는 내용으로, 필수 입력은 아니므로 미입력 시에도 가입 및 서비스 이용에 제한이 없습니다.
+        </p>
       </article>
       <Footer />
     </main>

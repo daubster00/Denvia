@@ -38,6 +38,13 @@ export async function signup(payload: {
   password: string;
   phone: string;
   phone_verification_token: string;
+  /** 선택 입력 — null이면 미입력. 백엔드에서 빈문자는 null로 정규화. */
+  name?: string | null;
+  birthdate?: string | null; // "YYYY-MM-DD"
+  gender?: "male" | "female" | null;
+  postcode?: string | null;
+  address_road?: string | null;
+  address_detail?: string | null;
 }) {
   return apiFetch<SessionUser>("/api/v1/auth/signup", {
     method: "POST",

@@ -6,7 +6,7 @@ import random
 import secrets
 import string
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal, TypedDict
 
 import sentry_sdk
@@ -237,8 +237,18 @@ async def signup_user(
     phone_verification_token: str,
     redis_url: str,
     db: AsyncSession,
+    *,
+    name: str | None = None,
+    birthdate: date | None = None,
+    gender: Literal["male", "female"] | None = None,
+    postcode: str | None = None,
+    address_road: str | None = None,
+    address_detail: str | None = None,
 ) -> User:
     """회원가입 처리.
+
+    선택 입력(name/birthdate/gender/postcode/address_road/address_detail)은 None이면
+    저장하지 않는다. 검증·정규화는 호출 측 Pydantic 스키마에서 수행.
 
     Returns:
         생성된 User 객체
@@ -295,6 +305,13 @@ async def signup_user(
         subscription_status="free",
         # 가입 직후 자동 로그인 — 단일 세션 nonce 박제(라우터의 JWT 발급도 동일 값 사용).
         current_session_id=secrets.token_urlsafe(24),
+        # 선택 입력 — None이면 컬럼은 NULL로 남는다.
+        name=name,
+        birthdate=birthdate,
+        gender=gender,
+        postcode=postcode,
+        address_road=address_road,
+        address_detail=address_detail,
         created_at=now,
         updated_at=now,
     )

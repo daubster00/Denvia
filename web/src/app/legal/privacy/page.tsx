@@ -19,7 +19,7 @@ export default function PrivacyPage() {
         <Link href="/" className={styles.backLink}>← 홈으로</Link>
 
         <h1 className={styles.title}>개인정보 처리방침</h1>
-        <p className={styles.meta}>시행일자: 2026-04-30 · 버전 0.1</p>
+        <p className={styles.meta}>시행일자: 2026-04-30 (선택 수집 항목 신설 2026-05-26 시행 예정) · 버전 0.2</p>
 
         <p className={styles.draftBanner}>
           본 처리방침은 서비스 정식 출시 전 심사용 초안입니다. 정식 시행 시 사전 공지 후 적용됩니다.
@@ -58,6 +58,11 @@ export default function PrivacyPage() {
                   <td>회원가입 직후</td>
                 </tr>
                 <tr>
+                  <td>선택</td>
+                  <td>이름, 생년월일, 성별, 주소(우편번호·도로명·상세)</td>
+                  <td>이메일 회원가입 시 또는 마이페이지 입력 시(입력하신 항목만 수집)</td>
+                </tr>
+                <tr>
                   <td>자동 수집</td>
                   <td>접속 IP, 쿠키, 서비스 이용 기록(질의 내역, 응답 시각)</td>
                   <td>서비스 이용 시</td>
@@ -70,6 +75,11 @@ export default function PrivacyPage() {
               </tbody>
             </table>
           </div>
+          <p className={styles.paragraph}>
+            <span className={styles.emphasis}>선택 항목 안내:</span> 위 표의 &ldquo;선택&rdquo; 항목은 입력하지
+            않아도 회원가입 및 서비스 이용에 제한이 없습니다. 회원은 회원가입 시 입력을 생략하거나, 가입 후
+            마이페이지에서 언제든지 입력·수정·삭제할 수 있습니다.
+          </p>
           <p className={styles.paragraph}>
             회사는 회원의 사상·신념·정치적 견해·민감 의료정보 등 「개인정보 보호법」 제23조의 민감정보를 수집하지
             않습니다.
@@ -97,6 +107,11 @@ export default function PrivacyPage() {
             <li>이용약관 위반 행위 방지·제재</li>
             <li>알림톡·SMS를 통한 공지(결제·예산·서비스 변동 안내)</li>
             <li>법령 준수 및 분쟁 대응</li>
+            <li>
+              선택 항목(이름·생년월일·성별·주소)을 입력하신 경우, 알림톡 호칭 등 맞춤형 안내 발송, 연령·지역
+              분포 등 익명화된 통계 분석을 통한 서비스 품질 개선, 향후 회원에게 사전 동의를 받아 진행하는
+              오프라인 안내(우편 등)에 활용
+            </li>
           </ol>
         </section>
 
@@ -117,8 +132,13 @@ export default function PrivacyPage() {
               </thead>
               <tbody>
                 <tr>
-                  <td>회원 가입 정보</td>
+                  <td>회원 가입 정보(필수)</td>
                   <td>회원 탈퇴 시까지</td>
+                  <td>서비스 제공</td>
+                </tr>
+                <tr>
+                  <td>회원 추가 정보(선택 — 이름·생년월일·성별·주소)</td>
+                  <td>회원 탈퇴 시까지 또는 회원이 마이페이지에서 삭제할 때까지</td>
                   <td>서비스 제공</td>
                 </tr>
                 <tr>
@@ -273,7 +293,12 @@ export default function PrivacyPage() {
           </p>
         </section>
 
-        <p className={styles.footer}>부칙 — 본 개인정보 처리방침은 2026-04-30 부터 시행합니다.</p>
+        <p className={styles.footer}>
+          부칙 — 본 개인정보 처리방침은 2026-04-30 부터 시행합니다. 제1조(수집 항목)·제3조(이용 목적)·제4조(보관
+          기간)의 선택 수집 항목(이름·생년월일·성별·주소) 신설 개정안은 2026-05-26 부터 시행합니다. 본 개정은
+          회원에게 선택적으로 추가 정보를 입력할 수 있는 권리를 부여하는 것으로, 미입력 시에도 가입·서비스 이용에
+          제한이 없습니다.
+        </p>
       </article>
       <Footer />
     </main>
