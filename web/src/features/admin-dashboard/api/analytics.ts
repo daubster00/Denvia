@@ -121,6 +121,49 @@ export async function fetchSubscribers(): Promise<SubscribersResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// 접속 통계 — 일/주/월/년 접속자 수 + 접속횟수
+// ---------------------------------------------------------------------------
+
+export type AccessUnit = "day" | "week" | "month" | "year";
+
+export interface AccessBucket {
+  bucket_start: string; // YYYY-MM-DD (KST)
+  visitors: number;     // 고유 접속자 수
+  visits: number;       // 접속 횟수
+}
+
+export interface AccessResponse {
+  unit: AccessUnit;
+  from: string;
+  to: string;
+  total_visitors: number;
+  total_visits: number;
+  buckets: AccessBucket[];
+}
+
+export interface FetchAccessParams {
+  unit?: AccessUnit;
+  from?: string;
+  to?: string;
+}
+
+export async function fetchAccess(
+  params: FetchAccessParams = {}
+): Promise<AccessResponse> {
+  const query = new URLSearchParams();
+  if (params.unit) query.set("unit", params.unit);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/access${qs ? `?${qs}` : ""}`,
+    { credentials: "include" }
+  );
+  if (!res.ok) throw new Error(`access fetch failed: ${res.status}`);
+  return res.json() as Promise<AccessResponse>;
+}
+
+// ---------------------------------------------------------------------------
 // Story 5.4: 피드백 분석
 // ---------------------------------------------------------------------------
 

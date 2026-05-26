@@ -28,6 +28,7 @@ from sqlalchemy import and_, case, select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.anomaly_event import AnomalyEvent
+from api.src.models.login_event import LoginEvent
 from api.src.models.payment import Payment
 from api.src.models.payment_event import PaymentEvent
 from api.src.models.qa_feedback import QAFeedback
@@ -198,6 +199,100 @@ async def get_signups_buckets(
         ))
 
     return buckets, from_, to
+
+
+# =============================================================================
+# 접속 통계 — 로그인 이벤트 기반 일/주/월/년 집계
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class AccessBucket:
+    bucket_start: date
+    visitors: int  # 해당 버킷에서 로그인한 고유 회원 수
+    visits: int    # 해당 버킷의 로그인 횟수
+
+
+@dataclass(frozen=True)
+class AccessSummary:
+    buckets: list[AccessBucket]
+    from_: date
+    to: date
+    # 구간 전체 누적
+    total_visitors: int  # 구간 내 고유 회원 수 (DISTINCT user_id)
+    total_visits: int    # 구간 내 로그인 횟수 합
+
+
+async def get_access_buckets(
+    session: AsyncSession,
+    unit: Unit,
+    from_: date | None,
+    to: date | None,
+) -> AccessSummary:
+    """unit/from/to 기반 KST 버킷별 접속자 수 + 접속횟수.
+
+    visitors = COUNT(DISTINCT user_id) per bucket
+    visits   = COUNT(*)                per bucket
+    빈 버킷은 0으로 채움.
+    """
+    if from_ is None and to is None:
+        from_, to = _default_window(unit)
+    elif from_ is None:
+        from_, _ = _default_window(unit)
+    elif to is None:
+        _, to = _default_window(unit)
+
+    bucket_starts = _bucket_starts(from_, to, unit)
+    if not bucket_starts:
+        return AccessSummary(buckets=[], from_=from_, to=to, total_visitors=0, total_visits=0)
+
+    # KST 기준 day 단위 (user_id, day) 집계 → Python에서 버킷 묶음.
+    day_expr = func.date(func.timezone("Asia/Seoul", LoginEvent.created_at))
+    range_start_kst = _kst_datetime(bucket_starts[0])
+    range_end_exclusive_kst = _kst_datetime(_next_bucket(bucket_starts[-1], unit))
+    stmt = (
+        select(
+            day_expr.label("d"),
+            LoginEvent.user_id,
+            func.count(LoginEvent.id).label("n"),
+        )
+        .where(
+            LoginEvent.created_at >= range_start_kst,
+            LoginEvent.created_at < range_end_exclusive_kst,
+        )
+        .group_by(day_expr, LoginEvent.user_id)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    # (date, user_id) -> visits
+    by_day_user: dict[tuple[date, int], int] = {}
+    for d_val, uid, n in rows:
+        if isinstance(d_val, datetime):
+            d_val = d_val.date()
+        by_day_user[(d_val, int(uid))] = int(n)
+
+    buckets: list[AccessBucket] = []
+    total_visits = 0
+    total_users: set[int] = set()
+    for start in bucket_starts:
+        nxt = _next_bucket(start, unit)
+        visits = 0
+        users: set[int] = set()
+        for (d, uid), n in by_day_user.items():
+            if start <= d < nxt:
+                visits += n
+                users.add(uid)
+        total_visits += visits
+        total_users |= users
+        buckets.append(AccessBucket(bucket_start=start, visitors=len(users), visits=visits))
+
+    return AccessSummary(
+        buckets=buckets,
+        from_=from_,
+        to=to,
+        total_visitors=len(total_users),
+        total_visits=total_visits,
+    )
 
 
 PENDING_CANCELLATIONS_LIST_LIMIT = 100

@@ -32,6 +32,10 @@ import {
   RevenueSummaryWidget,
   REVENUE_SUMMARY_KEY,
 } from "@/features/admin-dashboard/components/RevenueSummaryWidget";
+import {
+  AccessSummaryWidget,
+  ACCESS_SUMMARY_KEY,
+} from "@/features/admin-dashboard/components/AccessSummaryWidget";
 import { formatKRW } from "@/lib/format-currency";
 import styles from "./dashboardHome.module.css";
 
@@ -76,6 +80,7 @@ export default function AdminDashboardPage() {
     qc.invalidateQueries({ queryKey: SEGMENTS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: REVENUE_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: ANOMALY_CS_SUMMARY_KEY });
+    qc.invalidateQueries({ queryKey: ACCESS_SUMMARY_KEY });
   }
 
   const budget = budgetQuery.data;
@@ -158,6 +163,7 @@ export default function AdminDashboardPage() {
 
       <div className={styles.analyticsGrid}>
         <TokenTopUsersWidget />
+        <AccessSummaryWidget />
         <SignupsSummaryWidget />
         <SubscribersSummaryWidget />
         <FeedbackSummaryWidget />

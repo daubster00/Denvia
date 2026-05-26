@@ -474,6 +474,20 @@ async def oauth_callback_endpoint(
         if user is not None and action == "login_completed":
             from datetime import datetime as _dt, timezone as _tz
             user.last_login_at = _dt.now(tz=_tz.utc)
+            # 접속 통계용 login_events 적재 (admin 역할은 일반 OAuth 진입점에 안 옴 — 가드만).
+            if user.role != "admin":
+                from api.src.models.login_event import LoginEvent as _LoginEvent
+                _ip = request.client.host if request.client else None
+                _ua = request.headers.get("user-agent")
+                db.add(
+                    _LoginEvent(
+                        user_id=user.id,
+                        ip=_ip,
+                        ua=_ua,
+                        method=f"oauth_{provider}",
+                        created_at=_dt.now(tz=_tz.utc),
+                    )
+                )
         # 단일 세션(later wins) — OAuth 로그인/가입에도 새 nonce 박제. 이전 쿠키는 자동 무효화.
         if user is not None:
             user.current_session_id = _secrets.token_urlsafe(24)

@@ -38,6 +38,7 @@ from api.src.services.analytics_service import (
     get_revenue_variance_series,
     get_segment_export_rows,
     get_segment_stats,
+    get_access_buckets,
     get_signups_buckets,
     get_subscriber_counts,
 )
@@ -262,6 +263,66 @@ async def subscribers(
         pending_cancellation=counts["pending_cancellation_count"],
     )
     return SubscribersResponse(as_of=now_kst, **counts)
+
+
+# =============================================================================
+# 접속 통계 — login_events 기반 일/주/월/년 집계
+# =============================================================================
+
+
+class AccessBucketResponse(BaseModel):
+    bucket_start: str  # YYYY-MM-DD (KST)
+    visitors: int      # 고유 접속자 수
+    visits: int        # 접속 횟수
+
+
+class AccessResponse(BaseModel):
+    unit: Unit
+    from_: str = Field(alias="from")
+    to: str
+    total_visitors: int
+    total_visits: int
+    buckets: list[AccessBucketResponse]
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/access", response_model=AccessResponse, response_model_by_alias=True)
+async def access_stats(
+    response: Response,
+    unit: Unit = Query("day"),
+    from_: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AccessResponse:
+    summary = await get_access_buckets(db, unit, from_, to)
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.analytics.access.viewed",
+        actor_user_id=actor.id,
+        unit=unit,
+        from_=summary.from_.isoformat(),
+        to=summary.to.isoformat(),
+        bucket_count=len(summary.buckets),
+        total_visitors=summary.total_visitors,
+        total_visits=summary.total_visits,
+    )
+    return AccessResponse(
+        unit=unit,
+        from_=summary.from_.isoformat(),
+        to=summary.to.isoformat(),
+        total_visitors=summary.total_visitors,
+        total_visits=summary.total_visits,
+        buckets=[
+            AccessBucketResponse(
+                bucket_start=b.bucket_start.isoformat(),
+                visitors=b.visitors,
+                visits=b.visits,
+            )
+            for b in summary.buckets
+        ],
+    )
 
 
 # =============================================================================

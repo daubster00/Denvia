@@ -595,6 +595,18 @@ async def login_user(
     # rotate_session=False 면 회전을 건너뛴다(관리자 콘솔 로그인은 별도 쿠키 사용 — 일반 쿠키 무효화 방지).
     if rotate_session:
         user.current_session_id = secrets.token_urlsafe(24)
+    # 접속 통계용 login_events 적재 (관리자 콘솔 로그인은 제외 — 일반 회원 접속 지표).
+    if user.role != "admin":
+        from api.src.models.login_event import LoginEvent
+        db.add(
+            LoginEvent(
+                user_id=user.id,
+                ip=ip,
+                ua=ua,
+                method="password",
+                created_at=datetime.now(tz=timezone.utc),
+            )
+        )
     try:
         await db.commit()
     except Exception:
