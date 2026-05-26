@@ -77,8 +77,30 @@
 .viewport {
   flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(109, 40, 217, 0.35) transparent;
   display: flex;
   flex-direction: column;
+}
+
+.viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.viewport::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 4px;
+}
+
+.viewport::-webkit-scrollbar-thumb {
+  background: rgba(109, 40, 217, 0.35);
+  border-radius: 999px;
+}
+
+.viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 40, 217, 0.6);
 }
 
 .imageSlide {
