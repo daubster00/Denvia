@@ -66,15 +66,15 @@
 
 ## 4. 매핑 환경변수
 
-알리고 콘솔에 등록된 17개 알림톡 템플릿의 `tpl_code`(템플릿 코드)를 환경변수로 주입합니다. 2026-05-21 시점 — 17개 중 **16개 카카오 심사 통과**, `notice.generic` 1건만 본문 변경 재심사 대기. `.env` 매핑은 통과분 16개를 주입해 두며, 매핑되지 않은 키(`notice.generic`) 발송 시도는 어댑터가 `AligoConfigError`로 거부합니다(다른 알림톡에는 영향 없음).
+알리고 콘솔에 등록된 18개 알림톡 템플릿의 `tpl_code`(템플릿 코드)를 환경변수로 주입합니다. 2026-05-26 시점 — 18개 중 **17개 카카오 심사 통과**, `notice.generic` 1건만 본문 변경 재심사 대기. `.env` 매핑은 통과분 17개를 주입해 두며, 매핑되지 않은 키(`notice.generic`) 발송 시도는 어댑터가 `AligoConfigError`로 거부합니다(다른 알림톡에는 영향 없음).
 
 ```env
-ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.retry_failed_1":"UH_9829","billing.retry_failed_2":"UH_9831","billing.retry_failed_3":"UH_9824","billing.refund_success":"UH_9832","subscription.cancel_requested":"UH_9833","subscription.canceled_finalized":"UH_9834","subscription.resumed":"UH_9836","support.reply_received":"UH_9837","system.rag_rebuild_complete":"UH_9841","system.rag_rebuild_failed":"UH_9842","admin.budget_warning.80":"UH_9843","admin.budget_warning.95":"UH_9845","admin.budget_hard_cap_reached":"UH_9846","admin.support_inquiry_created":"UH_9848","admin.anomaly_detected":"UH_9849"}
+ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.retry_failed_1":"UH_9829","billing.retry_failed_2":"UH_9831","billing.retry_failed_3":"UH_9824","billing.refund_success":"UH_9832","billing.refund_manual":"UI_1758","subscription.cancel_requested":"UH_9833","subscription.canceled_finalized":"UH_9834","subscription.resumed":"UH_9836","support.reply_received":"UH_9837","system.rag_rebuild_complete":"UH_9841","system.rag_rebuild_failed":"UH_9842","admin.budget_warning.80":"UH_9843","admin.budget_warning.95":"UH_9845","admin.budget_hard_cap_reached":"UH_9846","admin.support_inquiry_created":"UH_9848","admin.anomaly_detected":"UH_9849"}
 ```
 
 > `notice.generic`만 카카오 재심사 큐에 있어 통과 후 위 JSON에 `"notice.generic":"UH_9838"`을 추가하면 됩니다.
 
-### 등록 매핑표 (2026-05-21 갱신)
+### 등록 매핑표 (2026-05-26 갱신)
 
 | # | 코드 측 template_code | 알리고 등록명 | `tpl_code` | 카카오 심사 |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 2 | `billing.retry_failed_1` | Denvia 결제 실패 안내 1차 | `UH_9829` | ✅ 승인 |
 | 3 | `billing.retry_failed_2` | Denvia 결제 실패 안내 2차 | `UH_9831` | ✅ 승인 |
 | 4 | `billing.retry_failed_3` | Denvia 결제 최종 실패 안내 | `UH_9824` | ✅ 승인 |
-| 5 | `billing.refund_success` | Denvia 환불 처리 완료 | `UH_9832` | ✅ 승인 |
+| 5 | `billing.refund_success` | Denvia 환불 처리 완료 (청약철회) | `UH_9832` | ✅ 승인 |
 | 6 | `subscription.cancel_requested` | Denvia 구독 해지 예약 완료 | `UH_9833` | ✅ 승인 |
 | 7 | `subscription.canceled_finalized` | Denvia 구독 해지 완료 | `UH_9834` | ✅ 승인 |
 | 8 | `subscription.resumed` | Denvia 구독 해지 철회 완료 | `UH_9836` | ✅ 승인 |
@@ -95,8 +95,9 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 15 | `admin.budget_hard_cap_reached` | Denvia 월 예산 소진 안내 | `UH_9846` | ✅ 승인 (2026-05-21) |
 | 16 | `admin.support_inquiry_created` | Denvia 신규 1:1 문의 접수 알림 | `UH_9848` | ✅ 승인 |
 | 17 | `admin.anomaly_detected` | Denvia 이상탐지 관리자 알림 | `UH_9849` | ✅ 승인 |
+| 18 | `billing.refund_manual` | Denvia 운영 환불 처리 완료 | `UI_1758` | ✅ 승인 (2026-05-26) |
 
-> **별도 미등록 — Story 9.1 운영 환불용 알림톡 (2026-05-20 확인)**: 사용자 청약철회는 위 #5 `billing.refund_success`(UH_9832) 단일 템플릿로 통합 운영하지만, 관리자 페이지(Story 9.1) 운영 환불 발송용 별도 템플릿은 현재 알리고 콘솔에 등록되어 있지 않습니다. 향후 운영 환불 본문이 청약철회와 분리될 경우 별도 템플릿 등록 후 본 표에 18번으로 추가.
+> **2026-05-26 환불 알림톡 분리 완료**: 기존 `billing.refund_success`(UH_9832)에 통합돼 있던 3종 환불(청약철회 + 관리자 전액 + 관리자 부분) 중 관리자 수동 환불(전액·부분) 2종을 신규 #18 `billing.refund_manual`(UI_1758)로 분리. `billing.refund_success`(UH_9832)는 이제 청약철회(cooling_off) 전용으로만 사용.
 
 > **폐기 4건** — `billing.refund_denied`(2026-05-12), `billing.auto_renew_success` / `billing.retry_success` / `subscription.extended_due_to_killswitch`(2026-05-18). 알리고 콘솔에 등록하지 않으며, 위 환경변수 매핑에도 키를 포함하지 마세요. 카탈로그/회귀 가드: `templates.py` + `test_messaging_templates.py` DEPRECATED_TEMPLATE_CODES.
 
@@ -112,7 +113,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 4 | 결제 | `billing.retry_failed_1` | 1차 결제 실패 (1일 뒤 재시도 예정) | 사용자 | ✅ 코드 반영 (v4 본문 수정 2026-05-18) |
 | 5 | 결제 | `billing.retry_failed_2` | 2차 결제 실패 (3일 뒤 마지막 재시도) | 사용자 | ✅ 코드 반영 (v4 본문 수정 2026-05-18) |
 | 6 | 결제 | `billing.retry_failed_3` | 3차(최종) 결제 실패 — 구독 해지 예정 | 사용자 | ✅ 코드 반영 (v4 본문 수정 2026-05-18) |
-| 7 | 결제 | `billing.refund_success` | 환불 처리 완료 시 — ① 사용자 청약철회(즉시 해지 + 전액 환불) 단일. 운영(관리자) 환불용 별도 알림톡은 알리고 미등록 (2026-05-20). | 사용자 | ✅ Story 3.6 v1.1 Patch-T9 코드 반영 (청약철회 발송 연결 완료, UH_9832 승인) · 🟡 Story 9.1 운영 환불용 별도 템플릿 등록 대기 |
+| 7 | 결제 | `billing.refund_success` | 환불 처리 완료 시 — 사용자 청약철회(즉시 해지 + 전액 환불) **전용** (2026-05-26 분리). | 사용자 | ✅ Story 3.6 v1.1 Patch-T9 코드 반영 (청약철회 발송 연결 완료, UH_9832 승인) |
 | 8 | ~~결제~~ | ~~`billing.refund_denied`~~ | ~~관리자가 수동 환불 요청을 거부했을 때~~ | ~~사용자~~ | **❌ 폐기 — 2026-05-12 (ADR-0001 편차 #5)** — "거부" 개념 자체가 없어짐. 새 정책에서 관리자는 환불을 안 하면 그만(별도 거부 액션 부재) |
 | 9 | 구독 | `subscription.cancel_requested` | 사용자가 해지 신청 → 다음 결제일 전까지 유효 | 사용자 | ✅ 코드 반영 (v4 본문 수정 + 무료 전환 안내 2026-05-18) |
 | 10 | 구독 | `subscription.canceled_finalized` | 해지 예정일 도달 → 실제로 해지된 시점 | 사용자 | ✅ 코드 반영 (v4 본문 수정 + `user_name`/`effective_at` 신규 변수 2026-05-18) |
@@ -127,6 +128,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 19 | 시스템 | `admin.support_inquiry_created` | 사용자가 1:1 문의를 등록한 직후 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9848 승인, 2026-05-20) — `routers/support.py` background_tasks |
 | 20 | 시스템 | `admin.anomaly_detected` | (자동 발송 폐기 — 2026-05-22) 이상탐지 발생만으로는 더 이상 발송하지 않음. 관리자가 직접 차단 버튼을 누른 시점에만 발송하는 정책으로 변경 — 차단 트리거 연결은 후속 작업 | 관리자 | 🟡 템플릿 등록(UH_9849)·`templates.py` 정의는 유지. **이상탐지 자동 발송 호출 4종 모두 제거(2026-05-22)** — `anomaly_service.schedule_admin_anomaly_alimtalk` 헬퍼 삭제. 차단 시점 발송 연결은 후속 작업 |
 | 21 | ~~구독~~ | ~~`subscription.extended_due_to_killswitch`~~ | ~~킬스위치 발동으로 구독 기간 자동 연장됐을 때~~ | ~~사용자~~ | **❌ 폐기 — 2026-05-18** — 클라이언트 v4 검수서(Google Docs 2026-05-15) 미포함. 카탈로그·호출처·docs 본문 섹션 제거. 킬스위치 시 구독 기간 연장 자체는 유지하되 사용자 안내는 인앱 공지·1:1 쪽지로 대체 |
+| 22 | 결제 | `billing.refund_manual` | 관리자가 운영 환불(전액 또는 부분)을 처리한 직후 — 2026-05-26 신규. 1:1 문의 응답과 함께 발송되어 사용자에게 환불 사실 + 금액을 알린다. | 사용자 | ✅ 코드 반영 + 발송 연결 완료 (UI_1758 승인, 2026-05-26) — `admin_payment_service.notify_refund_succeeded` |
 
 > SMS OTP(회원가입·아이디찾기·비밀번호찾기 인증번호 발송)와 임시 비밀번호 발송은 **알림톡이 아니라 일반 SMS**로 보냅니다. 알리고 콘솔에서는 별도 템플릿 등록이 필요 없습니다(SMS는 자유 텍스트). 본 문서 제일 아래 §8에 정리합니다.
 
@@ -383,6 +385,63 @@ pro구독이 해지될 예정입니다.
 ```
 
 > **카카오 검수 주의** — `refund_reason_label`이 본문 안에 변수로 들어가지만, 라벨 자체가 카카오 광고성 표현(예: 할인·이벤트·축하 등)을 포함하지 않으므로 정보성 검수 통과 가능. 등록 시 위 3가지 라벨 예시를 함께 첨부 권장.
+
+> **2026-05-26 분리**: 위 v1.1 본문은 이제 청약철회(cooling_off) 경로에서만 사용된다. 관리자 수동 환불(manual_full/manual_partial)은 §6 22) `billing.refund_manual`(UI_1758)로 본문이 분리되었다. `refund_reason_label`은 이제 사실상 "즉시 해지 및 전액 환불" 단일값만 들어가지만, 카카오 콘솔 등록본을 변경하지 않기 위해 변수는 유지한다.
+
+---
+
+### 22) `billing.refund_manual` — 운영 환불 처리 완료 (신규 — 2026-05-26)
+
+- **언제**: 관리자가 관리자 페이지 결제내역에서 운영 환불(전액 또는 부분)을 처리한 직후
+- **수신자**: 환불 받은 사용자
+- **알리고 분류**: 정보성 / 서비스 이용 안내
+- **야간 발송**: 즉시
+- **알리고 tpl_code**: `UI_1758` (✅ 카카오 심사 통과, 2026-05-26)
+- **멱등성 키 (코드 측)**: `refund:{payment_id}:manual:{refund_sequence}` (다회 부분환불 누적 지원)
+- **구현**: `admin_payment_service.notify_refund_succeeded` — `routers/admin/payments.py`의 `create_payment_refund` 응답 직후 `background_tasks`로 fire-and-forget. 청약철회(cooling_off)는 본 템플릿이 아닌 `billing.refund_success`(UH_9832)로 발송됨.
+
+**제목**
+```
+환불 처리 완료
+```
+
+**알리고 콘솔 입력 본문**
+```
+안녕하세요, Denvia입니다.
+
+요청하신 환불이 처리되었습니다.
+
+결제금액: #{결제금액}원
+환불금액: #{환불금액}원
+환불처리일: #{환불처리일}
+
+영업일 3~4일 내 결제 카드로 입금됩니다.
+자세한 내용은 1:1 문의 답변에서 확인해주세요.
+```
+
+> 알리고 콘솔의 변수명은 한국어(`#{결제금액}`/`#{환불금액}`/`#{환불처리일}`)이지만, 알리고는 최종 렌더 텍스트의 고정 문구만 검증하므로 코드 측 변수명은 다른 템플릿과 동일하게 영문을 유지한다.
+
+**변수**
+
+| 변수 | 의미 | 예시 |
+|---|---|---|
+| `amount_krw` | 결제 원금 (콤마 포함 텍스트, "원" 접미사는 본문에 포함) | `30,000` |
+| `refund_amount_krw` | 이번에 환불된 금액 (콤마 포함, 부분환불 시 누적이 아니라 이번 처리분만) | `19,000` |
+| `effective_at` | 환불 처리일 (KST, `YYYY년 MM월 DD일`) | `2026년 5월 26일` |
+
+**발송 예시 (관리자 부분 환불)**
+```
+안녕하세요, Denvia입니다.
+
+요청하신 환불이 처리되었습니다.
+
+결제금액: 30,000원
+환불금액: 19,000원
+환불처리일: 2026년 5월 26일
+
+영업일 3~4일 내 결제 카드로 입금됩니다.
+자세한 내용은 1:1 문의 답변에서 확인해주세요.
+```
 
 ---
 
@@ -860,4 +919,5 @@ Denvia RAG 재빌드가 실패했습니다.
 | 2026-05-20 | **전체 시스템 통화 표기 KRW 통일.** 관리자 예산 경고 3종(#16 `admin.budget_warning.80` / #17 `admin.budget_warning.95` / #18 `admin.budget_hard_cap_reached`) 본문에서 USD 표기를 KRW로 변경. ① **변수명 교체**: `spent_usd` → `spent_krw`, `limit_usd` → `limit_krw`. ② **본문**: `$#{spent_usd}` → `#{spent_krw}` (값에 "₩" prefix + 천단위 콤마가 포함된 형태로 호출처에서 넘김, 예: `₩115,220`). ③ **호출처 변경**: `budget_tasks.py`에서 USD 값에 `runtime:usd_to_krw` 환율을 곱해 KRW 정수로 변환 후 텍스트로 포맷. ④ **API 응답**: `/admin/budget/current-month`, `/admin/killswitch/status`, `/admin/analytics/user-tokens` 응답에 `monthly_limit_krw` / `spent_krw` / `usd_to_krw` 등 KRW 환산 보조 필드 추가 (DB 컬럼은 USD 유지). ⑤ **UI**: 관리자 대시보드·매출·Kill-switch·설정·사용자 토큰 화면에서 `$` 표기 전면 제거 → `₩` + `toLocaleString("ko-KR")` 통일. ⑥ **테스트**: backend/frontend 관련 모킹 데이터 갱신. ~~알리고 콘솔 재등록 + 카카오 비즈니스 재심사 필수~~ → **2026-05-20 (오후) 재정정**: 변수명만 바뀌고 등록 본문은 그대로여서 재등록 불필요로 확인됨. 검수중인 #16/17/18 통과 즉시 발송 가능. |
 | 2026-05-21 | **`rapid_questions` 탐지 프로세스 완전 폐기.** ① `anomaly_service.check_rapid_questions` 함수·`ANOMALY_TYPES` 상수·`_ANOMALY_TYPE_LABEL_KO` 라벨에서 `rapid_questions` 제거. ② `anomaly_event_type` Postgres enum 에서도 값 제거(마이그레이션 0047) + 잔존 anomaly_events 행 DELETE. ③ `admin.anomaly_detected` 본문은 변동 없음(트리거 4종에 `rapid_followup_questions` 가 그대로 자리. **재등록 불필요**). 배경: `rapid_followup_questions`(답변 직후 3초 연속) 와 성격이 중복돼 2026-05-21 부로 hook 호출은 이미 비활성화 상태였음. 본 변경은 잔존 코드/데이터 정리. |
 | 2026-05-21 | **카카오 심사 잔여 5건 통과 + 예산 알림톡 실어댑터 전환.** ① **추가 통과 5건** — UH_9841 (system.rag_rebuild_complete) / UH_9842 (system.rag_rebuild_failed) / UH_9843 (admin.budget_warning.80) / UH_9845 (admin.budget_warning.95) / UH_9846 (admin.budget_hard_cap_reached). 17개 중 16개 통과, `notice.generic`(UH_9838) 본문 변경 재심사 1건만 잔여. ② **`ALIMTALK_TEMPLATE_MAP_JSON` 16개 매핑 주입** — `.env` 73행 갱신 (11→16). ③ **`workers/budget_tasks.py` 실어댑터 전환** — `_build_notification_service`가 `StubMessagingAdapter()` 직접 인스턴스화하던 부분을 `get_adapter()`로 교체. `MESSAGING_PROVIDER=aligo` 환경에서 80%/95%/100% 임계 알림톡이 실제 알리고로 발송됨. `rag_tasks.py`는 이미 `get_notification_service()`를 사용하고 있어 매핑 추가만으로 즉시 발송 가능. ④ `.env.example` / `.env.production.example` 매핑 안내 주석 16/17 갱신. |
+| 2026-05-26 | **#22 `billing.refund_manual` 신규 추가 (UI_1758) — 운영 환불 알림톡 분리 완료.** ① 기존 `billing.refund_success`(UH_9832)에 통합돼 있던 3종 환불(청약철회 + 관리자 전액 + 관리자 부분) 중 관리자 수동 환불 2종을 별도 템플릿으로 분리. 청약철회 본문(`처리 유형 / 결제 원금 / 환불 금액 / 처리일`)과 톤이 달라야 한다는 판단 + 카카오 검수에서 변수 라벨 다중 케이스 회피 목적. ② **신규 본문** — `안녕하세요, Denvia입니다. // 요청하신 환불이 처리되었습니다. // 결제금액·환불금액·환불처리일 // 영업일 3~4일 내 결제 카드로 입금됩니다. 자세한 내용은 1:1 문의 답변에서 확인해주세요.` ③ **변수 3개** — `amount_krw` / `refund_amount_krw` / `effective_at` (라벨 변수 제거). ④ **코드 변경** — `templates.py`에 `billing.refund_manual` 추가. `admin_payment_service.notify_refund_succeeded`의 `template_code`를 `billing.refund_success` → `billing.refund_manual`로 교체. `_REFUND_REASON_LABELS` 헬퍼 제거(unused). ⑤ **환경변수** — `.env` `ALIMTALK_TEMPLATE_MAP_JSON`에 `"billing.refund_manual":"UI_1758"` 매핑 추가. ⑥ **호환성** — `billing.refund_success`는 청약철회(cooling_off) 전용으로 유지. 카카오 콘솔 등록본 변경 없음, 재심사 불필요. ⑦ **고객 안내서**(`자료/Denvia_카카오_알림톡_메시지_안내서.docx`) 동기화는 별도 세션에서 처리 예정. |
 | 2026-05-20 (오후) | **알리고 카카오 심사 일부 통과 + 관리자 알림톡 발송 연결 완료.** ① **카카오 심사 통과 11건** — UH_9828 / UH_9829 / UH_9831 / UH_9824 / UH_9832 / UH_9833 / UH_9834 / UH_9836 / UH_9837 / **UH_9848** (admin.support_inquiry_created) / **UH_9849** (admin.anomaly_detected). 검수중 6건 — notice.generic(본문 변경 → 재심사) / system.rag_rebuild_complete·failed / admin.budget_warning.80·95 / admin.budget_hard_cap_reached. ② **`ALIMTALK_TEMPLATE_MAP_JSON` 11개 매핑 주입** — `.env` 73행 갱신. 검수 통과되지 않은 6개는 매핑 부재로 어댑터가 `AligoConfigError` 거부 → 다른 알림톡에 영향 없음. ③ **#19 admin.support_inquiry_created 발송 연결** — `routers/support.py` 의 `submit_inquiry` 직후 `background_tasks` 로 `_notify_admin_inquiry_created` 실행. 관리자 단일 발송 (`integrations/messaging/admin_recipient.resolve_admin_target` 신규 헬퍼). 멱등 키 `support_inquiry:{inquiry_id}:admin_alert`. ④ **#20 admin.anomaly_detected 발송 연결** — `services/anomaly_service.schedule_admin_anomaly_alimtalk()` 헬퍼 추가 (asyncio.create_task fire-and-forget). 트리거 4종 wire-up: `login_brute_force`(auth_service 2곳) · `recovery_abuse`(auth_service) · `concurrent_ip_login` · `rapid_questions` (anomaly_service). `repeated_question` enum 정의만 — 탐지 로직 미구현 (Story 6.2 후속). 멱등 키 `anomaly:{anomaly_event_id}`. ⑤ **카카오 심사 정정** — 16/17/18 KRW 통일은 재등록 불필요로 확인. notice.generic 만 본문 변경 → 재심사 대기. ⑥ **Story 9.1 운영 환불용 별도 알림톡** — 알리고 콘솔 미등록. 향후 운영 환불 본문이 청약철회와 분리될 경우 별도 18번 템플릿으로 등록 예정. |

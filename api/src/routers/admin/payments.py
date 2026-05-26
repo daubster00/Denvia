@@ -116,7 +116,7 @@ async def create_payment_refund(
     """관리자 운영 환불(부분/전액) 실행.
 
     응답 후 fire-and-forget:
-    - 알림톡 billing.refund_success (refund_reason_label = '전액 환불' / '부분 환불')
+    - 알림톡 billing.refund_manual (UI_1758, 2026-05-26 청약철회와 본문 분리)
     - Redis admin:events publish ({type: 'refund_operational_created', ...})
 
     서비스 레이어는 `request.state.refund_op_*`에 후처리 페이로드를 저장한다 — 실패 경로에서는

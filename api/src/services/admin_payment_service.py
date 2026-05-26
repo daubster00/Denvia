@@ -29,8 +29,10 @@ v1.0 자가 환불 폼(Story 9.3 — `manual_refund_queue` 승인 큐 기반, Ph
 - transport 장애 → 즉시 rollback + 502. PG 4xx → `refund_denied` 이벤트 보존 후 commit + 502.
   성공 응답 후 commit 실패 → 환불은 PG에 이미 반영되었으므로 reconcile 식별자를 강하게 로깅하고
   예외는 숨기지 않는다.
-- 알림톡 발송은 `billing.refund_success` 단일 템플릿으로 통합되어 있다 (docs/ALIMTALK_TEMPLATES.md §7).
-  `refund_reason`은 `manual_full` 또는 `manual_partial`로 분기되어 label만 달라진다.
+- 알림톡 발송은 `billing.refund_manual`(UI_1758) 전용 템플릿을 사용한다 (docs/ALIMTALK_TEMPLATES.md §6 18번).
+  본문에 처리 유형 라벨이 없어 manual_full/manual_partial 모두 동일 본문으로 발송된다.
+  청약철회(cooling_off)는 본 서비스가 다루지 않으며 billing_service._notify_refund 경로에서
+  `billing.refund_success`(UH_9832)로 별도 발송된다.
 - audit_diff는 잔액·sequence·reason_category·memo 길이·여부 등 사후 추적에 필요한 메타만 담는다.
   메모 원문은 audit에 남기지 않는다 (PII 가능성 있음 → `refunds.memo`에만 보존).
 """
@@ -72,13 +74,10 @@ _KST = ZoneInfo("Asia/Seoul")
 _TOSS_CANCEL_REASON_MAX = 200
 _INBOX_TITLE_FULL = "환불 처리 완료 안내"
 _INBOX_TITLE_PARTIAL = "부분 환불 처리 완료 안내"
-# `billing.refund_success` 템플릿에 노출되는 한국어 라벨 매핑.
-# billing_service._REFUND_REASON_LABELS와 동일 — 두 곳에 동일 매핑을 두는 것은 의도적
-# (본 서비스는 billing_service의 사적 헬퍼에 의존하지 않는다).
-_REFUND_REASON_LABELS = {
-    "manual_full": "전액 환불",
-    "manual_partial": "부분 환불",
-}
+# 2026-05-26 — 운영 환불은 `billing.refund_manual`(UI_1758) 전용 템플릿으로 분리.
+# 본문에 처리 유형 라벨을 노출하지 않으므로 별도 라벨 매핑 없이 발송한다.
+# 참고: 청약철회(cooling_off)는 여전히 `billing.refund_success`(UH_9832)를 사용하며,
+# 그쪽의 라벨 매핑은 billing_service._REFUND_REASON_LABELS만 유지.
 
 
 async def create_refund(
@@ -502,13 +501,17 @@ async def notify_refund_succeeded(
     refunded_at: datetime,
     idempotency_key: str,
 ) -> None:
-    """fire-and-forget 알림톡 — billing.refund_success.
+    """fire-and-forget 알림톡 — billing.refund_manual (UI_1758, 운영 환불 전용).
 
-    docs/ALIMTALK_TEMPLATES.md §7 변수:
-    - refund_reason_label: 한국어 라벨 ('전액 환불' / '부분 환불')
-    - amount_krw: 결제 원금
-    - refund_amount_krw: 이번 환불 금액
-    - effective_at: 처리일 KST 표기
+    2026-05-26 분리: 청약철회(cooling_off)는 `billing.refund_success`(UH_9832), 운영
+    환불(manual_full/manual_partial)은 `billing.refund_manual`(UI_1758)로 본문 톤이
+    분리되었다. 본 함수는 관리자 페이지 환불 라우터에서만 호출되므로 항상 후자를 쓴다.
+    `refund_reason` 인자는 후속 로깅·시그니처 호환을 위해 유지하지만 본문에는 노출되지 않는다.
+
+    docs/ALIMTALK_TEMPLATES.md §6 변수:
+    - amount_krw: 결제 원금 (콤마 포함 텍스트)
+    - refund_amount_krw: 이번 환불 금액 (콤마 포함 텍스트)
+    - effective_at: 처리일 KST 표기 (YYYY년 MM월 DD일)
     """
     try:
         from api.src.integrations.messaging.notification_service import (
@@ -524,14 +527,12 @@ async def notify_refund_succeeded(
             ).scalar_one_or_none()
         if user is None:
             return
-        label = _REFUND_REASON_LABELS.get(refund_reason, refund_reason)
         svc = get_notification_service()
         await svc.send(
             user_id=user_id,
             phone=user.phone or "",
-            template_code="billing.refund_success",
+            template_code="billing.refund_manual",
             variables={
-                "refund_reason_label": label,
                 "amount_krw": f"{amount_krw:,}",
                 "refund_amount_krw": f"{refund_amount_krw:,}",
                 "effective_at": refunded_at.astimezone(_KST).strftime("%Y년 %m월 %d일"),
@@ -543,6 +544,7 @@ async def notify_refund_succeeded(
             "admin.payments.refund.notify_failed",
             user_id=user_id,
             payment_id=payment_id,
+            refund_reason=refund_reason,
         )
 
 

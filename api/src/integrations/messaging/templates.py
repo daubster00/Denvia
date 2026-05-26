@@ -127,15 +127,38 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "영업일 3~4일 내 결제 카드로 입금됩니다.\n"
             "문의는 Denvia 1:1 문의 게시판을 이용해주세요."
         ),
-        # Story 3.6 v1.1 + Story 9.1 v1.1 공용 단일 템플릿.
-        # `refund_reason_label`은 표시용 한국어. 코드 측 enum `refund_reason`
-        # (`cooling_off` | `manual_full` | `manual_partial`)에서 매핑되어 입력된다.
+        # Story 3.6 v1.1 청약철회(cooling_off) 전용.
+        # 2026-05-26 이전에는 Story 9.1 운영 환불(manual_full/manual_partial)도 본 템플릿을
+        # 공용으로 썼으나, 별도 등록(UI_1758, billing.refund_manual)이 완료되어 운영 환불은
+        # 분리되었다. `refund_reason_label`은 표시용 한국어. cooling_off에서는 항상
+        # "즉시 해지 및 전액 환불" 단일 라벨이 들어간다.
         variables=[
             "refund_reason_label",
             "amount_krw",
             "refund_amount_krw",
             "effective_at",
         ],
+        category=TemplateCategory.BILLING,
+    ),
+    "billing.refund_manual": TemplateDefinition(
+        title="Denvia 운영 환불 처리 완료",
+        body=(
+            "안녕하세요, Denvia입니다.\n"
+            "\n"
+            "요청하신 환불이 처리되었습니다.\n"
+            "\n"
+            "결제금액: {amount_krw}원\n"
+            "환불금액: {refund_amount_krw}원\n"
+            "환불처리일: {effective_at}\n"
+            "\n"
+            "영업일 3~4일 내 결제 카드로 입금됩니다.\n"
+            "자세한 내용은 1:1 문의 답변에서 확인해주세요."
+        ),
+        # Story 9.1 v1.1 운영 환불(관리자 수동 전액·부분) 전용. 2026-05-26 분리 등록.
+        # 알리고 콘솔 등록명 "Denvia 운영 환불 처리 완료" (UI_1758). 콘솔의 변수명은
+        # 한국어(#{결제금액}/#{환불금액}/#{환불처리일})지만, 알리고는 최종 렌더 텍스트의
+        # 고정 문구만 검증하므로 코드 변수명은 영문 유지(다른 템플릿과 일관).
+        variables=["amount_krw", "refund_amount_krw", "effective_at"],
         category=TemplateCategory.BILLING,
     ),
     # ── 구독 (subscription) ──────────────────────────────────────────────────
