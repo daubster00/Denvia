@@ -111,41 +111,49 @@
 }
 
 .chipOpen {
+  composes: chip;
   background: #fef3c7;
   color: #92400e;
 }
 
 .chipInProgress {
+  composes: chip;
   background: #dbeafe;
   color: #1d4ed8;
 }
 
 .chipResolved {
+  composes: chip;
   background: #dcfce7;
   color: #166534;
 }
 
 .chipAnomalyNew {
+  composes: chip;
   background: #fee2e2;
   color: #b91c1c;
 }
 
 .chipAnomalyActioned {
+  composes: chip;
   background: #dcfce7;
   color: #166534;
 }
 
 .chipPaymentSuccess {
+  composes: chip;
   background: #dcfce7;
   color: #166534;
 }
 
 .chipPaymentFailed {
+  composes: chip;
   background: #fee2e2;
   color: #b91c1c;
 }
 
 .chipPaymentRefunded {
+  composes: chip;
   background: #e0e7ff;
   color: #4338ca;
 }
