@@ -177,6 +177,31 @@
   flex-shrink: 0;
 }
 
+/* 첫 모듈(소셜/이메일 버튼) 아래의 아이디·비번 찾기 링크 행.
+   색상/문구는 EmailLoginTab 의 .linkBtn(auth-forms.module.css) 와 동일하게 유지. */
+.findLinkRow {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.findLinkBtn {
+  background: none;
+  border: none;
+  color: #70737c;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.findLinkDivider {
+  height: 1px;
+  background-color: #e1e2e4;
+  margin-top: 16px;
+}
+
 .modeSwitch {
   margin: 20px 0 0;
   text-align: center;

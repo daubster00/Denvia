@@ -28,6 +28,10 @@ export function LoginPopup() {
     forcePasswordReset ? "find-password" : "buttons"
   );
   const [mode, setMode] = useState<Mode>("login");
+  // find-id/find-password 뷰로 진입한 출발지. 헤더 ←와 결과 화면의 "돌아가기" 가
+  // 모두 사용자가 누른 진입점으로 정확히 복귀하도록 추적한다.
+  // (이메일 탭에서 진입 → "email", 첫 모듈 아래 링크에서 진입 → "buttons")
+  const [findOrigin, setFindOrigin] = useState<"buttons" | "email">("email");
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   // 소셜 버튼 더블클릭·OAuth 이동 중복 실행 가드 (페이지 내 single-shot)
@@ -119,7 +123,13 @@ export function LoginPopup() {
             (view === "find-password" && !forcePasswordReset)) && (
             <button
               type="button"
-              onClick={() => setView(view === "email" ? "buttons" : "email")}
+              onClick={() =>
+                setView(
+                  view === "email"
+                    ? "buttons"
+                    : findOrigin /* find-id / find-password */
+                )
+              }
               aria-label="이전 화면으로"
               className={styles.backBtn}
             >
@@ -189,6 +199,36 @@ export function LoginPopup() {
               />
             </div>
 
+            {/* 로그인 모드 한정 — 첫 모듈 아래 아이디/비번 찾기 링크. 색상/문구는
+                EmailLoginTab 의 동일 링크와 일치(라이트 그레이 · 13px · underline). */}
+            {mode === "login" && (
+              <>
+                <div className={styles.findLinkRow}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFindOrigin("buttons");
+                      setView("find-id");
+                    }}
+                    className={styles.findLinkBtn}
+                  >
+                    아이디 찾기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFindOrigin("buttons");
+                      setView("find-password");
+                    }}
+                    className={styles.findLinkBtn}
+                  >
+                    비밀번호 찾기
+                  </button>
+                </div>
+                <div className={styles.findLinkDivider} aria-hidden="true" />
+              </>
+            )}
+
             {/* 로그인 ↔ 회원가입 전환 */}
             <p className={styles.modeSwitch}>
               {mode === "login" ? (
@@ -219,14 +259,20 @@ export function LoginPopup() {
         ) : view === "signup" ? (
           <SignupForm />
         ) : view === "find-password" ? (
-          <FindPasswordPopup onBack={() => setView("email")} />
+          <FindPasswordPopup onBack={() => setView(findOrigin)} />
         ) : view === "find-id" ? (
-          <FindIdPopup onBack={() => setView("email")} />
+          <FindIdPopup onBack={() => setView(findOrigin)} />
         ) : (
           <EmailLoginTab
             onSignup={() => setView("signup")}
-            onFindPassword={() => setView("find-password")}
-            onFindId={() => setView("find-id")}
+            onFindPassword={() => {
+              setFindOrigin("email");
+              setView("find-password");
+            }}
+            onFindId={() => {
+              setFindOrigin("email");
+              setView("find-id");
+            }}
           />
         )}
         </div>
