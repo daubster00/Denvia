@@ -261,6 +261,106 @@ export function buildFeedbackExportUrl(
 }
 
 // ---------------------------------------------------------------------------
+// 질문 분석 — qa_logs 기반 일/주/월/년 합산 + 정렬·페이지 + 엑셀
+// ---------------------------------------------------------------------------
+
+export type QuestionsUnit = "day" | "week" | "month" | "year";
+export type QuestionsSort = "latest" | "tokens" | "email";
+
+export interface QuestionsBucket {
+  bucket_start: string; // YYYY-MM-DD (KST)
+  count: number;
+}
+
+export interface QuestionsItem {
+  qa_log_id: number;
+  question_text: string;
+  answer_text: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: string | null;
+  status: string | null;
+  user_id: number | null;
+  email: string | null;
+  segment: string | null;
+  created_at: string;
+}
+
+export interface QuestionsResponse {
+  unit: QuestionsUnit;
+  sort: QuestionsSort;
+  from: string;
+  to: string;
+  total_count: number;
+  buckets: QuestionsBucket[];
+  items: QuestionsItem[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface FetchQuestionsParams {
+  unit?: QuestionsUnit;
+  sort?: QuestionsSort;
+  from?: string;
+  to?: string;
+  page?: number;
+  per_page?: number;
+  q?: string;
+}
+
+export async function fetchQuestions(
+  params: FetchQuestionsParams = {}
+): Promise<QuestionsResponse> {
+  const query = new URLSearchParams();
+  if (params.unit) query.set("unit", params.unit);
+  if (params.sort) query.set("sort", params.sort);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.page) query.set("page", String(params.page));
+  if (params.per_page) query.set("per_page", String(params.per_page));
+  if (params.q) query.set("q", params.q);
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/questions${qs ? `?${qs}` : ""}`,
+    { credentials: "include" }
+  );
+  if (!res.ok) throw new Error(`questions fetch failed: ${res.status}`);
+  return res.json() as Promise<QuestionsResponse>;
+}
+
+export function buildQuestionsExportUrl(
+  params: Omit<FetchQuestionsParams, "page" | "per_page">
+): string {
+  const query = new URLSearchParams();
+  if (params.unit) query.set("unit", params.unit);
+  if (params.sort) query.set("sort", params.sort);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.q) query.set("q", params.q);
+  const qs = query.toString();
+  return `${API_BASE}/api/v1/admin/analytics/questions/export${qs ? `?${qs}` : ""}`;
+}
+
+export async function fetchQuestionsExport(
+  params: Omit<FetchQuestionsParams, "page" | "per_page">
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(buildQuestionsExportUrl(params), {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`questions export failed: ${res.status}`);
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return {
+    blob: await res.blob(),
+    filename:
+      match?.[1] ??
+      `questions_${params.from || "all"}_${params.to || "all"}.xlsx`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Story 6.4 — 가입유형 통계
 // ---------------------------------------------------------------------------
 

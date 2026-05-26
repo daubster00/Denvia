@@ -632,6 +632,282 @@ async def get_feedback_export_rows(
 
 
 # =============================================================================
+# 질문 분석 — qa_logs 기반 일/주/월/년 집계 + 정렬·상세·엑셀
+# =============================================================================
+
+QuestionsSort = Literal["latest", "tokens", "email"]
+QUESTIONS_EXPORT_LIMIT = 10_000
+
+
+@dataclass(frozen=True)
+class QuestionsBucket:
+    bucket_start: date
+    count: int
+
+
+@dataclass(frozen=True)
+class QuestionsSummary:
+    buckets: list[QuestionsBucket]
+    from_: date
+    to: date
+    total_count: int
+
+
+async def get_questions_summary(
+    session: AsyncSession,
+    unit: Unit,
+    from_: date | None,
+    to: date | None,
+) -> QuestionsSummary:
+    """unit/from/to 기반 KST 버킷별 질문 수 + 전체 합계.
+
+    qa_logs 한 행 = 질문 1건. admin 사용자 행은 제외.
+    """
+    if from_ is None and to is None:
+        from_, to = _default_window(unit)
+    elif from_ is None:
+        from_, _ = _default_window(unit)
+    elif to is None:
+        _, to = _default_window(unit)
+
+    bucket_starts = _bucket_starts(from_, to, unit)
+    if not bucket_starts:
+        return QuestionsSummary(buckets=[], from_=from_, to=to, total_count=0)
+
+    day_expr = func.date(func.timezone("Asia/Seoul", QALog.created_at))
+    range_start_kst = _kst_datetime(bucket_starts[0])
+    range_end_exclusive_kst = _kst_datetime(_next_bucket(bucket_starts[-1], unit))
+
+    stmt = (
+        select(day_expr.label("d"), func.count(QALog.id).label("n"))
+        .outerjoin(User, QALog.user_id == User.id)
+        .where(
+            QALog.created_at >= range_start_kst,
+            QALog.created_at < range_end_exclusive_kst,
+            or_(QALog.user_id.is_(None), User.role != "admin"),
+        )
+        .group_by(day_expr)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    by_day: dict[date, int] = {}
+    for d_val, n in rows:
+        if isinstance(d_val, datetime):
+            d_val = d_val.date()
+        by_day[d_val] = int(n)
+
+    buckets: list[QuestionsBucket] = []
+    total = 0
+    for start in bucket_starts:
+        nxt = _next_bucket(start, unit)
+        count = sum(n for d, n in by_day.items() if start <= d < nxt)
+        total += count
+        buckets.append(QuestionsBucket(bucket_start=start, count=count))
+
+    return QuestionsSummary(
+        buckets=buckets, from_=from_, to=to, total_count=total
+    )
+
+
+def _questions_items_base(
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    q_like: str | None,
+):
+    """items/total/export 공통 select base (정렬·페이지 미적용)."""
+    conds = [
+        QALog.created_at >= start_kst,
+        QALog.created_at < end_exclusive_kst,
+        or_(QALog.user_id.is_(None), User.role != "admin"),
+    ]
+    if q_like:
+        conds.append(
+            or_(
+                QALog.question_text.ilike(q_like),
+                QALog.answer_text.ilike(q_like),
+            )
+        )
+    return conds
+
+
+async def get_questions_items_total(
+    session: AsyncSession,
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    q_like: str | None = None,
+) -> int:
+    conds = _questions_items_base(start_kst, end_exclusive_kst, q_like)
+    total = (await session.execute(
+        select(func.count(QALog.id))
+        .outerjoin(User, QALog.user_id == User.id)
+        .where(*conds)
+    )).scalar_one()
+    return int(total)
+
+
+def _questions_order_by(sort: QuestionsSort):
+    """정렬 키 → SQLAlchemy ORDER BY 절."""
+    if sort == "tokens":
+        # NULL을 0으로 처리해서 합산 후 내림차순
+        token_sum = (
+            func.coalesce(QALog.input_tokens, 0)
+            + func.coalesce(QALog.output_tokens, 0)
+        )
+        return [token_sum.desc(), QALog.created_at.desc()]
+    if sort == "email":
+        # NULL(비회원) 마지막으로 보내고, 그 다음 이메일 가나다, 같은 계정은 최신순
+        return [
+            func.coalesce(User.email, "~").asc(),
+            QALog.created_at.desc(),
+        ]
+    # latest (default)
+    return [QALog.created_at.desc()]
+
+
+async def get_questions_items(
+    session: AsyncSession,
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    sort: QuestionsSort,
+    page: int,
+    per_page: int,
+    q_like: str | None = None,
+) -> list[dict]:
+    conds = _questions_items_base(start_kst, end_exclusive_kst, q_like)
+    order = _questions_order_by(sort)
+
+    rows = (await session.execute(
+        select(
+            QALog.id,
+            QALog.question_text,
+            QALog.answer_text,
+            QALog.input_tokens,
+            QALog.output_tokens,
+            QALog.cost_usd,
+            QALog.status,
+            QALog.user_id,
+            User.email,
+            User.segment,
+            QALog.created_at,
+        )
+        .outerjoin(User, QALog.user_id == User.id)
+        .where(*conds)
+        .order_by(*order)
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+    )).all()
+
+    from datetime import timezone
+
+    result: list[dict] = []
+    for (
+        qa_id,
+        question_text,
+        answer_text,
+        input_tokens,
+        output_tokens,
+        cost_usd,
+        status,
+        user_id,
+        email,
+        segment,
+        created_at,
+    ) in rows:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        in_t = int(input_tokens or 0)
+        out_t = int(output_tokens or 0)
+        result.append({
+            "qa_log_id": int(qa_id),
+            "question_text": question_text,
+            "answer_text": answer_text,
+            "input_tokens": in_t,
+            "output_tokens": out_t,
+            "total_tokens": in_t + out_t,
+            "cost_usd": str(cost_usd) if cost_usd is not None else None,
+            "status": status,
+            "user_id": int(user_id) if user_id is not None else None,
+            "email": email,
+            "segment": segment,
+            "created_at": created_at.astimezone(KST).isoformat(),
+        })
+    return result
+
+
+async def get_questions_export_rows(
+    session: AsyncSession,
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    sort: QuestionsSort,
+    q_like: str | None = None,
+    max_rows: int = QUESTIONS_EXPORT_LIMIT,
+) -> tuple[list[dict], bool]:
+    """엑셀 export용 전체 행. (rows, truncated) 반환."""
+    conds = _questions_items_base(start_kst, end_exclusive_kst, q_like)
+    order = _questions_order_by(sort)
+
+    rows = (await session.execute(
+        select(
+            QALog.id,
+            QALog.question_text,
+            QALog.answer_text,
+            QALog.input_tokens,
+            QALog.output_tokens,
+            QALog.cost_usd,
+            QALog.status,
+            QALog.user_id,
+            User.email,
+            User.segment,
+            QALog.created_at,
+        )
+        .outerjoin(User, QALog.user_id == User.id)
+        .where(*conds)
+        .order_by(*order)
+        .limit(max_rows + 1)
+    )).all()
+
+    truncated = len(rows) > max_rows
+    rows = rows[:max_rows]
+
+    from datetime import timezone
+
+    result: list[dict] = []
+    for (
+        qa_id,
+        question_text,
+        answer_text,
+        input_tokens,
+        output_tokens,
+        cost_usd,
+        status,
+        user_id,
+        email,
+        segment,
+        created_at,
+    ) in rows:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        kst_dt = created_at.astimezone(KST)
+        in_t = int(input_tokens or 0)
+        out_t = int(output_tokens or 0)
+        result.append({
+            "qa_log_id": int(qa_id),
+            "question_text": question_text,
+            "answer_text": answer_text or "",
+            "input_tokens": in_t,
+            "output_tokens": out_t,
+            "total_tokens": in_t + out_t,
+            "cost_usd": str(cost_usd) if cost_usd is not None else "",
+            "status": status or "",
+            "user_id": int(user_id) if user_id is not None else "",
+            "email": email or "",
+            "segment": segment or "",
+            "created_at_kst": kst_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+    return result, truncated
+
+
+# =============================================================================
 # Story 6.4 — 가입유형별 통계 + 연차 히스토그램
 # =============================================================================
 

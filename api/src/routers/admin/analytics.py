@@ -23,9 +23,12 @@ from api.src.services.analytics_service import (
     ALLOWED_SERIES_MONTHS,
     EXPORT_DETAIL_LIMIT,
     EXPORT_DETAIL_LIMIT_REVENUE,
+    QUESTIONS_EXPORT_LIMIT,
+    QuestionsSort,
     SEGMENT_LABELS_KR,
     Unit,
     YEAR_MONTH_RE,
+    _default_window,
     _feedback_default_window,
     _kst_datetime,
     get_feedback_export_rows,
@@ -33,6 +36,10 @@ from api.src.services.analytics_service import (
     get_feedback_items_total,
     get_feedback_series,
     get_feedback_summary,
+    get_questions_export_rows,
+    get_questions_items,
+    get_questions_items_total,
+    get_questions_summary,
     get_revenue_variance_export_rows,
     get_revenue_variance_month,
     get_revenue_variance_series,
@@ -518,6 +525,240 @@ async def feedback_export(
 
     headers: dict[str, str] = {
         "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if truncated:
+        headers["X-Truncated"] = "true"
+
+    return StreamingResponse(buf, media_type=content_type, headers=headers)
+
+
+# =============================================================================
+# 질문 분석 — 일/주/월/년 합산 + 정렬·페이지 + 엑셀
+# =============================================================================
+
+_QUESTIONS_SEGMENT_LABELS = {
+    "doctor": "치과의사",
+    "hygienist": "치과위생사",
+    "student_other": "학생/기타",
+}
+
+
+def _questions_answer_fallback(status: str | None) -> str:
+    if status == "in_progress":
+        return "(스트리밍 진행 중 — 응답 미저장)"
+    if status == "error":
+        return "(응답 생성 실패)"
+    return "(응답 없음)"
+
+
+class QuestionsBucketResponse(BaseModel):
+    bucket_start: str  # YYYY-MM-DD (KST)
+    count: int
+
+
+class QuestionsItem(BaseModel):
+    qa_log_id: int
+    question_text: str
+    answer_text: str | None
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cost_usd: str | None
+    status: str | None
+    user_id: int | None = None
+    email: str | None = None
+    segment: str | None = None
+    created_at: str
+
+
+class QuestionsResponse(BaseModel):
+    unit: Unit
+    sort: QuestionsSort
+    from_: str = Field(alias="from")
+    to: str
+    total_count: int
+    buckets: list[QuestionsBucketResponse]
+    items: list[QuestionsItem]
+    page: int
+    per_page: int
+    total: int
+
+    model_config = {"populate_by_name": True}
+
+
+def _resolve_questions_window(
+    unit: Unit,
+    from_: date | None,
+    to: date | None,
+) -> tuple[datetime, datetime, date, date]:
+    """KST half-open interval + 사용자 from/to."""
+    if from_ is None and to is None:
+        f, t = _default_window(unit)
+    elif from_ is None:
+        f, _ = _default_window(unit)
+        t = to  # type: ignore[assignment]
+    elif to is None:
+        f = from_
+        _, t = _default_window(unit)
+    else:
+        f, t = from_, to
+    start_kst = _kst_datetime(f)
+    end_exclusive_kst = _kst_datetime(t) + timedelta(days=1)
+    return start_kst, end_exclusive_kst, f, t
+
+
+@router.get(
+    "/questions",
+    response_model=QuestionsResponse,
+    response_model_by_alias=True,
+)
+async def questions(
+    response: Response,
+    unit: Unit = Query("day"),
+    sort: QuestionsSort = Query("latest"),
+    from_: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    q: str | None = Query(None),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> QuestionsResponse:
+    q_like = f"%{q}%" if q else None
+    summary = await get_questions_summary(db, unit, from_, to)
+    start_kst, end_exclusive_kst, from_date, to_date = _resolve_questions_window(
+        unit, from_, to
+    )
+    total = await get_questions_items_total(
+        db, start_kst, end_exclusive_kst, q_like
+    )
+    items_data = await get_questions_items(
+        db, start_kst, end_exclusive_kst, sort, page, per_page, q_like
+    )
+
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.analytics.questions.viewed",
+        actor_user_id=actor.id,
+        unit=unit,
+        sort=sort,
+        page=page,
+        total=total,
+        total_count=summary.total_count,
+    )
+
+    return QuestionsResponse(
+        unit=unit,
+        sort=sort,
+        from_=from_date.isoformat(),
+        to=to_date.isoformat(),
+        total_count=summary.total_count,
+        buckets=[
+            QuestionsBucketResponse(
+                bucket_start=b.bucket_start.isoformat(),
+                count=b.count,
+            )
+            for b in summary.buckets
+        ],
+        items=[QuestionsItem(**item) for item in items_data],
+        page=page,
+        per_page=per_page,
+        total=total,
+    )
+
+
+@router.get("/questions/export")
+async def questions_export(
+    unit: Unit = Query("day"),
+    sort: QuestionsSort = Query("latest"),
+    from_: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
+    q: str | None = Query(None),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    import openpyxl
+
+    q_like = f"%{q}%" if q else None
+    summary = await get_questions_summary(db, unit, from_, to)
+    start_kst, end_exclusive_kst, from_date, to_date = _resolve_questions_window(
+        unit, from_, to
+    )
+    rows, truncated = await get_questions_export_rows(
+        db, start_kst, end_exclusive_kst, sort, q_like
+    )
+
+    wb = openpyxl.Workbook()
+    ws_sum = wb.active
+    ws_sum.title = "Summary"
+    ws_sum.append(["항목", "값"])
+    ws_sum.append(["기간 (KST)", f"{from_date.isoformat()} ~ {to_date.isoformat()}"])
+    ws_sum.append(["집계 단위", unit])
+    ws_sum.append(["정렬", sort])
+    ws_sum.append(["총 질문 수", summary.total_count])
+    ws_sum.append(["행 제한 (Detail)", QUESTIONS_EXPORT_LIMIT])
+    ws_sum.append(["잘림 여부", "예" if truncated else "아니오"])
+    ws_sum.append([])
+    ws_sum.append(["bucket_start", "질문 수"])
+    for b in summary.buckets:
+        ws_sum.append([b.bucket_start.isoformat(), b.count])
+
+    ws_det = wb.create_sheet("Detail")
+    if truncated:
+        ws_det.append([f"※ {QUESTIONS_EXPORT_LIMIT}행으로 제한됨"])
+    # 컬럼 순서·라벨을 화면 테이블과 동일하게 맞춤.
+    ws_det.append(
+        [
+            "작성일시 (KST)",
+            "계정",
+            "가입유형",
+            "질문",
+            "답변",
+            "토큰 (입력+출력)",
+        ]
+    )
+    for r in rows:
+        in_t = int(r["input_tokens"] or 0)
+        out_t = int(r["output_tokens"] or 0)
+        total_t = in_t + out_t
+        token_cell = f"{total_t} ({in_t}+{out_t})"
+        account = r["email"] or "(비회원)"
+        segment_label = _QUESTIONS_SEGMENT_LABELS.get(r["segment"], r["segment"] or "—")
+        answer = r["answer_text"]
+        if not answer:
+            answer = _questions_answer_fallback(r["status"])
+        ws_det.append(
+            [
+                r["created_at_kst"],
+                account,
+                segment_label,
+                r["question_text"],
+                answer,
+                token_cell,
+            ]
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"questions_{from_date.isoformat()}_{to_date.isoformat()}.xlsx"
+    content_type = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    logger.info(
+        "admin.analytics.questions.exported",
+        actor_user_id=actor.id,
+        row_count=len(rows),
+        truncated=truncated,
+        unit=unit,
+        sort=sort,
+    )
+
+    headers: dict[str, str] = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
     }
     if truncated:
         headers["X-Truncated"] = "true"
