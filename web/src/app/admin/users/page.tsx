@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   type SearchFilters,
   SearchFilterBar,
 } from "@/features/admin-users/components/SearchFilterBar";
 import { UserSearchTable } from "@/features/admin-users/components/UserSearchTable";
 import { useUsersSearch } from "@/features/admin-users/hooks/useUsersSearch";
+import type {
+  Segment,
+  SubscriptionStatus,
+} from "@/features/admin-users/api/users";
 import styles from "./page.module.css";
 
 const DEFAULT_FILTERS: SearchFilters = {
@@ -15,16 +19,51 @@ const DEFAULT_FILTERS: SearchFilters = {
   segment: null,
   subscription_status: null,
   blocked: null,
+  withdrawn: null,
   created_from: "",
   created_to: "",
 };
 
 const PER_PAGE = 20;
 
+const VALID_SEGMENTS: Segment[] = ["doctor", "hygienist", "student_other"];
+const VALID_STATUSES: SubscriptionStatus[] = ["free", "pro", "blocked"];
+
+function parseBool(raw: string | null): boolean | null {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return null;
+}
+
 export default function AdminUsersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
+  // 대시보드 구독 현황의 KPI/legend 클릭 진입을 위해 URL 파라미터를 초기 필터로 시드한다.
+  // useMemo는 마운트 시 1회만 — 이후 SearchFilterBar 조작은 setFilters로만 진행.
+  const initialFilters = useMemo<SearchFilters>(() => {
+    const segmentRaw = searchParams.get("segment");
+    const statusRaw = searchParams.get("subscription_status");
+    return {
+      q: searchParams.get("q") ?? "",
+      segment:
+        segmentRaw && (VALID_SEGMENTS as string[]).includes(segmentRaw)
+          ? (segmentRaw as Segment)
+          : null,
+      subscription_status:
+        statusRaw && (VALID_STATUSES as string[]).includes(statusRaw)
+          ? (statusRaw as SubscriptionStatus)
+          : null,
+      blocked: parseBool(searchParams.get("blocked")),
+      withdrawn: parseBool(searchParams.get("withdrawn")),
+      created_from: searchParams.get("created_from") ?? "",
+      created_to: searchParams.get("created_to") ?? "",
+    };
+    // 마운트 시 1회 — searchParams 변경 시 재시드하지 않음(사용자 조작 우선).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [filters, setFilters] = useState<SearchFilters>(initialFilters);
   const [page, setPage] = useState(1);
 
   const dateRangeValid =
@@ -37,6 +76,7 @@ export default function AdminUsersPage() {
     segment: filters.segment ?? undefined,
     subscription_status: filters.subscription_status ?? undefined,
     blocked: filters.blocked ?? undefined,
+    withdrawn: filters.withdrawn ?? undefined,
     created_from: dateRangeValid && filters.created_from ? filters.created_from : undefined,
     created_to: dateRangeValid && filters.created_to ? filters.created_to : undefined,
     page,

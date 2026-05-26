@@ -3,6 +3,7 @@
 import {
   type KeyboardEvent,
   useMemo,
+  useState,
 } from "react";
 import type {
   UserSearchItem,
@@ -12,6 +13,7 @@ import {
   formatSegment,
   formatSubscriptionStatus,
 } from "@/features/admin-users/labels";
+import { AdminDMDialog } from "./AdminDMDialog";
 import styles from "./UserSearchTable.module.css";
 
 interface Props {
@@ -24,6 +26,11 @@ interface Props {
   onSelectUser: (user: UserSearchItem) => void;
   onResetFilters: () => void;
   onRetry: () => void;
+}
+
+interface DMTarget {
+  userId: number;
+  email: string;
 }
 
 const KST_FORMAT = new Intl.DateTimeFormat("ko-KR", {
@@ -59,6 +66,8 @@ export function UserSearchTable({
     () => (total === 0 ? 1 : Math.ceil(total / perPage)),
     [total, perPage],
   );
+
+  const [dmTarget, setDmTarget] = useState<DMTarget | null>(null);
 
   function handleRowKey(event: KeyboardEvent<HTMLTableRowElement>, item: UserSearchItem) {
     if (event.key === "Enter" || event.key === " ") {
@@ -114,6 +123,7 @@ export function UserSearchTable({
             <th scope="col">구독 상태</th>
             <th scope="col">카드</th>
             <th scope="col">가입일</th>
+            <th scope="col" aria-label="작업"></th>
           </tr>
         </thead>
         <tbody>
@@ -158,11 +168,40 @@ export function UserSearchTable({
                     : "—"}
                 </td>
                 <td>{formatDate(item.created_at)}</td>
+                <td className={styles.actionCell}>
+                  <button
+                    type="button"
+                    className={styles.dmButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDmTarget({ userId: item.user_id, email: item.email });
+                    }}
+                    disabled={isWithdrawn}
+                    aria-label={`${item.email}에게 쪽지 보내기`}
+                    title={
+                      isWithdrawn
+                        ? "탈퇴한 사용자에게는 보낼 수 없습니다"
+                        : "쪽지 보내기"
+                    }
+                  >
+                    쪽지
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+
+      <AdminDMDialog
+        open={dmTarget !== null}
+        targetUserId={dmTarget?.userId ?? 0}
+        targetEmail={dmTarget?.email ?? ""}
+        onClose={() => setDmTarget(null)}
+        onSent={() => {
+          /* 쪽지 발송 성공 토스트는 차기 작업 — 일단 모달 닫힘으로 충분 */
+        }}
+      />
 
       <nav className={styles.pagination} aria-label="페이지 네비게이션">
         <button

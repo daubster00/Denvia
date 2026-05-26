@@ -6,7 +6,7 @@
  * type 분기 아이콘·strip 색상 + 미읽음 좌측 strip + sanitize HTML 렌더.
  */
 
-import { IconMail, IconCircleInfo, IconCoins } from "@wanteddev/wds-icon";
+import { IconMail, IconCircleInfo, IconCoins, IconPerson } from "@wanteddev/wds-icon";
 
 import type { InboxItem } from "../types";
 import styles from "./NoticeCard.module.css";
@@ -14,60 +14,83 @@ import styles from "./NoticeCard.module.css";
 interface NoticeCardProps {
   item: InboxItem;
   onClick: (messageId: number) => void;
+  onDelete?: (messageId: number) => void;
 }
 
 const TYPE_LABEL: Record<InboxItem["type"], string> = {
   notice: "공지",
   system: "시스템",
   billing: "결제",
+  admin_dm: "안내",
 };
 
 const TYPE_ICON = {
   notice: IconMail,
   system: IconCircleInfo,
   billing: IconCoins,
+  admin_dm: IconPerson,
 } as const;
 
-export function NoticeCard({ item, onClick }: NoticeCardProps) {
-  const stripClass =
-    item.type === "billing"
-      ? styles.stripBilling
-      : item.type === "system"
-        ? styles.stripSystem
-        : styles.stripNotice;
+const STRIP_CLASS: Record<InboxItem["type"], string> = {
+  notice: styles.stripNotice,
+  system: styles.stripSystem,
+  billing: styles.stripBilling,
+  admin_dm: styles.stripAdminDm,
+};
 
-  const iconClass =
-    item.type === "billing"
-      ? styles.iconBilling
-      : item.type === "system"
-        ? styles.iconSystem
-        : styles.iconNotice;
+const ICON_CLASS: Record<InboxItem["type"], string> = {
+  notice: styles.iconNotice,
+  system: styles.iconSystem,
+  billing: styles.iconBilling,
+  admin_dm: styles.iconAdminDm,
+};
 
+export function NoticeCard({ item, onClick, onDelete }: NoticeCardProps) {
   const TypeIcon = TYPE_ICON[item.type];
 
   return (
-    <button
-      type="button"
-      role="article"
-      aria-label={`${TYPE_LABEL[item.type]} 쪽지 — ${item.title}`}
+    <div
       className={`${styles.card} ${item.is_read ? "" : styles.unread}`}
-      onClick={() => onClick(item.message_id)}
     >
-      <span className={`${styles.strip} ${stripClass}`} aria-hidden="true" />
-      <span className={`${styles.icon} ${iconClass}`} aria-hidden="true">
-        <TypeIcon />
-      </span>
-      <span className={styles.body}>
-        <span className={styles.titleRow}>
-          <span className={styles.title}>{item.title}</span>
-          {!item.is_read && <span className={styles.dot} aria-hidden="true" />}
+      <span className={`${styles.strip} ${STRIP_CLASS[item.type]}`} aria-hidden="true" />
+      <button
+        type="button"
+        role="article"
+        aria-label={`${TYPE_LABEL[item.type]} 쪽지 — ${item.title}`}
+        className={styles.cardMain}
+        onClick={() => onClick(item.message_id)}
+      >
+        <span className={`${styles.icon} ${ICON_CLASS[item.type]}`} aria-hidden="true">
+          <TypeIcon />
         </span>
-        <span className={styles.preview}>
-          {stripHtml(item.body_html_safe)}
+        <span className={styles.body}>
+          <span className={styles.titleRow}>
+            <span className={styles.title}>{item.title}</span>
+            {!item.is_read && <span className={styles.dot} aria-hidden="true" />}
+          </span>
+          <span className={styles.preview}>
+            {stripHtml(item.body_html_safe)}
+          </span>
+          <span className={styles.timestamp}>{formatRelative(item.created_at)}</span>
         </span>
-        <span className={styles.timestamp}>{formatRelative(item.created_at)}</span>
-      </span>
-    </button>
+      </button>
+      {onDelete ? (
+        <button
+          type="button"
+          className={styles.deleteBtn}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm("이 쪽지를 삭제하시겠습니까?\n삭제된 쪽지는 30일 후 완전히 사라집니다.")) {
+              onDelete(item.message_id);
+            }
+          }}
+          aria-label="쪽지 삭제"
+          title="쪽지 삭제"
+        >
+          삭제
+        </button>
+      ) : null}
+    </div>
   );
 }
 

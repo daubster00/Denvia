@@ -45,6 +45,46 @@
   color: #374151;
 }
 
+.legendLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.legendLink:hover {
+  background-color: #f3f4f6;
+}
+
+.legendLink:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.kpiLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.kpiLink:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.kpiLink:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .swatch {
   display: inline-block;
   width: 14px;

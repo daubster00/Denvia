@@ -172,6 +172,7 @@ async def search_users(
     segment: Literal["doctor", "hygienist", "student_other"] | None = None,
     subscription_status: Literal["free", "pro", "blocked"] | None = None,
     blocked: bool | None = None,
+    withdrawn: bool | None = None,
     created_from: date | None = None,
     created_to: date | None = None,
     page: int = 1,
@@ -181,6 +182,11 @@ async def search_users(
 
     blocked=True 면 subscription_status='blocked'만, blocked=False 면 그 외만,
     None이면 모든 상태를 포함한다.
+
+    withdrawn=True 면 withdrawn_at IS NOT NULL 만, withdrawn=False 면 IS NULL 만,
+    None이면 탈퇴 여부 무관. 대시보드 구독 현황의 무료/Pro/차단 카운트는
+    withdrawn_at IS NULL 을 강제하므로, 대시보드에서 진입한 경우 withdrawn=False
+    를 함께 전달해야 동일 카운트가 나온다.
 
     created_from/created_to 는 KST 기준 가입일 범위 필터(양 끝일 포함). 한쪽만
     지정해도 동작한다.
@@ -195,6 +201,10 @@ async def search_users(
         conditions.append(User.subscription_status == "blocked")
     elif blocked is False:
         conditions.append(User.subscription_status != "blocked")
+    if withdrawn is True:
+        conditions.append(User.withdrawn_at.is_not(None))
+    elif withdrawn is False:
+        conditions.append(User.withdrawn_at.is_(None))
 
     start_dt, end_dt = _kst_created_range(created_from, created_to)
     if start_dt is not None:

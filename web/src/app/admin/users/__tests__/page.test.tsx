@@ -7,6 +7,7 @@ const pushMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("@/features/admin-users/api/users", () => ({

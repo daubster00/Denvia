@@ -1,6 +1,6 @@
 /** features/inbox 타입 정의 — Story 4.5. */
 
-export type InboxMessageType = "notice" | "system" | "billing";
+export type InboxMessageType = "notice" | "system" | "billing" | "admin_dm";
 
 export type InboxFilter = "all" | "unread";
 

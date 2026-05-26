@@ -173,6 +173,26 @@ class UserPermissionUpdateRequest(BaseModel):
         return self
 
 
+# 관리자 → 특정 사용자 1:1 안내 쪽지 (0051 + admin DM)
+class AdminDMSendRequest(BaseModel):
+    """POST /api/v1/admin/users/{user_id}/inbox-messages 요청.
+
+    title: 1~200자 (inbox_messages.title 컬럼 길이). 본문은 sanitize 후 저장.
+    body_html: 1~5000자 raw HTML — 서버에서 nh3 sanitize 적용 후 INSERT.
+    """
+
+    title: str = Field(min_length=1, max_length=200)
+    body_html: str = Field(min_length=1, max_length=5000)
+
+
+class AdminDMSendResponse(BaseModel):
+    """POST /api/v1/admin/users/{user_id}/inbox-messages 응답."""
+
+    message_id: int
+    target_user_id: int
+    created_at: datetime
+
+
 __all__ = [
     "UserSearchItem",
     "UserSearchListResponse",
@@ -182,4 +202,6 @@ __all__ = [
     "UserDetailResponse",
     "BlockActionRequest",
     "UserPermissionUpdateRequest",
+    "AdminDMSendRequest",
+    "AdminDMSendResponse",
 ]

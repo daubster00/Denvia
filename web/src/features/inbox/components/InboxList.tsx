@@ -5,8 +5,10 @@
 import { useState } from "react";
 
 import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IconInbox } from "@wanteddev/wds-icon";
 
+import { deleteInboxMessage } from "../api";
 import { useInbox } from "../hooks/useInbox";
 import { useMarkRead } from "../hooks/useMarkRead";
 import type { InboxFilter, InboxItem } from "../types";
@@ -28,6 +30,15 @@ export function InboxList({ filter }: InboxListProps) {
 
   const { data, isLoading, isError, refetch } = useInbox(page, perPage, filter);
   const markRead = useMarkRead();
+  const qc = useQueryClient();
+  const deleteMutation = useMutation<void, Error, number>({
+    mutationFn: (messageId) => deleteInboxMessage(messageId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me", "inbox"] });
+      qc.invalidateQueries({ queryKey: ["me", "inbox", "unread-count"] });
+      qc.invalidateQueries({ queryKey: ["me", "inbox", "preview"] });
+    },
+  });
 
   function handleCardClick(item: InboxItem) {
     if (!item.is_read) {
@@ -75,6 +86,7 @@ export function InboxList({ filter }: InboxListProps) {
             <NoticeCard
               item={item}
               onClick={() => handleCardClick(item)}
+              onDelete={(id) => deleteMutation.mutate(id)}
             />
           </li>
         ))}

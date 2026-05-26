@@ -43,6 +43,12 @@ export interface FetchUsersParams {
   segment?: Segment;
   subscription_status?: SubscriptionStatus;
   blocked?: boolean;
+  /**
+   * 탈퇴 여부. true=탈퇴자만, false=탈퇴자 제외, undefined=무관.
+   * 대시보드 구독 현황(무료/Pro/차단)에서 진입 시 false 를 함께 전달해야
+   * 대시보드 카운트와 사용자 페이지 카운트가 일치한다.
+   */
+  withdrawn?: boolean;
   /** 가입일 시작 (YYYY-MM-DD, KST 기준 해당일 포함) */
   created_from?: string;
   /** 가입일 종료 (YYYY-MM-DD, KST 기준 해당일 포함) */
@@ -96,6 +102,8 @@ export async function fetchUsers(
   if (params.subscription_status)
     query.set("subscription_status", params.subscription_status);
   if (params.blocked !== undefined) query.set("blocked", String(params.blocked));
+  if (params.withdrawn !== undefined)
+    query.set("withdrawn", String(params.withdrawn));
   if (params.created_from) query.set("created_from", params.created_from);
   if (params.created_to) query.set("created_to", params.created_to);
   if (params.page) query.set("page", String(params.page));
@@ -190,6 +198,53 @@ export async function clearAnomalyThrottle(userId: number): Promise<void> {
     }
     throw new UserPermissionUpdateError(res.status, code, message);
   }
+}
+
+/**
+ * 관리자 → 특정 사용자 1:1 안내 쪽지 발송.
+ * POST /api/v1/admin/users/{user_id}/inbox-messages
+ */
+export interface AdminDMSendPayload {
+  title: string;
+  body_html: string;
+}
+
+export interface AdminDMSendResponse {
+  message_id: number;
+  target_user_id: number;
+  created_at: string;
+}
+
+export async function sendAdminDM(
+  userId: number,
+  payload: AdminDMSendPayload,
+): Promise<AdminDMSendResponse> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/users/${userId}/inbox-messages`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    let code = "UNKNOWN_ERROR";
+    let message = "쪽지 발송에 실패했습니다.";
+    try {
+      const body = (await res.json()) as { code?: string; message?: string };
+      if (body.code) code = body.code;
+      if (body.message) message = body.message;
+    } catch {
+      /* fallthrough */
+    }
+    throw new UserPermissionUpdateError(res.status, code, message);
+  }
+  return res.json() as Promise<AdminDMSendResponse>;
 }
 
 export async function updateUserPermission(

@@ -92,6 +92,19 @@ celery_app.conf.update(
             "task": "retention_tasks.delete_old_payments",
             "schedule": crontab(hour=3, minute=30),
         },
+        # qa_logs 1년 retention — 매일 03:15 KST
+        # 처리방침 §4 "서비스 이용 로그 1년" 약속 이행. audit-logs(03:00) 와
+        # payments(03:30) 사이의 비어있는 분 슬롯에 배치한다.
+        "retention-qa-logs-daily": {
+            "task": "retention_tasks.delete_old_qa_logs",
+            "schedule": crontab(hour=3, minute=15),
+        },
+        # inbox_messages purge — 매일 03:45 KST
+        # 휴지통 30일 OR 발송 1년 경과 row 영구 삭제. payments(03:30) 직후 분 슬롯.
+        "retention-inbox-messages-daily": {
+            "task": "retention_tasks.purge_old_inbox_messages",
+            "schedule": crontab(hour=3, minute=45),
+        },
         # Story 4.2: F-502 야간 광고 차단 상태 전환 — KST 21:00 / 08:00
         # (budget-check-hourly 매시 minute=0과 동시 발화 허용 — 별도 워커 처리, 충돌 없음)
         "toggle-night-block-on-2100": {

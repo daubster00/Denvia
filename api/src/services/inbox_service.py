@@ -3,15 +3,19 @@
 함수 목록:
 - list_inbox(): 쪽지함 페이지네이션 조회 + sanitize
 - mark_read(): 단일 쪽지 읽음 처리(멱등)
+- soft_delete(): 사용자 본인 쪽지 휴지통 처리(30일 후 영구삭제 배치)
 - get_unread_count(): TopNav 뱃지용 미읽음 개수
 - get_active_popups(): 메인 진입 시 노출 후보 배열 조회 (디바이스 필터)
+- send_admin_dm(): 관리자 → 특정 사용자 1:1 쪽지 발송
 - (제거됨) mark_popup_seen — Story 7.2 v2에서 쪽지함 보관 중단. 노출 추적은 클라이언트 sessionStorage.
 
-권한 경계: 모든 함수가 user_id를 강제 매개변수로 받고 WHERE 절에 항상 포함한다.
+권한 경계: 모든 조회 함수가 user_id를 강제 매개변수로 받고 WHERE 절에 항상 포함하며,
+deleted_at IS NULL 조건도 함께 적용한다(휴지통 row는 사용자에게 노출되지 않음).
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Literal
 
 from sqlalchemy import func, or_, select
@@ -37,8 +41,14 @@ async def list_inbox(
     per_page: int,
     filter_unread: bool,
 ) -> InboxListResponse:
-    """쪽지함 페이지네이션 조회 + body_html sanitize 적용."""
-    base_filter = [InboxMessage.user_id == user_id]
+    """쪽지함 페이지네이션 조회 + body_html sanitize 적용.
+
+    휴지통(deleted_at IS NOT NULL)에 들어간 쪽지는 응답에서 제외한다.
+    """
+    base_filter = [
+        InboxMessage.user_id == user_id,
+        InboxMessage.deleted_at.is_(None),
+    ]
     if filter_unread:
         base_filter.append(InboxMessage.is_read.is_(False))
 
@@ -52,6 +62,7 @@ async def list_inbox(
         await db.execute(
             select(func.count(InboxMessage.id))
             .where(InboxMessage.user_id == user_id)
+            .where(InboxMessage.deleted_at.is_(None))
             .where(InboxMessage.is_read.is_(False))
         )
     ).scalar_one()
@@ -104,6 +115,7 @@ async def mark_read(
             select(InboxMessage).where(
                 InboxMessage.id == message_id,
                 InboxMessage.user_id == user_id,
+                InboxMessage.deleted_at.is_(None),
             )
         )
     ).scalar_one_or_none()
@@ -118,13 +130,71 @@ async def mark_read(
     return was_already_read
 
 
+async def soft_delete(
+    db: AsyncSession, user_id: int, message_id: int
+) -> bool:
+    """본인 쪽지를 휴지통(deleted_at=NOW)으로 이동한다.
+
+    Returns:
+        True  — 처리 완료(이미 삭제된 row이면 멱등으로 True)
+        False — 본인 row 아님 또는 미존재(404 분기용)
+
+    30일 경과 후 retention 배치(purge_old_inbox_messages)가 실제 삭제한다.
+    """
+    row = (
+        await db.execute(
+            select(InboxMessage).where(
+                InboxMessage.id == message_id,
+                InboxMessage.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return False
+    if row.deleted_at is None:
+        row.deleted_at = datetime.now(tz=timezone.utc)
+        await db.commit()
+    return True
+
+
+async def send_admin_dm(
+    db: AsyncSession,
+    *,
+    target_user_id: int,
+    admin_id: int,
+    title: str,
+    body_html: str,
+) -> InboxMessage:
+    """관리자 → 특정 사용자 1:1 쪽지 INSERT (type='admin_dm').
+
+    호출자는 사용자 존재/탈퇴 여부를 미리 검증해야 한다.
+    body_html은 호출자가 sanitize한 값을 그대로 저장한다(미리보기/응답에서는
+    sanitize_body_html을 다시 적용).
+    """
+    row = InboxMessage(
+        user_id=target_user_id,
+        notice_id=None,
+        popup_id=None,
+        type="admin_dm",
+        title=title,
+        body_html=body_html,
+        is_read=False,
+        created_by_admin_id=admin_id,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
 async def get_unread_count(db: AsyncSession, user_id: int) -> int:
-    """TopNav 뱃지용 미읽음 개수."""
+    """TopNav 뱃지용 미읽음 개수 — 휴지통에 들어간 쪽지는 제외한다."""
     return int(
         (
             await db.execute(
                 select(func.count(InboxMessage.id))
                 .where(InboxMessage.user_id == user_id)
+                .where(InboxMessage.deleted_at.is_(None))
                 .where(InboxMessage.is_read.is_(False))
             )
         ).scalar_one()
@@ -218,6 +288,7 @@ async def get_preview_messages(
             .where(
                 InboxMessage.user_id == user_id,
                 InboxMessage.is_read.is_(False),
+                InboxMessage.deleted_at.is_(None),
             )
             .order_by(
                 InboxMessage.created_at.desc(),
@@ -243,6 +314,8 @@ async def get_preview_messages(
 __all__ = [
     "list_inbox",
     "mark_read",
+    "soft_delete",
+    "send_admin_dm",
     "get_unread_count",
     "get_active_popups",
     "get_preview_messages",

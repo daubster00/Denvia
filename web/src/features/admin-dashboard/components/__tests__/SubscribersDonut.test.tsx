@@ -1,7 +1,22 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SubscribersDonut } from "../SubscribersDonut";
 import type { SubscribersResponse } from "../../api/analytics";
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 
 beforeAll(() => {
   // @ts-expect-error - jsdom polyfill
@@ -72,5 +87,37 @@ describe("SubscribersDonut", () => {
     render(<SubscribersDonut data={makeData()} />);
     // 100 + 10 + 2 + 5 = 117. free 100 → 85.5%
     expect(screen.getByText(/100명 \(85\.5%\)/)).toBeTruthy();
+  });
+
+  it("각 segment 클릭 → /admin/users 필터 링크로 이동", () => {
+    render(<SubscribersDonut data={makeData()} />);
+
+    // KPI + legend 양쪽에 각 segment 당 1개씩 = 총 2개 링크
+    const freeLinks = screen.getAllByLabelText(/무료 사용자 목록 보기/);
+    expect(freeLinks.length).toBe(2);
+    freeLinks.forEach((el) => {
+      expect(el.getAttribute("href")).toBe(
+        "/admin/users?subscription_status=free&withdrawn=false",
+      );
+    });
+
+    const proLinks = screen.getAllByLabelText(/Pro 사용자 목록 보기/);
+    proLinks.forEach((el) => {
+      expect(el.getAttribute("href")).toBe(
+        "/admin/users?subscription_status=pro&withdrawn=false",
+      );
+    });
+
+    const blockedLinks = screen.getAllByLabelText(/차단 사용자 목록 보기/);
+    blockedLinks.forEach((el) => {
+      expect(el.getAttribute("href")).toBe(
+        "/admin/users?subscription_status=blocked&withdrawn=false",
+      );
+    });
+
+    const withdrawnLinks = screen.getAllByLabelText(/탈퇴 사용자 목록 보기/);
+    withdrawnLinks.forEach((el) => {
+      expect(el.getAttribute("href")).toBe("/admin/users?withdrawn=true");
+    });
   });
 });

@@ -9,7 +9,7 @@ class InboxItem(BaseModel):
     """GET /api/v1/me/inbox items[i]."""
 
     message_id: int
-    type: Literal["notice", "system", "billing"]
+    type: Literal["notice", "system", "billing", "admin_dm"]
     title: str
     body_html_safe: str  # nh3 sanitize 적용 후 응답
     is_read: bool
@@ -62,7 +62,7 @@ class InboxPreviewItem(BaseModel):
     """
 
     message_id: int
-    type: Literal["notice", "system", "billing"]
+    type: Literal["notice", "system", "billing", "admin_dm"]
     title: str
     is_read: bool
     created_at: str  # ISO 8601

@@ -1,0 +1,137 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  width: min(560px, calc(100vw - 32px));
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.target {
+  font-size: 13px;
+  color: #6b7280;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.targetEmail {
+  color: #111827;
+  font-weight: 600;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111827;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 0;
+  border-color: #2563eb;
+}
+
+.textarea {
+  min-height: 140px;
+  line-height: 1.5;
+}
+
+.helperRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.errorBox {
+  font-size: 13px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cancel,
+.submit {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.cancel {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.cancel:hover {
+  background: #f9fafb;
+}
+
+.submit {
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.submit:hover {
+  background: #1d4ed8;
+}
+
+.submit:disabled,
+.cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

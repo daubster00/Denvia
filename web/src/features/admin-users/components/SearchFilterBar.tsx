@@ -18,6 +18,11 @@ export interface SearchFilters {
   segment: Segment | null;
   subscription_status: SubscriptionStatus | null;
   blocked: boolean | null;
+  /**
+   * 탈퇴 여부 필터. true=탈퇴자만, false=탈퇴자 제외, null=무관.
+   * 상태 select에서 "탈퇴"를 고르면 subscription_status=null + withdrawn=true 로 매핑된다.
+   */
+  withdrawn: boolean | null;
   /** 가입일 시작 (YYYY-MM-DD, KST 해당일 포함). 빈 문자열 = 미지정. */
   created_from: string;
   /** 가입일 종료 (YYYY-MM-DD, KST 해당일 포함). 빈 문자열 = 미지정. */
@@ -39,11 +44,19 @@ const SEGMENT_OPTIONS: { value: Segment | "all"; label: string }[] = [
   { value: "student_other", label: "학생/기타" },
 ];
 
-const STATUS_OPTIONS: { value: SubscriptionStatus | "all"; label: string }[] = [
+/**
+ * 상태 필터 선택값.
+ * - "all" / "free" / "pro" / "blocked" 은 subscription_status 컬럼에 매핑된다.
+ * - "withdrawn" 은 subscription_status=null + withdrawn=true 로 매핑된다 (탈퇴자 단독 조회).
+ */
+type StatusChoice = SubscriptionStatus | "all" | "withdrawn";
+
+const STATUS_OPTIONS: { value: StatusChoice; label: string }[] = [
   { value: "all", label: "전체" },
   { value: "free", label: "무료" },
   { value: "pro", label: "Pro" },
   { value: "blocked", label: "차단" },
+  { value: "withdrawn", label: "탈퇴" },
 ];
 
 const BLOCKED_OPTIONS: { value: "all" | "true" | "false"; label: string }[] = [
@@ -89,11 +102,16 @@ export function SearchFilterBar({
   }
 
   function handleStatusChange(event: ChangeEvent<HTMLSelectElement>) {
-    const v = event.target.value;
-    onChange({
-      ...value,
-      subscription_status: v === "all" ? null : (v as SubscriptionStatus),
-    });
+    const v = event.target.value as StatusChoice;
+    if (v === "all") {
+      onChange({ ...value, subscription_status: null, withdrawn: null });
+    } else if (v === "withdrawn") {
+      onChange({ ...value, subscription_status: null, withdrawn: true });
+    } else {
+      // free/pro/blocked: 탈퇴 필터는 명시 해제 — 사용자가 의도적으로 status를 골랐을 때
+      // 이전에 걸려있던 withdrawn=true 가 함께 작동하지 않도록.
+      onChange({ ...value, subscription_status: v, withdrawn: null });
+    }
   }
 
   function handleBlockedChange(event: ChangeEvent<HTMLSelectElement>) {
@@ -148,7 +166,11 @@ export function SearchFilterBar({
 
       <select
         className={styles.select}
-        value={value.subscription_status ?? "all"}
+        value={
+          value.withdrawn === true
+            ? "withdrawn"
+            : (value.subscription_status ?? "all")
+        }
         onChange={handleStatusChange}
         aria-label="구독 상태 필터"
       >

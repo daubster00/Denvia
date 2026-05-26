@@ -382,6 +382,35 @@ async def mark_inbox_message_read(
     return Response(status_code=204)
 
 
+@router.delete("/me/inbox/{message_id}", status_code=204)
+async def delete_my_inbox_message(
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """본인 쪽지를 휴지통으로 보낸다(soft delete).
+
+    deleted_at=NOW가 채워지면 즉시 쪽지함/미읽음 카운트에서 사라진다.
+    실제 행 삭제는 30일 후 retention 배치(purge_old_inbox_messages)가 처리한다.
+    멱등 — 이미 삭제된 row도 204.
+    """
+    ok = await inbox_service.soft_delete(db, current_user.id, message_id)
+    if not ok:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "INBOX_MESSAGE_NOT_FOUND",
+                "message": "쪽지를 찾을 수 없습니다.",
+            },
+        )
+    logger.info(
+        "inbox.message.deleted",
+        user_id=current_user.id,
+        message_id=message_id,
+    )
+    return Response(status_code=204)
+
+
 @router.get("/me/inbox/unread-count", response_model=UnreadCountResponse)
 async def get_my_inbox_unread_count(
     current_user: User = Depends(get_current_user),

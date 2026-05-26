@@ -30,6 +30,13 @@ export async function markInboxRead(messageId: number): Promise<void> {
   });
 }
 
+/** DELETE /api/v1/me/inbox/{id} — 휴지통(soft delete). 204 응답. */
+export async function deleteInboxMessage(messageId: number): Promise<void> {
+  await apiFetch<void>(`/api/v1/me/inbox/${messageId}`, {
+    method: "DELETE",
+  });
+}
+
 /** GET /api/v1/me/inbox/unread-count */
 export async function fetchUnreadCount(): Promise<UnreadCountResponse> {
   return apiFetch<UnreadCountResponse>("/api/v1/me/inbox/unread-count");

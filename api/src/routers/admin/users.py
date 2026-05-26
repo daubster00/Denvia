@@ -26,6 +26,7 @@ from redis.asyncio import Redis as AsyncRedis
 from api.src.deps.auth import require_admin
 from api.src.deps.redis import get_redis_quota, get_redis_rate_limit
 from api.src.middleware.audit_actions import (
+    AUDIT_ADMIN_DM_SEND,
     AUDIT_ANOMALY_THROTTLE_CLEAR,
     AUDIT_LOGIN_LOCKOUT_CLEAR,
     audit_action,
@@ -40,6 +41,8 @@ from api.src.schemas.admin.user_activity import (
     UserQALogListResponse,
 )
 from api.src.schemas.admin.users import (
+    AdminDMSendRequest,
+    AdminDMSendResponse,
     UserDetailResponse,
     UserPermissionUpdateRequest,
     UserSearchItem,
@@ -49,8 +52,10 @@ from api.src.services import (
     admin_user_activity_service,
     admin_user_service,
     anomaly_service,
+    inbox_service,
     user_service,
 )
+from api.src.utils.html_sanitize import sanitize_body_html
 from api.src.utils.jwt import (
     JWTDecodeError,
     SessionExpired,
@@ -97,6 +102,13 @@ async def list_users(
     segment: Literal["doctor", "hygienist", "student_other"] | None = Query(None),
     subscription_status: Literal["free", "pro", "blocked"] | None = Query(None),
     blocked: bool | None = Query(None),
+    withdrawn: bool | None = Query(
+        None,
+        description=(
+            "탈퇴 여부 필터. true=탈퇴자만, false=탈퇴자 제외, 미지정=무관. "
+            "대시보드 구독 현황과 카운트를 일치시키려면 무료/Pro/차단 클릭 시 false 전달."
+        ),
+    ),
     created_from: date | None = Query(
         None, description="가입일 시작(KST, YYYY-MM-DD). 해당일 00:00부터 포함."
     ),
@@ -124,6 +136,7 @@ async def list_users(
         segment=segment,
         subscription_status=subscription_status,
         blocked=blocked,
+        withdrawn=withdrawn,
         created_from=created_from,
         created_to=created_to,
         page=page,
@@ -140,6 +153,7 @@ async def list_users(
             "segment": segment,
             "subscription_status": subscription_status,
             "blocked": blocked,
+            "withdrawn": withdrawn,
             "created_from": created_from.isoformat() if created_from else None,
             "created_to": created_to.isoformat() if created_to else None,
         },
@@ -322,6 +336,80 @@ async def patch_user(
     )
 
     return item
+
+
+@router.post(
+    "/{user_id}/inbox-messages",
+    response_model=AdminDMSendResponse,
+    status_code=201,
+)
+@limiter.limit("30/minute", key_func=_admin_user_id_key)
+@audit_action(AUDIT_ADMIN_DM_SEND)
+async def send_admin_dm(
+    request: Request,
+    user_id: int,
+    payload: AdminDMSendRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AdminDMSendResponse:
+    """관리자 → 특정 사용자 1:1 안내 쪽지 발송 (admin DM).
+
+    - 대상 사용자 존재/탈퇴 검증: 탈퇴자(withdrawn_at IS NOT NULL)에게는 발송 불가.
+    - body_html은 서버에서 nh3 sanitize 적용 후 저장(공지/팝업과 동일 정책).
+    - audit_action='admin_dm.send' — AuditMiddleware가 응답 직후 INSERT.
+    """
+    target = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_USER_NOT_FOUND",
+                "message": "사용자를 찾을 수 없습니다.",
+            },
+        )
+    if target.withdrawn_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ADMIN_DM_WITHDRAWN_TARGET",
+                "message": "탈퇴한 사용자에게는 쪽지를 보낼 수 없습니다.",
+            },
+        )
+
+    safe_body = sanitize_body_html(payload.body_html)
+    msg = await inbox_service.send_admin_dm(
+        db,
+        target_user_id=user_id,
+        admin_id=admin.id,
+        title=payload.title,
+        body_html=safe_body,
+    )
+
+    request.state.audit_target_type = "inbox_message"
+    request.state.audit_target_id = msg.id
+    request.state.audit_diff = {
+        "target_user_id": user_id,
+        "title_length": len(payload.title),
+        "body_length": len(safe_body),
+    }
+
+    logger.info(
+        "admin.users.dm_sent",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+        message_id=msg.id,
+        title_length=len(payload.title),
+        body_length=len(safe_body),
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+
+    return AdminDMSendResponse(
+        message_id=msg.id,
+        target_user_id=user_id,
+        created_at=msg.created_at,
+    )
 
 
 @router.delete("/{user_id}/anomaly-throttle", status_code=204)

@@ -146,6 +146,62 @@ describe("AnswerFeedback", () => {
 
   // ──── 타이머: 3초 후 fade ────
 
+  // ──── 클릭 후 sparkle → 감사 텍스트 ────
+
+  it("성공 후 일정 시간이 지나면 버튼이 사라지고 '응답해주셔서 감사합니다' 노출", async () => {
+    vi.useFakeTimers();
+    mockSubmitFeedback.mockResolvedValue({
+      qa_log_id: 1,
+      rating: "good",
+      change_count: 0,
+      action: "created",
+    });
+
+    renderWithQuery(<AnswerFeedback qaLogId={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "도움이 됐어요" }));
+
+    // mutation onSuccess 플러시
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // sparkle 단계 — 버튼은 아직 살아있음
+    expect(screen.getByRole("button", { name: "도움이 됐어요" })).toBeDefined();
+
+    // sparkle 타이머 경과
+    act(() => { vi.advanceTimersByTime(1000); });
+
+    // 버튼 사라지고 감사 텍스트 노출
+    expect(screen.queryByRole("button", { name: "도움이 됐어요" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "도움이 안 됐어요" })).toBeNull();
+    expect(screen.getByText("응답해주셔서 감사합니다")).toBeDefined();
+  });
+
+  it("BAD 클릭도 동일하게 감사 텍스트로 전환", async () => {
+    vi.useFakeTimers();
+    mockSubmitFeedback.mockResolvedValue({
+      qa_log_id: 1,
+      rating: "bad",
+      change_count: 0,
+      action: "created",
+    });
+
+    renderWithQuery(<AnswerFeedback qaLogId={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "도움이 안 됐어요" }));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => { vi.advanceTimersByTime(1000); });
+
+    expect(screen.getByText("응답해주셔서 감사합니다")).toBeDefined();
+  });
+
   it("에러 메시지는 3초 후 사라짐", async () => {
     // fake timer를 렌더 전에 설정하여 onError의 setTimeout도 제어
     vi.useFakeTimers();

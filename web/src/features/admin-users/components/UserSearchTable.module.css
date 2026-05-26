@@ -183,3 +183,31 @@
   color: #374151;
   cursor: pointer;
 }
+
+.actionCell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dmButton {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #2563eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dmButton:hover {
+  background: #eff6ff;
+}
+
+.dmButton:disabled {
+  border-color: #d1d5db;
+  color: #9ca3af;
+  cursor: not-allowed;
+  background: #f3f4f6;
+}

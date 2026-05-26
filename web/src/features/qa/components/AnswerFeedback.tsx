@@ -10,13 +10,33 @@ interface AnswerFeedbackProps {
   qaLogId: number;
 }
 
+type Phase = "idle" | "sparkling" | "thanked";
+
+const SPARKLE_DURATION_MS = 900;
+
+function SparkleBurst() {
+  return (
+    <span className={styles.sparkleBurst} aria-hidden="true">
+      <span className={styles.sparkle} />
+      <span className={styles.sparkle} />
+      <span className={styles.sparkle} />
+      <span className={styles.sparkle} />
+      <span className={styles.sparkle} />
+      <span className={styles.sparkle} />
+    </span>
+  );
+}
+
 export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
   const [rating, setRating] = useState<"good" | "bad" | null>(null);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [errorText, setErrorText] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sparkleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    if (sparkleTimerRef.current) clearTimeout(sparkleTimerRef.current);
   }, []);
 
   const mutation = useMutation({
@@ -24,6 +44,12 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
     onSuccess: (data) => {
       setRating(data.rating);
       setErrorText(null);
+      setPhase("sparkling");
+      if (sparkleTimerRef.current) clearTimeout(sparkleTimerRef.current);
+      sparkleTimerRef.current = setTimeout(
+        () => setPhase("thanked"),
+        SPARKLE_DURATION_MS,
+      );
     },
     onError: (err) => {
       const code = (err as { code?: string }).code;
@@ -40,14 +66,28 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
 
   const isPending = mutation.isPending;
 
-  const buttonClass = (active: boolean) =>
+  if (phase === "thanked") {
+    return (
+      <div className={styles.row} aria-label="답변 피드백">
+        <span role="status" aria-live="polite" className={styles.thanksText}>
+          응답해주셔서 감사합니다
+        </span>
+      </div>
+    );
+  }
+
+  const buttonClass = (active: boolean, sparkling: boolean) =>
     [
       styles.btn,
       active ? styles.btnActive : "",
+      sparkling ? styles.btnSparkling : "",
       isPending ? styles.btnDisabled : "",
     ]
       .filter(Boolean)
       .join(" ");
+
+  const goodSparkling = phase === "sparkling" && rating === "good";
+  const badSparkling = phase === "sparkling" && rating === "bad";
 
   return (
     <div className={styles.row} aria-label="답변 피드백">
@@ -55,21 +95,23 @@ export function AnswerFeedback({ qaLogId }: AnswerFeedbackProps) {
         type="button"
         aria-label="도움이 됐어요"
         aria-pressed={rating === "good"}
-        disabled={isPending}
+        disabled={isPending || phase === "sparkling"}
         onClick={() => mutation.mutate("good")}
-        className={buttonClass(rating === "good")}
+        className={buttonClass(rating === "good", goodSparkling)}
       >
         <IconLike aria-hidden="true" className={styles.icon} />
+        {goodSparkling && <SparkleBurst />}
       </button>
       <button
         type="button"
         aria-label="도움이 안 됐어요"
         aria-pressed={rating === "bad"}
-        disabled={isPending}
+        disabled={isPending || phase === "sparkling"}
         onClick={() => mutation.mutate("bad")}
-        className={buttonClass(rating === "bad")}
+        className={buttonClass(rating === "bad", badSparkling)}
       >
         <IconDislike aria-hidden="true" className={styles.icon} />
+        {badSparkling && <SparkleBurst />}
       </button>
       {errorText && (
         <span role="status" aria-live="polite" className={styles.errorText}>

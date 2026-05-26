@@ -10,6 +10,7 @@ const baseValue: SearchFilters = {
   segment: null,
   subscription_status: null,
   blocked: null,
+  withdrawn: null,
   created_from: "",
   created_to: "",
 };
