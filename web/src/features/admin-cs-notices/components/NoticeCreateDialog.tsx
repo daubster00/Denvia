@@ -1,12 +1,12 @@
 "use client";
 
-/** 쪽지(공지) 작성 다이얼로그 — Story 7.1.
- *
- * 작성 즉시 발행 + target_segment의 모든 사용자 inbox로 fan-out된다.
- * 편집 미지원(스냅샷 보존) — 잘못 발행 시 삭제 후 재작성.
- */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  fetchUsers,
+  type UserSearchItem,
+} from "@/features/admin-users/api/users";
 
 import {
   NoticeApiError,
@@ -16,19 +16,49 @@ import {
 } from "../api/notice";
 import styles from "./NoticeCreateDialog.module.css";
 
+export type CreateTargetType = "segment" | "user";
+
+export interface NoticeCreateSubmitPayload {
+  target_type: CreateTargetType;
+  title: string;
+  body_html: string;
+  /** target_type='segment' 일 때만 채워짐 */
+  target_segment?: NoticeTargetSegment;
+  /** target_type='user' 일 때만 채워짐 */
+  target_user_id?: number;
+  target_user_email?: string;
+}
+
 interface NoticeCreateDialogProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onClose: () => void;
-  onSubmit: (input: NoticeFormInput) => void;
+  onSubmit: (payload: NoticeCreateSubmitPayload) => void;
 }
 
-const SEGMENT_OPTIONS: Array<{ value: NoticeTargetSegment; label: string }> = [
-  { value: "all", label: "전체" },
-  { value: "doctor", label: "치과의사" },
-  { value: "hygienist", label: "치과위생사" },
-  { value: "student_other", label: "학생/기타" },
+type TargetChoice =
+  | { kind: "segment"; value: NoticeTargetSegment; label: string }
+  | { kind: "user"; label: "특정 사용자" };
+
+const TARGET_CHOICES: TargetChoice[] = [
+  { kind: "segment", value: "all", label: "전체" },
+  { kind: "segment", value: "doctor", label: "치과의사" },
+  { kind: "segment", value: "hygienist", label: "치과위생사" },
+  { kind: "segment", value: "student_other", label: "학생/기타" },
+  { kind: "user", label: "특정 사용자" },
 ];
+
+const USER_SEARCH_DEBOUNCE_MS = 250;
+const USER_SEARCH_PER_PAGE = 8;
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
 
 export function NoticeCreateDialog({
   isSubmitting,
@@ -38,13 +68,31 @@ export function NoticeCreateDialog({
 }: NoticeCreateDialogProps) {
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const [targetKind, setTargetKind] = useState<CreateTargetType>("segment");
   const [targetSegment, setTargetSegment] =
     useState<NoticeTargetSegment>("all");
+  const [userQuery, setUserQuery] = useState("");
+  const [selectedUser, setSelectedUser] = useState<UserSearchItem | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     title?: string;
     body_html?: string;
+    target?: string;
   }>({});
   const titleRef = useRef<HTMLInputElement>(null);
+
+  const debouncedQuery = useDebouncedValue(userQuery.trim(), USER_SEARCH_DEBOUNCE_MS);
+
+  const userSearchQuery = useQuery({
+    queryKey: ["admin", "notice-create-user-search", debouncedQuery],
+    queryFn: () =>
+      fetchUsers({
+        q: debouncedQuery,
+        withdrawn: false,
+        per_page: USER_SEARCH_PER_PAGE,
+      }),
+    enabled: targetKind === "user" && debouncedQuery.length > 0 && !selectedUser,
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -55,8 +103,24 @@ export function NoticeCreateDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, isSubmitting]);
 
+  const searchResults = useMemo(() => {
+    if (targetKind !== "user") return [];
+    if (selectedUser) return [];
+    if (debouncedQuery.length === 0) return [];
+    return userSearchQuery.data?.items ?? [];
+  }, [targetKind, selectedUser, debouncedQuery, userSearchQuery.data]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (targetKind === "user" && !selectedUser) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        target: "받는 사용자를 검색해서 선택해주세요.",
+      }));
+      return;
+    }
+
     const parsed = noticeFormSchema.safeParse({
       title,
       body_html: bodyHtml,
@@ -73,7 +137,24 @@ export function NoticeCreateDialog({
       return;
     }
     setFieldErrors({});
-    onSubmit(parsed.data);
+
+    if (targetKind === "user" && selectedUser) {
+      onSubmit({
+        target_type: "user",
+        title: parsed.data.title,
+        body_html: parsed.data.body_html,
+        target_user_id: selectedUser.user_id,
+        target_user_email: selectedUser.email,
+      });
+      return;
+    }
+
+    onSubmit({
+      target_type: "segment",
+      title: parsed.data.title,
+      body_html: parsed.data.body_html,
+      target_segment: parsed.data.target_segment,
+    });
   }
 
   return (
@@ -96,7 +177,7 @@ export function NoticeCreateDialog({
             새 쪽지 작성
           </h2>
           <p className={styles.caption}>
-            저장 즉시 대상 사용자의 쪽지함으로 발송됩니다. 잘못 발송한 쪽지는 목록에서 삭제하면 회수됩니다.
+            전체/세그먼트 또는 특정 사용자에게 쪽지를 보냅니다. 저장 즉시 발송되며, 잘못 보낸 쪽지는 목록에서 삭제하면 회수됩니다.
           </p>
         </header>
 
@@ -137,23 +218,134 @@ export function NoticeCreateDialog({
             )}
           </label>
 
-          <label className={styles.field}>
-            <span className={styles.label}>대상</span>
-            <select
-              value={targetSegment}
-              onChange={(e) =>
-                setTargetSegment(e.target.value as NoticeTargetSegment)
-              }
-              className={styles.select}
-              disabled={isSubmitting}
-            >
-              {SEGMENT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className={styles.field}>
+            <span className={styles.label}>받는 대상</span>
+            <div className={styles.targetGroup} role="radiogroup" aria-label="받는 대상">
+              {TARGET_CHOICES.map((choice) => {
+                const isActive =
+                  choice.kind === "user"
+                    ? targetKind === "user"
+                    : targetKind === "segment" && targetSegment === choice.value;
+                const id =
+                  choice.kind === "user"
+                    ? "target-user"
+                    : `target-segment-${choice.value}`;
+                return (
+                  <label
+                    key={id}
+                    htmlFor={id}
+                    className={`${styles.targetOption} ${isActive ? styles.targetOptionActive : ""}`}
+                  >
+                    <input
+                      id={id}
+                      type="radio"
+                      name="notice-target"
+                      className={styles.targetRadio}
+                      checked={isActive}
+                      disabled={isSubmitting}
+                      onChange={() => {
+                        if (choice.kind === "user") {
+                          setTargetKind("user");
+                        } else {
+                          setTargetKind("segment");
+                          setTargetSegment(choice.value);
+                          setSelectedUser(null);
+                          setUserQuery("");
+                        }
+                        setFieldErrors((prev) => ({ ...prev, target: undefined }));
+                      }}
+                    />
+                    {choice.label}
+                  </label>
+                );
+              })}
+            </div>
+            {fieldErrors.target && (
+              <span className={styles.error}>{fieldErrors.target}</span>
+            )}
+          </div>
+
+          {targetKind === "user" && (
+            <div className={styles.field}>
+              <span className={styles.label}>받는 사용자</span>
+              {selectedUser ? (
+                <span className={styles.selectedChip}>
+                  <span className={styles.selectedChipEmail}>
+                    {selectedUser.email}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.selectedChipClear}
+                    aria-label="선택 해제"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      setSelectedUser(null);
+                      setUserQuery("");
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ) : (
+                <div className={styles.searchBox}>
+                  <input
+                    type="text"
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                    placeholder="이메일 또는 이름으로 검색"
+                    className={styles.searchInput}
+                    disabled={isSubmitting}
+                    autoComplete="off"
+                  />
+                  {debouncedQuery.length > 0 && (
+                    <>
+                      {userSearchQuery.isPending ? (
+                        <span className={styles.searchEmpty}>검색 중…</span>
+                      ) : userSearchQuery.error ? (
+                        <span className={styles.searchEmpty}>
+                          사용자 검색에 실패했습니다.
+                        </span>
+                      ) : searchResults.length === 0 ? (
+                        <span className={styles.searchEmpty}>
+                          일치하는 사용자가 없습니다.
+                        </span>
+                      ) : (
+                        <ul className={styles.searchResults} role="listbox">
+                          {searchResults.map((u) => (
+                            <li
+                              key={u.user_id}
+                              role="option"
+                              aria-selected="false"
+                              tabIndex={0}
+                              className={styles.searchResultItem}
+                              onClick={() => setSelectedUser(u)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedUser(u);
+                                }
+                              }}
+                            >
+                              <span className={styles.searchResultEmail}>
+                                {u.email}
+                              </span>
+                              <span className={styles.searchResultMeta}>
+                                #{u.user_id}
+                                {u.segment ? ` · ${u.segment}` : ""}
+                                {u.subscription_status
+                                  ? ` · ${u.subscription_status}`
+                                  : ""}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {errorMessage && (
             <p className={styles.errorBox} role="alert">
@@ -184,4 +376,5 @@ export function NoticeCreateDialog({
   );
 }
 
+export type { NoticeFormInput };
 export { NoticeApiError };

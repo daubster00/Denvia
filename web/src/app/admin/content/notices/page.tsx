@@ -4,19 +4,24 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { NoticeCreateDialog } from "@/features/admin-cs-notices/components/NoticeCreateDialog";
+import {
+  NoticeCreateDialog,
+  type NoticeCreateSubmitPayload,
+} from "@/features/admin-cs-notices/components/NoticeCreateDialog";
 import { ConfirmDialog } from "@/components/layout/ConfirmDialog";
 import {
   NoticeApiError,
   createNotice,
+  deleteAdminDm,
   deleteNotice,
   fetchInboxPreviewConfig,
   fetchNotices,
   updateInboxPreviewConfig,
-  type NoticeFormInput,
   type NoticeListItem,
+  type NoticeTargetFilter,
   type NoticeTargetSegment,
 } from "@/features/admin-cs-notices/api/notice";
+import { sendAdminDM } from "@/features/admin-users/api/users";
 
 import styles from "./page.module.css";
 
@@ -26,6 +31,12 @@ const SEGMENT_LABEL: Record<NoticeTargetSegment, string> = {
   hygienist: "치과위생사",
   student_other: "학생/기타",
 };
+
+const FILTER_CHOICES: Array<{ value: NoticeTargetFilter; label: string }> = [
+  { value: "all", label: "전체" },
+  { value: "broadcast", label: "공지만" },
+  { value: "dm", label: "개별 쪽지만" },
+];
 
 const PER_PAGE = 20;
 
@@ -39,18 +50,40 @@ function formatKoreanDate(iso: string | null): string {
   });
 }
 
+function renderTargetCell(item: NoticeListItem) {
+  if (item.item_type === "admin_dm") {
+    return (
+      <>
+        <span className={`${styles.targetBadge} ${styles.targetBadgeDM}`}>
+          특정 사용자
+        </span>
+        {item.target_user_email && (
+          <span className={styles.targetEmail}>{item.target_user_email}</span>
+        )}
+      </>
+    );
+  }
+  const seg = item.target_segment;
+  return (
+    <span className={styles.targetBadge}>
+      {seg ? SEGMENT_LABEL[seg] : "—"}
+    </span>
+  );
+}
+
 export default function AdminCsNoticesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [targetFilter, setTargetFilter] = useState<NoticeTargetFilter>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [deletingItem, setDeletingItem] = useState<NoticeListItem | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const noticesQuery = useQuery({
-    queryKey: ["admin", "notices", page],
-    queryFn: () => fetchNotices(page, PER_PAGE),
+    queryKey: ["admin", "notices", page, targetFilter],
+    queryFn: () => fetchNotices(page, PER_PAGE, targetFilter),
   });
 
   const previewConfigQuery = useQuery({
@@ -68,7 +101,23 @@ export default function AdminCsNoticesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (input: NoticeFormInput) => createNotice(input),
+    mutationFn: async (payload: NoticeCreateSubmitPayload) => {
+      if (payload.target_type === "user") {
+        if (!payload.target_user_id) {
+          throw new Error("target_user_id missing");
+        }
+        await sendAdminDM(payload.target_user_id, {
+          title: payload.title,
+          body_html: payload.body_html,
+        });
+        return;
+      }
+      await createNotice({
+        title: payload.title,
+        body_html: payload.body_html,
+        target_segment: payload.target_segment ?? "all",
+      });
+    },
     onSuccess: () => {
       setCreateOpen(false);
       setCreateError(null);
@@ -76,19 +125,26 @@ export default function AdminCsNoticesPage() {
     },
     onError: (err: unknown) => {
       if (err instanceof NoticeApiError) setCreateError(err.message);
+      else if (err instanceof Error && err.message) setCreateError(err.message);
       else setCreateError("발송에 실패했습니다.");
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteNotice(id),
+    mutationFn: (item: NoticeListItem) =>
+      item.item_type === "admin_dm"
+        ? deleteAdminDm(item.id)
+        : deleteNotice(item.id),
     onSuccess: () => {
       setDeletingItem(null);
       setDeleteError(null);
       queryClient.invalidateQueries({ queryKey: ["admin", "notices"] });
     },
     onError: (err: unknown) => {
-      if (err instanceof NoticeApiError && err.code === "NOTICE_NOT_FOUND") {
+      if (
+        err instanceof NoticeApiError &&
+        (err.code === "NOTICE_NOT_FOUND" || err.code === "ADMIN_DM_NOT_FOUND")
+      ) {
         setDeletingItem(null);
         setDeleteError(null);
         queryClient.invalidateQueries({ queryKey: ["admin", "notices"] });
@@ -108,7 +164,7 @@ export default function AdminCsNoticesPage() {
         <div>
           <h1 className={styles.heading}>쪽지 관리</h1>
           <p className={styles.subheading}>
-            로그인한 사용자의 쪽지함으로 보낼 알림글을 작성·삭제합니다. 작성과 동시에 발송되며, 삭제하면 사용자 쪽지함에서도 회수됩니다.
+            전체/세그먼트 공지와 특정 사용자에게 보낸 개별 쪽지를 한곳에서 관리합니다. 작성과 동시에 발송되며, 삭제하면 사용자 쪽지함에서도 회수됩니다.
           </p>
         </div>
         <button
@@ -164,6 +220,27 @@ export default function AdminCsNoticesPage() {
         </div>
       </section>
 
+      <div className={styles.filterBar} role="tablist" aria-label="대상 필터">
+        <span className={styles.filterLabel}>유형</span>
+        {FILTER_CHOICES.map((choice) => (
+          <button
+            key={choice.value}
+            type="button"
+            role="tab"
+            aria-selected={targetFilter === choice.value}
+            className={`${styles.filterChip} ${
+              targetFilter === choice.value ? styles.filterChipActive : ""
+            }`}
+            onClick={() => {
+              setTargetFilter(choice.value);
+              setPage(1);
+            }}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+
       <section className={styles.tableWrap}>
         {noticesQuery.isPending ? (
           <p className={styles.loading} role="status">불러오는 중…</p>
@@ -173,7 +250,11 @@ export default function AdminCsNoticesPage() {
           </p>
         ) : (noticesQuery.data?.items.length ?? 0) === 0 ? (
           <p className={styles.empty}>
-            아직 발송한 쪽지가 없습니다. 우측 상단 “새 쪽지 작성”으로 첫 쪽지를 보내보세요.
+            {targetFilter === "dm"
+              ? "발송한 개별 쪽지가 없습니다."
+              : targetFilter === "broadcast"
+              ? "발송한 공지가 없습니다."
+              : "아직 발송한 쪽지가 없습니다. 우측 상단 “새 쪽지 작성”으로 첫 쪽지를 보내보세요."}
           </p>
         ) : (
           <table className={styles.table}>
@@ -188,11 +269,15 @@ export default function AdminCsNoticesPage() {
             </thead>
             <tbody>
               {noticesQuery.data!.items.map((item) => {
-                const goToDetail = () =>
-                  router.push(`/admin/content/notices/${item.id}`);
+                const detailHref =
+                  item.item_type === "admin_dm"
+                    ? `/admin/content/notices/dm/${item.id}`
+                    : `/admin/content/notices/${item.id}`;
+                const goToDetail = () => router.push(detailHref);
+                const rowKey = `${item.item_type}-${item.id}`;
                 return (
                   <tr
-                    key={item.id}
+                    key={rowKey}
                     role="button"
                     tabIndex={0}
                     aria-label={`${item.title} 상세 보기`}
@@ -206,7 +291,7 @@ export default function AdminCsNoticesPage() {
                     }}
                   >
                     <td className={styles.cellTitle}>{item.title}</td>
-                    <td>{SEGMENT_LABEL[item.target_segment]}</td>
+                    <td>{renderTargetCell(item)}</td>
                     <td>{formatKoreanDate(item.published_at)}</td>
                     <td className={styles.cellNumeric}>
                       {item.delivered_user_count.toLocaleString("ko-KR")}
@@ -264,7 +349,7 @@ export default function AdminCsNoticesPage() {
               setCreateError(null);
             }
           }}
-          onSubmit={(input) => createMutation.mutate(input)}
+          onSubmit={(payload) => createMutation.mutate(payload)}
         />
       )}
 
@@ -273,9 +358,13 @@ export default function AdminCsNoticesPage() {
         title="쪽지를 삭제할까요?"
         description={
           deletingItem
-            ? `"${deletingItem.title}" 쪽지를 삭제하면 이미 발송된 ${deletingItem.delivered_user_count.toLocaleString(
-                "ko-KR",
-              )}명의 쪽지함에서도 즉시 회수됩니다. 복구할 수 없습니다.`
+            ? deletingItem.item_type === "admin_dm"
+              ? `"${deletingItem.title}" 쪽지를 삭제하면 받은 사용자(${
+                  deletingItem.target_user_email ?? ""
+                })의 쪽지함에서도 즉시 회수됩니다. 복구할 수 없습니다.`
+              : `"${deletingItem.title}" 쪽지를 삭제하면 이미 발송된 ${deletingItem.delivered_user_count.toLocaleString(
+                  "ko-KR",
+                )}명의 쪽지함에서도 즉시 회수됩니다. 복구할 수 없습니다.`
             : ""
         }
         confirmLabel="삭제"
@@ -290,7 +379,7 @@ export default function AdminCsNoticesPage() {
           }
         }}
         onConfirm={() => {
-          if (deletingItem) deleteMutation.mutate(deletingItem.id);
+          if (deletingItem) deleteMutation.mutate(deletingItem);
         }}
       />
     </main>

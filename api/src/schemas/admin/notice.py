@@ -20,12 +20,26 @@ class NoticeCreateRequest(BaseModel):
     target_segment: TargetSegment = "all"
 
 
+ItemType = Literal["notice", "admin_dm"]
+
+
 class NoticeListItem(BaseModel):
+    """통합 쪽지 목록 항목. item_type='notice'면 전체/세그먼트 broadcast,
+    'admin_dm'이면 관리자 → 특정 사용자 1:1 쪽지.
+
+    - notice 행: id=notices.id, target_segment 채움, target_user_* 는 None
+    - admin_dm 행: id=inbox_messages.id, target_segment=None,
+      target_user_id/target_user_email 채움, delivered_user_count=1
+    """
+
+    item_type: ItemType
     id: int
     title: str
-    target_segment: TargetSegment
+    target_segment: TargetSegment | None
+    target_user_id: int | None = None
+    target_user_email: str | None = None
     published_at: datetime | None
-    created_by_admin_id: int
+    created_by_admin_id: int | None
     created_at: datetime
     delivered_user_count: int
 
@@ -48,6 +62,24 @@ class NoticeDetailResponse(BaseModel):
     created_by_admin_id: int
     created_at: datetime
     delivered_user_count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminDMDetailResponse(BaseModel):
+    """관리자 1:1 쪽지 단건 상세 — inbox_messages 1행 + 받는 사용자 이메일."""
+
+    item_type: Literal["admin_dm"] = "admin_dm"
+    id: int
+    title: str
+    body_html: str
+    target_user_id: int
+    target_user_email: str
+    target_user_name: str | None
+    is_read: bool
+    created_by_admin_id: int | None
+    created_at: datetime
+    deleted_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
 

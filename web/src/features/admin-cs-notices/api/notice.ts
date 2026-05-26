@@ -10,6 +10,10 @@ export type NoticeTargetSegment =
   | "hygienist"
   | "student_other";
 
+export type NoticeItemType = "notice" | "admin_dm";
+
+export type NoticeTargetFilter = "all" | "broadcast" | "dm";
+
 export const noticeFormSchema = z.object({
   title: z
     .string()
@@ -25,11 +29,17 @@ export const noticeFormSchema = z.object({
 export type NoticeFormInput = z.infer<typeof noticeFormSchema>;
 
 export interface NoticeListItem {
+  item_type: NoticeItemType;
+  /** notice 행: notices.id / admin_dm 행: inbox_messages.id */
   id: number;
   title: string;
-  target_segment: NoticeTargetSegment;
+  /** notice 행에만 채워짐 */
+  target_segment: NoticeTargetSegment | null;
+  /** admin_dm 행에만 채워짐 */
+  target_user_id: number | null;
+  target_user_email: string | null;
   published_at: string | null;
-  created_by_admin_id: number;
+  created_by_admin_id: number | null;
   created_at: string;
   delivered_user_count: number;
 }
@@ -41,8 +51,29 @@ export interface NoticeListResponse {
   total: number;
 }
 
-export interface NoticeDetail extends NoticeListItem {
+export interface NoticeDetail {
+  id: number;
+  title: string;
+  target_segment: NoticeTargetSegment;
+  published_at: string | null;
+  created_by_admin_id: number;
+  created_at: string;
+  delivered_user_count: number;
   body_html: string;
+}
+
+export interface AdminDMDetail {
+  item_type: "admin_dm";
+  id: number;
+  title: string;
+  body_html: string;
+  target_user_id: number;
+  target_user_email: string;
+  target_user_name: string | null;
+  is_read: boolean;
+  created_by_admin_id: number | null;
+  created_at: string;
+  deleted_at: string | null;
 }
 
 export type NoticeRecipientStatus = "read" | "unread";
@@ -96,11 +127,31 @@ async function parseError(res: Response): Promise<NoticeApiError> {
 export async function fetchNotices(
   page = 1,
   perPage = 20,
+  targetFilter: NoticeTargetFilter = "all",
 ): Promise<NoticeListResponse> {
-  const url = `${API_BASE}/api/v1/admin/notices?page=${page}&per_page=${perPage}`;
+  const url =
+    `${API_BASE}/api/v1/admin/notices?page=${page}&per_page=${perPage}` +
+    `&target_filter=${targetFilter}`;
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw await parseError(res);
   return res.json();
+}
+
+export async function fetchAdminDmDetail(
+  messageId: number,
+): Promise<AdminDMDetail> {
+  const url = `${API_BASE}/api/v1/admin/notices/dm/${messageId}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+export async function deleteAdminDm(messageId: number): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/notices/dm/${messageId}`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!res.ok) throw await parseError(res);
 }
 
 export async function fetchNoticeDetail(id: number): Promise<NoticeDetail> {

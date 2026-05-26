@@ -8,11 +8,13 @@
 - PATCH  /admin/popups/{popup_id}        is_active 즉시 토글 (목록 행)
 - DELETE /admin/popups/{popup_id}        soft delete
 - POST   /admin/popups/image-upload      이미지 업로드 (Story 7.2 v2)
-- GET    /admin/notices                  공지(쪽지) 목록
-- GET    /admin/notices/{notice_id}      공지 단건 조회
+- GET    /admin/notices                  공지(쪽지) 목록 — broadcast + admin_dm UNION
+- GET    /admin/notices/{notice_id}      공지 단건 조회 (broadcast)
 - GET    /admin/notices/{notice_id}/recipients  수신자 목록 — read/unread 분리 페이지네이션
 - POST   /admin/notices                  공지 작성+즉시 발행 (target_segment fan-out)
 - DELETE /admin/notices/{notice_id}      공지 hard delete (CASCADE로 inbox 회수)
+- GET    /admin/notices/dm/{message_id}  관리자 1:1 쪽지 단건 조회
+- DELETE /admin/notices/dm/{message_id}  관리자 1:1 쪽지 hard delete (사용자 inbox에서 회수)
 - GET    /admin/inbox/preview-config     쪽지함 미리보기 동시 노출 최대 개수 조회
 - PUT    /admin/inbox/preview-config     쪽지함 미리보기 동시 노출 최대 개수 저장
 - GET    /admin/runtime-config           서비스 전체 토글 4종 조회
@@ -29,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.src.deps.auth import require_admin
 from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
+    AUDIT_ADMIN_DM_DELETE,
     AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE,
     AUDIT_INBOX_PREVIEW_CONFIG_UPDATE,
     AUDIT_LOGIN_BRUTE_THRESHOLD_UPDATE,
@@ -46,6 +49,7 @@ from api.src.middleware.audit_actions import (
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.notice import (
+    AdminDMDetailResponse,
     InboxPreviewConfigResponse,
     InboxPreviewConfigUpdateRequest,
     NoticeCreateRequest,
@@ -346,12 +350,39 @@ async def list_notices(
     response: Response,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    target_filter: str = Query("all", pattern="^(all|broadcast|dm)$"),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ) -> NoticeListResponse:
-    """공지 목록 — 발행시각 desc. delivered_user_count 동봉."""
+    """공지/개별 쪽지 통합 목록 — 발행시각 desc. broadcast(notices) + admin_dm UNION."""
     response.headers["Cache-Control"] = "no-store"
-    return await notice_service.list_notices(page, per_page, admin, db)
+    return await notice_service.list_notices(
+        page, per_page, admin, db, target_filter=target_filter
+    )
+
+
+@router.get("/notices/dm/{message_id}", response_model=AdminDMDetailResponse)
+async def get_admin_dm_detail(
+    message_id: int,
+    response: Response,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AdminDMDetailResponse:
+    """관리자 → 특정 사용자 1:1 쪽지 단건 조회."""
+    response.headers["Cache-Control"] = "no-store"
+    return await notice_service.get_admin_dm_detail(message_id, admin, db)
+
+
+@router.delete("/notices/dm/{message_id}", status_code=204)
+@audit_action(AUDIT_ADMIN_DM_DELETE)
+async def delete_admin_dm(
+    request: Request,
+    message_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    """관리자 1:1 쪽지 hard delete — 사용자 inbox에서 즉시 회수."""
+    await notice_service.delete_admin_dm(request, message_id, admin, db)
 
 
 @router.get("/notices/{notice_id}", response_model=NoticeDetailResponse)

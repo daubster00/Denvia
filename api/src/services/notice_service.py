@@ -13,13 +13,14 @@ from datetime import datetime, timezone
 
 import structlog
 from fastapi import HTTPException, Request
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import String, case, cast, delete, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.inbox_message import InboxMessage
 from api.src.models.notice import Notice
 from api.src.models.user import User
 from api.src.schemas.admin.notice import (
+    AdminDMDetailResponse,
     NoticeCreateRequest,
     NoticeDetailResponse,
     NoticeListItem,
@@ -43,19 +44,91 @@ def _delivered_count_subq():
 
 
 async def list_notices(
-    page: int, per_page: int, admin: User, db: AsyncSession
+    page: int,
+    per_page: int,
+    admin: User,
+    db: AsyncSession,
+    target_filter: str = "all",
 ) -> NoticeListResponse:
-    total = (await db.execute(select(func.count(Notice.id)))).scalar_one()
+    """전체/세그먼트 broadcast(notices) + 1:1 쪽지(admin_dm inbox_messages)를
+    UNION ALL로 합쳐 created_at desc 순으로 페이지네이션한다.
+
+    target_filter:
+      - "all"       : 둘 다 (기본)
+      - "broadcast" : 전체/세그먼트 공지만
+      - "dm"        : 특정 사용자 쪽지만
+    """
+    include_broadcast = target_filter in ("all", "broadcast")
+    include_dm = target_filter in ("all", "dm")
+
+    broadcast_count = 0
+    if include_broadcast:
+        broadcast_count = int(
+            (
+                await db.execute(select(func.count(Notice.id)))
+            ).scalar_one()
+        )
+
+    dm_count = 0
+    if include_dm:
+        dm_count = int(
+            (
+                await db.execute(
+                    select(func.count(InboxMessage.id)).where(
+                        InboxMessage.type == "admin_dm"
+                    )
+                )
+            ).scalar_one()
+        )
+
+    total = broadcast_count + dm_count
 
     delivered_sq = _delivered_count_subq()
+
+    notice_select = (
+        select(
+            literal("notice").label("item_type"),
+            Notice.id.label("id"),
+            Notice.title.label("title"),
+            cast(Notice.target_segment, String).label("target_segment"),
+            cast(literal(None), String).label("target_user_email"),
+            cast(literal(None), Notice.id.type).label("target_user_id"),
+            Notice.published_at.label("published_at"),
+            Notice.created_by_admin_id.label("created_by_admin_id"),
+            Notice.created_at.label("created_at"),
+            func.coalesce(delivered_sq.c.delivered, 0).label("delivered"),
+        )
+        .outerjoin(delivered_sq, delivered_sq.c.notice_id == Notice.id)
+    )
+
+    dm_select = (
+        select(
+            literal("admin_dm").label("item_type"),
+            InboxMessage.id.label("id"),
+            InboxMessage.title.label("title"),
+            cast(literal(None), String).label("target_segment"),
+            User.email.label("target_user_email"),
+            InboxMessage.user_id.label("target_user_id"),
+            InboxMessage.created_at.label("published_at"),
+            InboxMessage.created_by_admin_id.label("created_by_admin_id"),
+            InboxMessage.created_at.label("created_at"),
+            literal(1).label("delivered"),
+        )
+        .join(User, User.id == InboxMessage.user_id)
+        .where(InboxMessage.type == "admin_dm")
+    )
+
+    if include_broadcast and include_dm:
+        unified = notice_select.union_all(dm_select).subquery()
+    elif include_broadcast:
+        unified = notice_select.subquery()
+    else:
+        unified = dm_select.subquery()
+
     rows = (
         await db.execute(
-            select(
-                Notice,
-                func.coalesce(delivered_sq.c.delivered, 0).label("delivered"),
-            )
-            .outerjoin(delivered_sq, delivered_sq.c.notice_id == Notice.id)
-            .order_by(Notice.created_at.desc(), Notice.id.desc())
+            select(unified)
+            .order_by(unified.c.created_at.desc(), unified.c.id.desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
@@ -66,23 +139,27 @@ async def list_notices(
         actor_user_id=admin.id,
         page=page,
         per_page=per_page,
-        total=int(total),
+        total=total,
+        target_filter=target_filter,
     )
 
     items = [
         NoticeListItem(
-            id=n.id,
-            title=n.title,
-            target_segment=n.target_segment,
-            published_at=n.published_at,
-            created_by_admin_id=n.created_by_admin_id,
-            created_at=n.created_at,
-            delivered_user_count=int(delivered),
+            item_type=r.item_type,
+            id=int(r.id),
+            title=r.title,
+            target_segment=r.target_segment,
+            target_user_id=int(r.target_user_id) if r.target_user_id is not None else None,
+            target_user_email=r.target_user_email,
+            published_at=r.published_at,
+            created_by_admin_id=r.created_by_admin_id,
+            created_at=r.created_at,
+            delivered_user_count=int(r.delivered),
         )
-        for n, delivered in rows
+        for r in rows
     ]
     return NoticeListResponse(
-        items=items, page=page, per_page=per_page, total=int(total)
+        items=items, page=page, per_page=per_page, total=total
     )
 
 
@@ -383,10 +460,111 @@ async def list_notice_recipients(
     )
 
 
+async def get_admin_dm_detail(
+    message_id: int, admin: User, db: AsyncSession
+) -> AdminDMDetailResponse:
+    """관리자 1:1 쪽지 단건 — inbox_messages.id 기준. 받는 사용자 이메일 동봉.
+
+    type='admin_dm' 가 아니면 404. 사용자 본인이 휴지통에 넣어도(deleted_at NOT NULL)
+    관리자 상세는 계속 열람 가능(회수 이력 표시용).
+    """
+    row = (
+        await db.execute(
+            select(InboxMessage, User.email, User.name)
+            .join(User, User.id == InboxMessage.user_id)
+            .where(
+                InboxMessage.id == message_id,
+                InboxMessage.type == "admin_dm",
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(
+            404,
+            detail={
+                "code": "ADMIN_DM_NOT_FOUND",
+                "message": "해당 쪽지를 찾을 수 없습니다.",
+            },
+        )
+    msg, user_email, user_name = row
+
+    logger.info(
+        "admin.dm.viewed",
+        actor_user_id=admin.id,
+        message_id=msg.id,
+        target_user_id=msg.user_id,
+    )
+    return AdminDMDetailResponse(
+        id=msg.id,
+        title=msg.title,
+        body_html=msg.body_html,
+        target_user_id=msg.user_id,
+        target_user_email=user_email,
+        target_user_name=user_name,
+        is_read=msg.is_read,
+        created_by_admin_id=msg.created_by_admin_id,
+        created_at=msg.created_at,
+        deleted_at=msg.deleted_at,
+    )
+
+
+async def delete_admin_dm(
+    request: Request, message_id: int, admin: User, db: AsyncSession
+) -> None:
+    """관리자 1:1 쪽지 hard delete — 사용자 쪽지함에서도 즉시 회수.
+
+    type='admin_dm' 행에만 동작. 공지 fan-out 행은 절대 건드리지 않는다.
+    """
+    msg = (
+        await db.execute(
+            select(InboxMessage).where(
+                InboxMessage.id == message_id,
+                InboxMessage.type == "admin_dm",
+            )
+        )
+    ).scalar_one_or_none()
+    if msg is None:
+        raise HTTPException(
+            404,
+            detail={
+                "code": "ADMIN_DM_NOT_FOUND",
+                "message": "해당 쪽지를 찾을 수 없습니다.",
+            },
+        )
+
+    request.state.audit_target_type = "inbox_message"
+    request.state.audit_target_id = msg.id
+    request.state.audit_diff = {
+        "before": {
+            "target_user_id": msg.user_id,
+            "title": msg.title,
+            "is_read": msg.is_read,
+        },
+        "after": {"deleted": True},
+    }
+
+    await db.execute(
+        delete(InboxMessage).where(
+            InboxMessage.id == message_id,
+            InboxMessage.type == "admin_dm",
+        )
+    )
+    await db.commit()
+
+    logger.info(
+        "admin.dm.deleted",
+        actor_user_id=admin.id,
+        message_id=message_id,
+        target_user_id=msg.user_id,
+    )
+
+
 __all__ = [
     "list_notices",
     "get_notice_detail",
     "list_notice_recipients",
     "create_notice",
     "delete_notice",
+    "get_admin_dm_detail",
+    "delete_admin_dm",
 ]
