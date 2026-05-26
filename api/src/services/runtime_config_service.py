@@ -26,6 +26,8 @@ KEY_FREE_DAILY_QUOTA = "runtime:free_daily_quota"
 KEY_FREE_DELAY_ENABLED = "runtime:free_delay_enabled"
 KEY_FREE_DELAY = "runtime:free_delay"
 KEY_FREE_DELAY_NOTICE_TEXT = "runtime:free_delay_notice_text"
+# Pro 월 질문 한도 — KST 월초 기준 리셋. qa_service 의 monthly INCR 카운터와 한 쌍.
+KEY_PRO_MONTHLY_QUOTA = "runtime:pro_monthly_quota"
 # Story 7.1 — 쪽지함 미리보기 동시 노출 최대 개수 (관리자 CS 페이지에서 편집).
 KEY_INBOX_PREVIEW_MAX_COUNT = "runtime:inbox_preview_max_count"
 # 관리자 설정 — RAG 본 체인에서 사용할 채팅 모델 (기본 o4-mini, 화이트리스트 강제).
@@ -38,6 +40,8 @@ DEFAULT_FREE_DELAY_ENABLED = True
 DEFAULT_FREE_DELAY_SECONDS = 1
 DEFAULT_FREE_DELAY_NOTICE_TEXT = "현재는 무료버전으로 답변 출력은 약 40초가량 소요됩니다."
 FREE_DELAY_NOTICE_TEXT_MAX_LEN = 200
+# Pro 월 한도 기본값 — Pro 구독 상품 기획상의 월 질문 횟수.
+DEFAULT_PRO_MONTHLY_QUOTA = 500
 DEFAULT_INBOX_PREVIEW_MAX_COUNT = 1
 INBOX_PREVIEW_MAX_COUNT_MIN = 1
 INBOX_PREVIEW_MAX_COUNT_MAX = 5
@@ -85,12 +89,19 @@ async def get_free_delay_notice_text(redis_runtime: AsyncRedis) -> str:
     return _normalize_notice_text(raw)
 
 
+async def get_pro_monthly_quota(redis_runtime: AsyncRedis) -> int:
+    """Pro 월 질문 한도 조회 — 미설정/손상값 시 기본값."""
+    raw = await redis_runtime.get(KEY_PRO_MONTHLY_QUOTA)
+    return _to_int(raw, DEFAULT_PRO_MONTHLY_QUOTA)
+
+
 async def get_runtime_config(redis_runtime: AsyncRedis) -> RuntimeConfigResponse:
     show_raw = await redis_runtime.get(KEY_SHOW_SUBSCRIBE)
     quota_raw = await redis_runtime.get(KEY_FREE_DAILY_QUOTA)
     delay_enabled_raw = await redis_runtime.get(KEY_FREE_DELAY_ENABLED)
     delay_raw = await redis_runtime.get(KEY_FREE_DELAY)
     notice_raw = await redis_runtime.get(KEY_FREE_DELAY_NOTICE_TEXT)
+    pro_monthly_raw = await redis_runtime.get(KEY_PRO_MONTHLY_QUOTA)
 
     return RuntimeConfigResponse(
         show_subscribe_button=_to_bool(show_raw, DEFAULT_SHOW_SUBSCRIBE),
@@ -98,6 +109,7 @@ async def get_runtime_config(redis_runtime: AsyncRedis) -> RuntimeConfigResponse
         free_delay_enabled=_to_bool(delay_enabled_raw, DEFAULT_FREE_DELAY_ENABLED),
         free_delay_seconds=_to_int(delay_raw, DEFAULT_FREE_DELAY_SECONDS),
         free_delay_notice_text=_normalize_notice_text(notice_raw),
+        pro_monthly_quota=_to_int(pro_monthly_raw, DEFAULT_PRO_MONTHLY_QUOTA),
     )
 
 
@@ -114,6 +126,7 @@ async def update_runtime_config(
     await redis_runtime.set(KEY_FREE_DELAY, str(body.free_delay_seconds))
     notice_normalized = _normalize_notice_text(body.free_delay_notice_text)
     await redis_runtime.set(KEY_FREE_DELAY_NOTICE_TEXT, notice_normalized)
+    await redis_runtime.set(KEY_PRO_MONTHLY_QUOTA, str(body.pro_monthly_quota))
 
     after = RuntimeConfigResponse(
         show_subscribe_button=body.show_subscribe_button,
@@ -121,6 +134,7 @@ async def update_runtime_config(
         free_delay_enabled=body.free_delay_enabled,
         free_delay_seconds=body.free_delay_seconds,
         free_delay_notice_text=notice_normalized,
+        pro_monthly_quota=body.pro_monthly_quota,
     )
 
     request.state.audit_target_type = "runtime_config"

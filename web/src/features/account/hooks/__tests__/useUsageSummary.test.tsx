@@ -36,6 +36,10 @@ describe("useUsageSummary — Story 4.3", () => {
       segment: "doctor" as const,
       years_of_experience: 5,
       show_subscribe_button: true,
+      monthly_limit: 0,
+      monthly_used: 0,
+      monthly_remaining: 0,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     };
     vi.mocked(fetchUsageSummary).mockResolvedValue(payload);
 

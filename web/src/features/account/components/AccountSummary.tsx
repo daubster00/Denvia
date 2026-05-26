@@ -42,6 +42,9 @@ export function AccountSummary() {
         dailyLimit={data.daily_limit}
         dailyRemaining={data.daily_remaining}
         subscriptionStatus={data.subscription_status}
+        monthlyLimit={data.monthly_limit}
+        monthlyUsed={data.monthly_used}
+        monthlyRemaining={data.monthly_remaining}
       />
       <SegmentCard
         segment={data.segment}

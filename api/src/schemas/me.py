@@ -32,6 +32,12 @@ class UsageSummaryResponse(BaseModel):
     segment: str | None
     years_of_experience: int | None
     show_subscribe_button: bool
+    # Pro 구독자 월 한도 표시용 — free/admin 은 0 sentinel.
+    # monthly_used 는 Redis monthly INCR 카운터(qa_service.preflight 와 동일 SSOT).
+    monthly_limit: int
+    monthly_used: int
+    monthly_remaining: int
+    monthly_reset_at: str  # ISO-8601 KST 다음 달 1일 00:00
 
 
 PaymentStatusLiteral = Literal[

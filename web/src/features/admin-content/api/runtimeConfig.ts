@@ -18,6 +18,11 @@ export const runtimeConfigFormSchema = z.object({
   free_delay_notice_text: z
     .string()
     .max(200, "200자 이하로 입력해주세요"),
+  pro_monthly_quota: z
+    .number({ invalid_type_error: "숫자를 입력해주세요" })
+    .int("정수만 입력 가능합니다")
+    .min(0, "0 이상이어야 합니다")
+    .max(99999, "99999 이하여야 합니다"),
 });
 
 export type RuntimeConfigFormInput = z.infer<typeof runtimeConfigFormSchema>;
@@ -28,6 +33,7 @@ export interface RuntimeConfigResponse {
   free_delay_enabled: boolean;
   free_delay_seconds: number;
   free_delay_notice_text: string;
+  pro_monthly_quota: number;
 }
 
 async function parseError(res: Response): Promise<ApiError> {

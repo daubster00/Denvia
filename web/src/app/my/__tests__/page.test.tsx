@@ -177,6 +177,10 @@ describe("MyPage — 인증 가드", () => {
       segment: "doctor",
       years_of_experience: 3,
       show_subscribe_button: false,
+      monthly_limit: 0,
+      monthly_used: 0,
+      monthly_remaining: 0,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
 
     const { findByTestId, queryByTestId } = render(<MyPage />, {
@@ -222,6 +226,10 @@ describe("MyPage — 인증 가드", () => {
       segment: "doctor",
       years_of_experience: 3,
       show_subscribe_button: true,
+      monthly_limit: 0,
+      monthly_used: 0,
+      monthly_remaining: 0,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
 
     const { findByTestId } = render(<MyPage />, { wrapper: makeWrapper() });
@@ -263,6 +271,10 @@ describe("MyPage — 인증 가드", () => {
       segment: "doctor",
       years_of_experience: 5,
       show_subscribe_button: false,
+      monthly_limit: 500,
+      monthly_used: 100,
+      monthly_remaining: 400,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
 
     const { findByTestId } = render(<MyPage />, { wrapper: makeWrapper() });

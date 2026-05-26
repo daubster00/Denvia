@@ -19,6 +19,7 @@ const EMPTY_FORM: RuntimeConfigFormInput = {
   free_delay_enabled: true,
   free_delay_seconds: 1,
   free_delay_notice_text: "",
+  pro_monthly_quota: 500,
 };
 
 const NOTICE_TEXT_MAX = 200;
@@ -43,6 +44,7 @@ export function ServiceTogglesForm() {
         free_delay_enabled: configQuery.data.free_delay_enabled,
         free_delay_seconds: configQuery.data.free_delay_seconds,
         free_delay_notice_text: configQuery.data.free_delay_notice_text,
+        pro_monthly_quota: configQuery.data.pro_monthly_quota,
       });
     }
   }, [configQuery.data]);
@@ -52,7 +54,8 @@ export function ServiceTogglesForm() {
       form.free_daily_quota !== configQuery.data.free_daily_quota ||
       form.free_delay_enabled !== configQuery.data.free_delay_enabled ||
       form.free_delay_seconds !== configQuery.data.free_delay_seconds ||
-      form.free_delay_notice_text !== configQuery.data.free_delay_notice_text
+      form.free_delay_notice_text !== configQuery.data.free_delay_notice_text ||
+      form.pro_monthly_quota !== configQuery.data.pro_monthly_quota
     : false;
 
   const saveMutation = useMutation({
@@ -165,6 +168,39 @@ export function ServiceTogglesForm() {
         {errors.free_daily_quota ? (
           <p className={styles.fieldError} role="alert">
             {errors.free_daily_quota}
+          </p>
+        ) : null}
+
+        <div className={styles.row}>
+          <div className={styles.rowText}>
+            <span className={styles.rowLabel}>Pro 월 질문 가능 횟수</span>
+            <span className={styles.rowDesc}>
+              Pro 구독자가 한 달 동안 사용할 수 있는 질문 횟수입니다. 매월 1일 00시(KST) 초기화. (0~99999)
+            </span>
+          </div>
+          <div className={styles.numberCell}>
+            <input
+              type="number"
+              min={0}
+              max={99999}
+              step={1}
+              className={styles.numberInput}
+              value={form.pro_monthly_quota === 0 ? "" : form.pro_monthly_quota}
+              placeholder="0"
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  pro_monthly_quota: e.target.value === "" ? 0 : Number(e.target.value),
+                }))
+              }
+              aria-label="Pro 월 질문 가능 횟수"
+            />
+            <span className={styles.unit}>회</span>
+          </div>
+        </div>
+        {errors.pro_monthly_quota ? (
+          <p className={styles.fieldError} role="alert">
+            {errors.pro_monthly_quota}
           </p>
         ) : null}
 

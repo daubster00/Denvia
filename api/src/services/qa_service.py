@@ -30,6 +30,8 @@ KST = ZoneInfo("Asia/Seoul")
 DEFAULT_FREE_DAILY_QUOTA = 10
 DEFAULT_FREE_DELAY_SECONDS: Decimal = Decimal("0")
 DEFAULT_PRO_INTERNAL_CAP = 500
+# Pro 월 질문 한도 — 관리자(컨텐츠→서비스 토글)에서 편집. 기본 500/월.
+DEFAULT_PRO_MONTHLY_QUOTA = 500
 # admin은 preflight에서 quota/delay 모두 우회한다(qa_service.preflight 참고).
 # /me/quota 응답에서도 일반 limit 계산을 타지 않도록 충분히 큰 sentinel을 사용해
 # UI가 "제한된 값"으로 오해하지 않게 한다.
@@ -42,10 +44,35 @@ def _today_key_kst(user_id: int) -> str:
     return f"quota:user:{user_id}:{datetime.now(tz=KST).strftime('%Y-%m-%d')}"
 
 
+def _month_key_kst(user_id: int) -> str:
+    """Pro 월 한도용 INCR 키 — KST 월초 기준 분리. 자정 리셋과 독립적으로 누적."""
+    return f"quota:user:{user_id}:month:{datetime.now(tz=KST).strftime('%Y-%m')}"
+
+
 def _next_kst_midnight_iso() -> str:
     now = datetime.now(tz=KST)
     nxt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return nxt.isoformat()
+
+
+def _next_kst_month_start_iso() -> str:
+    """다음 달 1일 00:00 KST ISO 8601 — Pro 월 한도 리셋 안내용."""
+    now = datetime.now(tz=KST)
+    if now.month == 12:
+        nxt = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        nxt = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return nxt.isoformat()
+
+
+def _seconds_until_next_kst_month() -> int:
+    """월간 카운터 TTL — 다음 달 1일 00:00 KST 까지의 초. Redis EXPIRE 인자."""
+    now = datetime.now(tz=KST)
+    if now.month == 12:
+        nxt = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        nxt = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return int((nxt - now).total_seconds())
 
 
 # ── Redis 조회 헬퍼 ────────────────────────────────────────────────────────────
@@ -80,6 +107,12 @@ async def _resolve_daily_limit(user: User, redis_runtime: Redis) -> tuple[int, s
     if runtime_val is not None:
         return (runtime_val, "runtime")
     return (DEFAULT_FREE_DAILY_QUOTA, "default")
+
+
+async def _resolve_pro_monthly_limit(redis_runtime: Redis) -> int:
+    """Pro 월 한도 — 관리자(컨텐츠→서비스 토글) 설정값. 미설정/손상 시 기본 500."""
+    raw = await _resolve_int_or_none(redis_runtime, "runtime:pro_monthly_quota")
+    return raw if raw is not None else DEFAULT_PRO_MONTHLY_QUOTA
 
 
 async def _resolve_delay(user: User, redis_runtime: Redis) -> tuple[Decimal, str]:
@@ -238,6 +271,43 @@ class QAService:
             daily_limit=limit,
             remaining=limit - used,
         )
+
+        # Pro 사용자 월 한도 검증 — 관리자 설정(runtime:pro_monthly_quota) 기준.
+        # 일 한도(pro_internal_cap)는 시스템 보호용 일일 상한이고, 월 한도가 상품 기획상의 한도다.
+        # 두 카운터는 독립이며, 월 한도 초과 시 사용자 친화 메시지로 429.
+        if user.subscription_status == "pro":
+            month_key = _month_key_kst(user.id)
+            used_month = await redis_quota.incr(month_key)
+            if used_month == 1:
+                await redis_quota.expire(month_key, _seconds_until_next_kst_month())
+            monthly_limit = await _resolve_pro_monthly_limit(redis_runtime)
+            if used_month > monthly_limit:
+                logger.warning(
+                    "qa.quota.exceeded_monthly",
+                    user_id=user.id,
+                    subscription_status="pro",
+                    monthly_limit=monthly_limit,
+                    used_month=used_month,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "QUOTA_EXCEEDED_MONTHLY",
+                        "message": "이번달 질문 한도를 모두 사용했습니다.",
+                        "monthly_limit": monthly_limit,
+                        "used_month": used_month,
+                        "reset_at": _next_kst_month_start_iso(),
+                        "show_upgrade_prompt": False,
+                        "show_subscribe_button": False,
+                    },
+                )
+            logger.info(
+                "qa.quota.consumed_monthly",
+                user_id=user.id,
+                used_month=used_month,
+                monthly_limit=monthly_limit,
+                remaining_month=monthly_limit - used_month,
+            )
 
         delay, dsrc = await _resolve_delay(user, redis_runtime)
 

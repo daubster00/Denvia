@@ -19,6 +19,8 @@ class RuntimeConfigResponse(BaseModel):
     free_delay_enabled: bool
     free_delay_seconds: int
     free_delay_notice_text: str
+    # Pro 구독자가 한 달 동안 사용할 수 있는 질문 횟수 상한 (KST 월초 기준 리셋).
+    pro_monthly_quota: int
 
 
 class RuntimeConfigUpdateRequest(BaseModel):
@@ -27,6 +29,7 @@ class RuntimeConfigUpdateRequest(BaseModel):
     free_delay_enabled: bool
     free_delay_seconds: int = Field(ge=0)
     free_delay_notice_text: str = Field(max_length=200)
+    pro_monthly_quota: int = Field(ge=0, le=99999)
 
 
 class ChatModelConfigResponse(BaseModel):

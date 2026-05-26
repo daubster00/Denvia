@@ -10,4 +10,8 @@ export interface UsageSummary {
   segment: "doctor" | "hygienist" | "student_other" | null;
   years_of_experience: number | null;
   show_subscribe_button: boolean;
+  monthly_limit: number;
+  monthly_used: number;
+  monthly_remaining: number;
+  monthly_reset_at: string;
 }

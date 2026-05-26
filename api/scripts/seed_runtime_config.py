@@ -33,6 +33,8 @@ DEFAULTS = {
     "runtime:free_delay": "1",
     "runtime:free_delay_notice_text": "현재는 무료버전으로 답변 출력은 약 40초가량 소요됩니다.",
     "runtime:pro_internal_cap": "500",
+    # Pro 구독 상품 — 한 달간 사용 가능한 질문 횟수 (KST 월초 기준 리셋).
+    "runtime:pro_monthly_quota": "500",
     "runtime:show_subscribe_button": "true",
     # Story 4.2 — 야간 광고 차단 토글 (협의서 #C-02, NFR-C5)
     # runtime:night_block_active는 Beat가 매일 SET하므로 시드 불필요

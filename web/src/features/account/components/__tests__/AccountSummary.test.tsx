@@ -55,6 +55,10 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
       segment: "doctor",
       years_of_experience: 5,
       show_subscribe_button: true,
+      monthly_limit: 0,
+      monthly_used: 0,
+      monthly_remaining: 0,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
     vi.mocked(fetchCurrentSubscription).mockResolvedValue({
       status: "none",
@@ -77,7 +81,7 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
     expect(screen.queryByRole("link", { name: "구독하기" })).toBeNull();
   });
 
-  it("pro → 당일 사용량 카드 미렌더 (월 카운트만 표시)", async () => {
+  it("pro → 당일 사용량 카드 미렌더 (월 카운트 + 월 사용량 표시)", async () => {
     vi.mocked(fetchUsageSummary).mockResolvedValue({
       month_question_count: 250,
       daily_used: 0,
@@ -88,6 +92,10 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
       segment: "doctor",
       years_of_experience: 10,
       show_subscribe_button: false,
+      monthly_limit: 500,
+      monthly_used: 250,
+      monthly_remaining: 250,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
     vi.mocked(fetchCurrentSubscription).mockResolvedValue({
       status: "active",
@@ -119,6 +127,10 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
       segment: "doctor",
       years_of_experience: 5,
       show_subscribe_button: false,
+      monthly_limit: 500,
+      monthly_used: 50,
+      monthly_remaining: 450,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
     vi.mocked(fetchCurrentSubscription).mockResolvedValue({
       status: "cancel_pending",
@@ -147,6 +159,10 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
       segment: null,
       years_of_experience: null,
       show_subscribe_button: true,
+      monthly_limit: 0,
+      monthly_used: 0,
+      monthly_remaining: 0,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
     vi.mocked(fetchCurrentSubscription).mockResolvedValue({
       status: "none",
@@ -177,6 +193,10 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
       segment: null,
       years_of_experience: null,
       show_subscribe_button: false,
+      monthly_limit: 999999,
+      monthly_used: 0,
+      monthly_remaining: 999999,
+      monthly_reset_at: "2026-06-01T00:00:00+09:00",
     });
     vi.mocked(fetchCurrentSubscription).mockResolvedValue({
       status: "none",

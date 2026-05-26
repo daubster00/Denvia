@@ -49,10 +49,13 @@ from api.src.services.auth_service import (
 )
 from api.src.services.qa_service import (
     ADMIN_UNLIMITED_LIMIT,
+    _month_key_kst,
     _next_kst_midnight_iso,
+    _next_kst_month_start_iso,
     _resolve_bool,
     _resolve_daily_limit,
     _resolve_delay,
+    _resolve_pro_monthly_limit,
     _today_key_kst,
 )
 from api.src.settings import REDIS_DB_RATE_LIMIT, settings
@@ -180,6 +183,19 @@ async def get_my_usage_summary(
             redis_runtime, "runtime:show_subscribe_button", default=True
         )
 
+    # 4) Pro 월 한도 — 관리자 설정값 + Redis monthly INCR 카운터.
+    #    qa_service.preflight 의 enforcement 와 동일 SSOT(quota:user:{id}:month:YYYY-MM)를 읽는다.
+    if current_user.subscription_status == "pro":
+        monthly_limit = await _resolve_pro_monthly_limit(redis_runtime)
+        raw_month = await redis_quota.get(_month_key_kst(current_user.id))
+        monthly_used = int(raw_month) if raw_month is not None else 0
+    elif current_user.subscription_status == "admin":
+        monthly_limit = ADMIN_UNLIMITED_LIMIT
+        monthly_used = 0
+    else:
+        monthly_limit = 0
+        monthly_used = 0
+
     logger.info(
         "me.usage_summary.viewed",
         user_id=current_user.id,
@@ -197,6 +213,10 @@ async def get_my_usage_summary(
         segment=current_user.segment,
         years_of_experience=current_user.years_of_experience,
         show_subscribe_button=show_subscribe,
+        monthly_limit=monthly_limit,
+        monthly_used=monthly_used,
+        monthly_remaining=max(monthly_limit - monthly_used, 0),
+        monthly_reset_at=_next_kst_month_start_iso(),
     )
 
 
