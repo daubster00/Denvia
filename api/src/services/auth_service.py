@@ -31,7 +31,7 @@ from api.src.models.oauth_identity import OAuthIdentity
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.services import anomaly_service
-from api.src.settings import REDIS_DB_OTP, REDIS_DB_RATE_LIMIT
+from api.src.settings import REDIS_DB_OTP, REDIS_DB_RATE_LIMIT, REDIS_DB_RUNTIME_CONFIG
 from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_session_jwt
 from api.src.utils.mask import mask_email
@@ -61,6 +61,11 @@ def _make_redis_rl(base_url: str) -> Redis:
     return Redis.from_url(f"{base_url}/{REDIS_DB_RATE_LIMIT}", decode_responses=True)
 
 
+def _make_redis_runtime(base_url: str) -> Redis:
+    """Runtime Config DB (DB 3) — 관리자 편집 런타임 값(로그인 실패 임계 등)."""
+    return Redis.from_url(f"{base_url}/{REDIS_DB_RUNTIME_CONFIG}", decode_responses=True)
+
+
 # Recovery 관련 Redis 키 (DB 2 공유)
 _RECOVERY_KEY = "recovery_attempts:{phone}"
 _RECOVERY_TTL = 3600
@@ -81,7 +86,25 @@ _LOGIN_LOCKOUT_TTL = 600     # 10분
 _LOGIN_FAIL_WINDOW = 600     # 카운터 TTL도 10분 (성공 시 초기화)
 _LOGIN_STAGE_TTL = 86400     # 24h — 1차 락 이후 stage 표식 유지 기간
 _LOGIN_HARD_LOCK_TTL = 2592000  # 30일 — 비번찾기 전까지 사실상 영구 (안전망)
-_LOGIN_BRUTE_THRESHOLD = 3   # 3회 이상 실패 → anomaly + 10분 lockout (stage=1)
+_LOGIN_BRUTE_THRESHOLD = 3   # 기본 3회 — 관리자가 runtime:login_brute_threshold 로 1~20 사이 조정 가능
+                             # (Redis 미설정·연결실패 시 fail-safe 폴백 값)
+
+
+async def _resolve_login_brute_threshold(redis_url: str) -> int:
+    """현재 로그인 실패 이상탐지 임계값을 Runtime Config(DB 3)에서 읽는다.
+
+    fail-safe: Redis 가 죽었거나 값이 깨져 있으면 코드 기본값(``_LOGIN_BRUTE_THRESHOLD``)
+    으로 폴백 — 인증 경로가 런타임 설정 가용성에 의존하지 않도록 한다.
+    클램프 범위(1~20)는 ``runtime_config_service`` 의 정의를 단일 SSOT 로 위임.
+    """
+    try:
+        # 지연 import — circular import 회피 (auth_service ↔ runtime_config_service 양방 참조 차단).
+        from api.src.services import runtime_config_service
+
+        async with _make_redis_runtime(redis_url) as r:
+            return await runtime_config_service.get_login_brute_threshold(r)
+    except Exception:
+        return _LOGIN_BRUTE_THRESHOLD
 
 # OAuth provider → 한국어 라벨 매핑 (AC-1, AC-6)
 _PROVIDER_LABEL_KO: dict[str, str] = {
@@ -364,6 +387,8 @@ async def login_user(
     lockout_key = _LOGIN_LOCKOUT_KEY.format(email=email)
     stage_key = _LOGIN_STAGE_KEY.format(email=email)
     hard_lock_key = _LOGIN_HARD_LOCK_KEY.format(email=email)
+    # 관리자가 편집한 임계값(기본 3회). Runtime DB 장애 시 코드 기본값으로 폴백.
+    brute_threshold = await _resolve_login_brute_threshold(redis_url)
 
     # 락아웃 체크 — hard_lock(2차) 이 lockout(1차)보다 강함이므로 먼저 확인.
     async with _make_redis_rl(redis_url) as r:
@@ -429,7 +454,7 @@ async def login_user(
                 count = int(count_raw) + 1 if count_raw else 1
                 await r.set(fail_key, str(count), ex=_LOGIN_FAIL_WINDOW)
 
-                if count >= _LOGIN_BRUTE_THRESHOLD:
+                if count >= brute_threshold:
                     now = datetime.now(tz=timezone.utc)
                     event = AnomalyEvent(
                         type="login_brute_force",
@@ -525,7 +550,7 @@ async def login_user(
             count = int(count_raw) + 1 if count_raw else 1
             await r.set(fail_key, str(count), ex=_LOGIN_FAIL_WINDOW)
 
-            if count >= _LOGIN_BRUTE_THRESHOLD:
+            if count >= brute_threshold:
                 # 1차 anomaly INSERT
                 now = datetime.now(tz=timezone.utc)
                 event = AnomalyEvent(

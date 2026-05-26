@@ -117,3 +117,49 @@ export async function updateAnomalyThrottleConfig(
   if (!res.ok) throw await parseError(res);
   return res.json();
 }
+
+// 로그인 실패 이상탐지 기준 횟수 — 동일 이메일 N회 연속 실패 시 anomaly + 10분 lockout 트리거.
+// 백엔드 bounds(1~20)는 응답에서 함께 받아 폼이 동적으로 표시.
+export const loginBruteThresholdFormSchema = z.object({
+  threshold: z
+    .number({ invalid_type_error: "숫자를 입력해주세요" })
+    .int("정수만 입력 가능합니다")
+    .min(1, "1회 이상이어야 합니다")
+    .max(20, "20회 이하여야 합니다"),
+});
+
+export type LoginBruteThresholdFormInput = z.infer<
+  typeof loginBruteThresholdFormSchema
+>;
+
+export interface LoginBruteThresholdResponse {
+  threshold: number;
+  default_threshold: number;
+  min_threshold: number;
+  max_threshold: number;
+}
+
+export async function fetchLoginBruteThresholdConfig(): Promise<LoginBruteThresholdResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/runtime-config/login-brute-threshold`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+export async function updateLoginBruteThresholdConfig(
+  input: LoginBruteThresholdFormInput,
+): Promise<LoginBruteThresholdResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/runtime-config/login-brute-threshold`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}

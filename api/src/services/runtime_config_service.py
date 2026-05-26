@@ -15,6 +15,8 @@ from redis.asyncio import Redis as AsyncRedis
 from api.src.schemas.admin.runtime_config import (
     AnomalyThrottleConfigResponse,
     AnomalyThrottleConfigUpdateRequest,
+    LoginBruteThresholdConfigResponse,
+    LoginBruteThresholdConfigUpdateRequest,
     RuntimeConfigResponse,
     RuntimeConfigUpdateRequest,
 )
@@ -362,6 +364,72 @@ async def update_anomaly_throttle_config(
         "after": after.model_dump(),
     }
     return after
+
+
+# =============================================================================
+# 로그인 실패 이상탐지 기준 횟수 — auth_service.login_user 가 본 키를 읽어
+# anomaly_events INSERT + 10분 lockout 트리거 임계로 사용한다.
+# 기본 3회. 1~20 사이로 클램프 (1=엄격, 20=느슨).
+# =============================================================================
+
+KEY_LOGIN_BRUTE_THRESHOLD = "runtime:login_brute_threshold"
+
+DEFAULT_LOGIN_BRUTE_THRESHOLD = 3
+LOGIN_BRUTE_THRESHOLD_MIN = 1
+LOGIN_BRUTE_THRESHOLD_MAX = 20
+
+
+def _clamp_login_brute_threshold(raw: int) -> int:
+    return max(
+        LOGIN_BRUTE_THRESHOLD_MIN,
+        min(LOGIN_BRUTE_THRESHOLD_MAX, raw),
+    )
+
+
+async def get_login_brute_threshold(redis_runtime: AsyncRedis) -> int:
+    """현재 임계값 — 미설정/손상 시 코드 기본값으로 폴백.
+
+    호출자: 관리자 GET 라우터 + ``auth_service.login_user`` 의 실패 카운터 비교.
+    fail-safe: Redis 가 죽었거나 값이 깨져도 항상 기본 3회로 동작해야 함.
+    """
+    raw = await redis_runtime.get(KEY_LOGIN_BRUTE_THRESHOLD)
+    return _clamp_login_brute_threshold(_to_int(raw, DEFAULT_LOGIN_BRUTE_THRESHOLD))
+
+
+async def get_login_brute_threshold_config(
+    redis_runtime: AsyncRedis,
+) -> LoginBruteThresholdConfigResponse:
+    """관리자 폼 prefill 용 — 현재값 + bounds 메타 묶음."""
+    current = await get_login_brute_threshold(redis_runtime)
+    return LoginBruteThresholdConfigResponse(
+        threshold=current,
+        default_threshold=DEFAULT_LOGIN_BRUTE_THRESHOLD,
+        min_threshold=LOGIN_BRUTE_THRESHOLD_MIN,
+        max_threshold=LOGIN_BRUTE_THRESHOLD_MAX,
+    )
+
+
+async def update_login_brute_threshold_config(
+    request: Request,
+    body: LoginBruteThresholdConfigUpdateRequest,
+    redis_runtime: AsyncRedis,
+) -> LoginBruteThresholdConfigResponse:
+    """관리자 PUT — 단일 키 저장. audit diff 는 미들웨어가 INSERT."""
+    before = await get_login_brute_threshold(redis_runtime)
+    clamped = _clamp_login_brute_threshold(body.threshold)
+    await redis_runtime.set(KEY_LOGIN_BRUTE_THRESHOLD, str(clamped))
+
+    request.state.audit_target_type = "runtime_config"
+    request.state.audit_diff = {
+        "before": {"login_brute_threshold": before},
+        "after": {"login_brute_threshold": clamped},
+    }
+    return LoginBruteThresholdConfigResponse(
+        threshold=clamped,
+        default_threshold=DEFAULT_LOGIN_BRUTE_THRESHOLD,
+        min_threshold=LOGIN_BRUTE_THRESHOLD_MIN,
+        max_threshold=LOGIN_BRUTE_THRESHOLD_MAX,
+    )
 
 
 async def resolve_anomaly_throttle_delay(

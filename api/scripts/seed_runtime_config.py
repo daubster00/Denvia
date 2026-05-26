@@ -47,6 +47,8 @@ DEFAULTS = {
     "runtime:anomaly_throttle_enabled": "true",
     "runtime:anomaly_throttle_free_delay": "5.0",
     "runtime:anomaly_throttle_pro_delay": "2.0",
+    # 로그인 실패 이상탐지 기준 — N회 연속 실패 시 anomaly + 10분 lockout. 관리자 편집(1~20).
+    "runtime:login_brute_threshold": "3",
 }
 
 

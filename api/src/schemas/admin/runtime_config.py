@@ -63,6 +63,25 @@ class AnomalyThrottleConfigUpdateRequest(BaseModel):
     pro_delay_seconds: float = Field(ge=0, le=999.9)
 
 
+class LoginBruteThresholdConfigResponse(BaseModel):
+    """로그인 실패 이상탐지 기준 횟수 — 관리자 편집 형태.
+
+    의미: 동일 이메일로 비밀번호가 ``threshold`` 회 이상 연속 실패하면
+    1) anomaly_events 에 stage=1 이벤트 INSERT, 2) 해당 이메일을 10분간 잠금.
+    bounds 와 default 도 함께 노출해 프론트 폼이 동적으로 안내 가능.
+    """
+
+    threshold: int
+    default_threshold: int
+    min_threshold: int
+    max_threshold: int
+
+
+class LoginBruteThresholdConfigUpdateRequest(BaseModel):
+    # 1 = 첫 실패에 바로 락(엄격), 20 = 사실상 비활성에 가까운 느슨한 운영.
+    threshold: int = Field(ge=1, le=20)
+
+
 class ForexConfigResponse(BaseModel):
     """USD→KRW 환율 + 자동 갱신 메타 — 관리자 UI 표시 전용 (read-only).
 

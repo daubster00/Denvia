@@ -31,6 +31,7 @@ from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE,
     AUDIT_INBOX_PREVIEW_CONFIG_UPDATE,
+    AUDIT_LOGIN_BRUTE_THRESHOLD_UPDATE,
     AUDIT_MODEL_PARAMS_EDIT,
     AUDIT_NOTICE_CREATE,
     AUDIT_NOTICE_DELETE,
@@ -67,6 +68,8 @@ from api.src.schemas.admin.runtime_config import (
     ChatModelConfigResponse,
     ChatModelConfigUpdateRequest,
     ForexConfigResponse,
+    LoginBruteThresholdConfigResponse,
+    LoginBruteThresholdConfigUpdateRequest,
     RuntimeConfigResponse,
     RuntimeConfigUpdateRequest,
 )
@@ -271,6 +274,43 @@ async def update_anomaly_throttle_config(
 ) -> AnomalyThrottleConfigResponse:
     """throttle 설정 일괄 저장 — diff_json 은 audit middleware 가 INSERT."""
     return await runtime_config_service.update_anomaly_throttle_config(
+        request, body, redis_runtime
+    )
+
+
+@router.get(
+    "/runtime-config/login-brute-threshold",
+    response_model=LoginBruteThresholdConfigResponse,
+)
+async def get_login_brute_threshold_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> LoginBruteThresholdConfigResponse:
+    """로그인 실패 이상탐지 기준 횟수 조회 — 현재값 + bounds.
+
+    이 임계값에 도달하면 ``auth_service.login_user`` 가
+    anomaly_events INSERT(stage=1) + 동일 이메일 10분 lockout 을 동시 트리거한다.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    return await runtime_config_service.get_login_brute_threshold_config(
+        redis_runtime
+    )
+
+
+@router.put(
+    "/runtime-config/login-brute-threshold",
+    response_model=LoginBruteThresholdConfigResponse,
+)
+@audit_action(AUDIT_LOGIN_BRUTE_THRESHOLD_UPDATE)
+async def update_login_brute_threshold_config(
+    request: Request,
+    body: LoginBruteThresholdConfigUpdateRequest,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> LoginBruteThresholdConfigResponse:
+    """로그인 실패 이상탐지 기준 횟수 저장 (1~20). diff_json 은 audit middleware 가 INSERT."""
+    return await runtime_config_service.update_login_brute_threshold_config(
         request, body, redis_runtime
     )
 
