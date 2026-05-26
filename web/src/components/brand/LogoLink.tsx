@@ -16,17 +16,16 @@ interface LogoLinkProps {
 /** Denvia 로고 링크 — 좌측 상단 배치, 채팅 컨텍스트에서 onResetChat 연결 (F-306) */
 export function LogoLink({ onResetChat, href, ariaLabel }: LogoLinkProps) {
   const isResetLink = onResetChat != null;
-  const resolvedHref = isResetLink ? "/chat" : (href ?? "/");
+  const resolvedHref = href ?? "/";
   const resolvedAriaLabel =
-    ariaLabel ?? (isResetLink ? "대화 초기화" : "Denvia 홈");
+    ariaLabel ?? (isResetLink ? "대화 초기화 및 홈으로" : "Denvia 홈");
 
   return (
     <Link
       href={resolvedHref}
       aria-label={resolvedAriaLabel}
-      onClick={(event) => {
+      onClick={() => {
         if (isResetLink) {
-          event.preventDefault();
           onResetChat();
         }
       }}
