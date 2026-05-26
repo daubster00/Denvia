@@ -120,6 +120,23 @@
   margin: 0 0 24px;
 }
 
+.assistantLink {
+  color: #7c3aed;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.assistantLink:hover {
+  color: #5b21b6;
+}
+
+.assistantLink:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .assistantFooter {
   display: flex;
   align-items: center;

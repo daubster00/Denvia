@@ -1,18 +1,53 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 import type { QAMessage } from "@/stores/qa-store";
 import { AnswerFeedback } from "./AnswerFeedback";
-import { QuestionReFrame } from "./QuestionReFrame";
 import styles from "./ChatMessage.module.css";
 
 interface ChatMessageProps {
   message: QAMessage;
   onRetry?: () => void;
-  onPickReframeOption?: (option: string) => void;
 }
 
-export function ChatMessage({ message, onRetry, onPickReframeOption }: ChatMessageProps) {
+// 답변 본문에 포함된 URL을 자동으로 새 창에서 열리는 하이퍼링크로 변환한다.
+// http(s):// 또는 www. 로 시작하는 URL을 인식하고, 뒤에 붙은 문장부호(., ), ] 등)는 링크에서 제외한다.
+const URL_PATTERN = /(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi;
+const TRAILING_PUNCTUATION = /[.,!?;:)\]}"'»」』]+$/;
+
+function renderWithLinks(text: string): ReactNode {
+  if (!text) return text;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  for (const match of text.matchAll(URL_PATTERN)) {
+    const start = match.index ?? 0;
+    let url = match[0];
+    const trail = url.match(TRAILING_PUNCTUATION);
+    const trailing = trail ? trail[0] : "";
+    if (trailing) url = url.slice(0, url.length - trailing.length);
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+    const href = url.startsWith("www.") ? `https://${url}` : url;
+    nodes.push(
+      <a
+        key={`lnk-${key++}`}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={styles.assistantLink}
+      >
+        {url}
+      </a>
+    );
+    if (trailing) nodes.push(trailing);
+    cursor = start + match[0].length;
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes.length > 0 ? nodes : text;
+}
+
+export function ChatMessage({ message, onRetry }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isPending = message.status === "pending";
   const isError = message.status === "error";
@@ -68,23 +103,11 @@ export function ChatMessage({ message, onRetry, onPickReframeOption }: ChatMessa
           </div>
         ) : (
           <>
-            {/* message.content는 reframe 유무와 무관하게 1회만 표시 — UI/DB SoT 단일화 (AC-5/AC-6) */}
-            <p className={styles.assistantText}>{message.content}</p>
-            {/* pending 동안에는 타자기 애니메이션만 보이고, 부가 요소(reframe/feedback)는 finalize 후에만 렌더 */}
-            {!isPending && (
-              <>
-                {message.qaLogId != null && (
-                  <div className={styles.assistantFooter}>
-                    <AnswerFeedback qaLogId={message.qaLogId} />
-                  </div>
-                )}
-                {message.reframe != null && onPickReframeOption != null && (
-                  <QuestionReFrame
-                    options={message.reframe.options}
-                    onPickOption={onPickReframeOption}
-                  />
-                )}
-              </>
+            <p className={styles.assistantText}>{renderWithLinks(message.content)}</p>
+            {!isPending && message.qaLogId != null && (
+              <div className={styles.assistantFooter}>
+                <AnswerFeedback qaLogId={message.qaLogId} />
+              </div>
             )}
           </>
         )}
