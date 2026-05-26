@@ -62,7 +62,8 @@ export function AuthenticatedQAExperience() {
   return (
     <>
       <TopNav onResetChat={handleReset} />
-      <PopupCarousel />
+      {/* 팝업은 메인 랜딩(/)에서만 노출. /chat 등 다른 페이지에는 띄우지 않는다. */}
+      {isHero && <PopupCarousel />}
       {isHero ? (
         <>
           <HeroSection>

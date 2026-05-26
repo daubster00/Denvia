@@ -1,4 +1,4 @@
-/** PopupCarousel — Story 7.2 v2 vitest. */
+/** PopupCarousel — 다중 팝업 동시 표시 vitest. */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -26,7 +26,6 @@ function makeWrapper() {
 
 beforeEach(() => {
   vi.mocked(fetchActivePopups).mockReset();
-  // 세션·로컬 스토리지 초기화 — 이전 테스트의 dismissal이 누수되지 않게.
   window.sessionStorage.clear();
   window.localStorage.clear();
   useSessionStore.setState({
@@ -41,7 +40,6 @@ beforeEach(() => {
       is_social: false,
     },
   });
-  // 기본 PC 디바이스로 가정.
   window.matchMedia = vi.fn().mockImplementation((q: string) => ({
     matches: false,
     media: q,
@@ -76,35 +74,52 @@ function makePopup(overrides: Record<string, unknown> = {}) {
 }
 
 describe("PopupCarousel", () => {
-  it("후보 0건 → 모달 미렌더", async () => {
+  it("후보 0건 → 다이얼로그 미렌더", async () => {
     vi.mocked(fetchActivePopups).mockResolvedValue([]);
     render(<PopupCarousel />, { wrapper: makeWrapper() });
     await waitFor(() => expect(fetchActivePopups).toHaveBeenCalled());
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("후보 1건 → dialog 노출 + indicator 숨김", async () => {
+  it("후보 1건 → 단일 다이얼로그 노출", async () => {
     vi.mocked(fetchActivePopups).mockResolvedValue([makePopup({ popup_id: 10 })]);
     render(<PopupCarousel />, { wrapper: makeWrapper() });
     await waitFor(() => expect(screen.getByRole("dialog")).toBeDefined());
     expect(screen.getByText("테스트 팝업")).toBeDefined();
-    // indicator(role=tablist)는 1건일 때 숨김
-    expect(screen.queryByRole("tablist")).toBeNull();
   });
 
-  it("후보 2건 → indicator(dots + 1/2) 표시 + 다음 버튼 클릭", async () => {
+  it("후보 3건 → 다이얼로그 3개가 동시에 노출 (캐러셀 없음)", async () => {
     vi.mocked(fetchActivePopups).mockResolvedValue([
       makePopup({ popup_id: 10, title: "첫번째" }),
       makePopup({ popup_id: 11, title: "두번째" }),
+      makePopup({ popup_id: 12, title: "세번째" }),
     ]);
     render(<PopupCarousel />, { wrapper: makeWrapper() });
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeDefined());
-    expect(screen.getByText("1 / 2")).toBeDefined();
-    fireEvent.click(screen.getByLabelText("다음 팝업"));
-    await waitFor(() => expect(screen.getByText("2 / 2")).toBeDefined());
+    await waitFor(() => expect(screen.getAllByRole("dialog").length).toBe(3));
+    expect(screen.getByText("첫번째")).toBeDefined();
+    expect(screen.getByText("두번째")).toBeDefined();
+    expect(screen.getByText("세번째")).toBeDefined();
+    // 캐러셀 잔여물(indicator/다음 버튼) 없음 확인
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByLabelText("다음 팝업")).toBeNull();
   });
 
-  it("'오늘 하루 안보기' 클릭 → localStorage에 만료시각 기록 + 모달 close", async () => {
+  it("개별 닫기 → 해당 팝업만 사라지고 나머지는 유지", async () => {
+    vi.mocked(fetchActivePopups).mockResolvedValue([
+      makePopup({ popup_id: 20, title: "유지" }),
+      makePopup({ popup_id: 21, title: "닫힐것" }),
+    ]);
+    render(<PopupCarousel />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getAllByRole("dialog").length).toBe(2));
+    // "닫힐것" 다이얼로그의 X 버튼 클릭
+    const closeButtons = screen.getAllByLabelText("닫기");
+    fireEvent.click(closeButtons[1]);
+    await waitFor(() => expect(screen.getAllByRole("dialog").length).toBe(1));
+    expect(screen.getByText("유지")).toBeDefined();
+    expect(screen.queryByText("닫힐것")).toBeNull();
+  });
+
+  it("'오늘 하루 안보기' → 해당 팝업만 localStorage 기록 + 닫힘", async () => {
     vi.mocked(fetchActivePopups).mockResolvedValue([makePopup({ popup_id: 42 })]);
     render(<PopupCarousel />, { wrapper: makeWrapper() });
     await waitFor(() => expect(screen.getByRole("dialog")).toBeDefined());
@@ -129,7 +144,6 @@ describe("PopupCarousel", () => {
   });
 
   it("'오늘 하루 안보기'로 차단된 팝업 → 미노출", async () => {
-    // 미래 시각으로 localStorage에 차단 기록을 심어둔다.
     const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     window.localStorage.setItem("popup_dismissed_until_99", future);
     vi.mocked(fetchActivePopups).mockResolvedValue([makePopup({ popup_id: 99 })]);

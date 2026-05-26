@@ -1,12 +1,4 @@
-/* PopupCarousel — Story 7.2 v2. 정중앙 모달 + 좌우 슬라이드 캐러셀. */
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  /* TopNav header(100) / dropdown(200) 모두 가리기 위해 1000번대 사용. AppToast(1100)는 모달 위에 떠야 정상. */
-  z-index: 1000;
-}
+/* PopupCarousel — 다중 팝업 동시 표시. 각 팝업은 독립 다이얼로그. */
 
 .dialog {
   position: fixed;
@@ -15,28 +7,34 @@
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+  /* TopNav header(100) / dropdown(200) 위로 띄우되 AppToast(1100) 보다는 아래. */
   z-index: 1001;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
+/* cascading offset — 같은 위치(center/left/right) 다중 노출 시 어긋나게 배치.
+ * 각 다이얼로그는 --popup-cascade-px 변수를 받아 transform 으로 추가 이동. */
 .dialogCenter {
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%)
+    translate(var(--popup-cascade-px, 0px), var(--popup-cascade-px, 0px));
 }
 
 .dialogLeft {
   top: 50%;
   left: 24px;
-  transform: translateY(-50%);
+  transform: translateY(-50%)
+    translateY(var(--popup-cascade-px, 0px));
 }
 
 .dialogRight {
   top: 50%;
   right: 24px;
-  transform: translateY(-50%);
+  transform: translateY(-50%)
+    translateY(var(--popup-cascade-px, 0px));
 }
 
 /* 직접 좌표 모드: `--popup-top-px` / `--popup-left-px` 가 컴포넌트에서 주입됨. */
@@ -77,26 +75,10 @@
 }
 
 .viewport {
-  position: relative;
   flex: 1 1 auto;
-  overflow: hidden;
-  touch-action: pan-y;
-}
-
-.track {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  transition: transform 280ms ease;
-  will-change: transform;
-  transform: translateX(calc(var(--carousel-index, 0) * -100%));
-}
-
-.slide {
-  flex: 0 0 100%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
 }
 
 .imageSlide {
@@ -159,78 +141,6 @@
   background: #ddd6fe;
 }
 
-.arrowBtn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #e5e7eb;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 16px;
-  color: #1f2937;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  z-index: 1;
-}
-
-.arrowBtn:hover {
-  background: #fff;
-}
-
-.arrowBtn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.arrowBtnPrev {
-  left: 8px;
-}
-
-.arrowBtnNext {
-  right: 8px;
-}
-
-.indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 8px 24px 4px;
-  flex-shrink: 0;
-}
-
-.dots {
-  display: flex;
-  gap: 6px;
-}
-
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #d1d5db;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.dotActive {
-  background: #6d28d9;
-  width: 18px;
-  border-radius: 3px;
-}
-
-.counter {
-  font-size: 12px;
-  color: #6b7280;
-  font-variant-numeric: tabular-nums;
-}
-
 .footer {
   display: flex;
   justify-content: space-between;
@@ -256,13 +166,10 @@
 }
 
 @media (max-width: 768px) {
-  .arrowBtn {
-    display: none;
-  }
   .dialog {
     width: calc(100vw - 24px);
   }
-  /* 모바일은 화면이 좁아 항상 가운데 고정 — PC용 위치 변형을 모두 무시. */
+  /* 모바일은 화면이 좁아 항상 가운데 고정 — PC용 위치 변형 모두 무시. */
   .dialogLeft,
   .dialogRight,
   .dialogCustom {
@@ -270,6 +177,7 @@
     left: 50%;
     bottom: auto;
     right: auto;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%)
+      translate(var(--popup-cascade-px, 0px), var(--popup-cascade-px, 0px));
   }
 }
