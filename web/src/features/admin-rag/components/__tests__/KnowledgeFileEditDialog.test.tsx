@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { KnowledgeFileEditDialog, toHighlightHtml } from "../KnowledgeFileEditDialog";
+import { KnowledgeFileEditDialog } from "../KnowledgeFileEditDialog";
 
 vi.mock("../../api/knowledge", () => ({
   fetchKnowledgeDetail: vi.fn(),
@@ -126,40 +126,5 @@ describe("KnowledgeFileEditDialog", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
-  });
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-// highlightLine 단위 테스트
-// ──────────────────────────────────────────────────────────────────────────────
-
-describe("toHighlightHtml (highlightLine)", () => {
-  it("{보철} 라인 → .major span 포함", () => {
-    const html = toHighlightHtml("{보철}\n");
-    expect(html).toContain("class=");
-    expect(html).toContain("{보철}");
-  });
-
-  it("==크라운== 라인 → .minor span 포함", () => {
-    const html = toHighlightHtml("==크라운==\n");
-    expect(html).toContain("class=");
-    expect(html).toContain("==크라운==");
-  });
-
-  it("=크라운= 라인 → .minor span 포함", () => {
-    const html = toHighlightHtml("=크라운=\n");
-    expect(html).toContain("=크라운=");
-  });
-
-  it("일반 본문 → span 없음", () => {
-    const html = toHighlightHtml("일반 본문입니다.\n");
-    expect(html).not.toContain("<span");
-    expect(html).toContain("일반 본문입니다.");
-  });
-
-  it("XSS 방지 — < > & 이스케이프", () => {
-    const html = toHighlightHtml("<script>alert(1)</script>\n");
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("&lt;script&gt;");
   });
 });

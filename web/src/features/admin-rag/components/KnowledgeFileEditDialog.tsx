@@ -1,26 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { IconClose } from "@wanteddev/wds-icon";
 import { fetchKnowledgeDetail, editKnowledge } from "../api/knowledge";
 import styles from "./KnowledgeFileEditDialog.module.css";
-
-function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function highlightLine(line: string): string {
-  const e = escapeHtml(line);
-  if (line.startsWith("{") && line.endsWith("}") && line.length > 2)
-    return `<span class="${styles.major}">${e}</span>`;
-  if (line.startsWith("=") && line.endsWith("=") && line.length >= 2)
-    return `<span class="${styles.minor}">${e}</span>`;
-  return e;
-}
-
-export function toHighlightHtml(text: string): string {
-  return text.split("\n").map(highlightLine).join("\n") + "\n";
-}
 
 interface Props {
   uploadId: number;
@@ -34,15 +17,14 @@ export function KnowledgeFileEditDialog({ uploadId, onClose, onSaved }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetchKnowledgeDetail(uploadId)
       .then((d) => {
         if (!cancelled) {
-          setContent(d.content);
+          // CRLF → LF 정규화: textarea는 LF만 다루므로 통일
+          setContent(d.content.replace(/\r\n/g, "\n"));
           setFilename(d.filename);
           setLoading(false);
         }
@@ -65,13 +47,6 @@ export function KnowledgeFileEditDialog({ uploadId, onClose, onSaved }: Props) {
     document.addEventListener("keydown", handle);
     return () => document.removeEventListener("keydown", handle);
   }, [onClose]);
-
-  const syncScroll = () => {
-    if (preRef.current && textareaRef.current) {
-      preRef.current.scrollTop = textareaRef.current.scrollTop;
-      preRef.current.scrollLeft = textareaRef.current.scrollLeft;
-    }
-  };
 
   const handleSave = async () => {
     setError(null);
@@ -116,17 +91,9 @@ export function KnowledgeFileEditDialog({ uploadId, onClose, onSaved }: Props) {
         {loading && <div className={styles.loadingText}>불러오는 중…</div>}
         {!loading && (
           <div className={styles.editorWrapper}>
-            <pre
-              ref={preRef}
-              aria-hidden="true"
-              className={styles.highlight}
-              dangerouslySetInnerHTML={{ __html: toHighlightHtml(content) }}
-            />
             <textarea
-              ref={textareaRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              onScroll={syncScroll}
               className={styles.textarea}
               spellCheck={false}
               autoComplete="off"
