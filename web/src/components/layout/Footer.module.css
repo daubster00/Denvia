@@ -78,6 +78,36 @@
   font-size: 12px;
   color: #9ca3af;
   letter-spacing: 0.1px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.copyrightText {
+  flex-shrink: 0;
+}
+
+.legalLinks {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.legalLink {
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.legalLink:hover {
+  color: #171719;
+  text-decoration: underline;
+}
+
+.legalDivider {
+  color: #d1d5db;
+  font-size: 11px;
+  line-height: 1;
 }
 
 @media (max-width: 640px) {

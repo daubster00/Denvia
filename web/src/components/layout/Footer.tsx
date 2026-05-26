@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import styles from "./Footer.module.css";
 
 const COMPANY = {
@@ -60,7 +61,20 @@ export function Footer() {
         </dl>
 
         <div className={styles.copyright}>
-          © {year} {COMPANY.name}. All rights reserved.
+          <span className={styles.copyrightText}>
+            © {year} {COMPANY.name}. All rights reserved.
+          </span>
+          <nav className={styles.legalLinks} aria-label="약관 및 정책">
+            <Link href="/legal/terms" className={styles.legalLink}>
+              이용약관
+            </Link>
+            <span aria-hidden className={styles.legalDivider}>
+              |
+            </span>
+            <Link href="/legal/privacy" className={styles.legalLink}>
+              개인정보처리방침
+            </Link>
+          </nav>
         </div>
       </div>
     </footer>
