@@ -25,6 +25,8 @@ export const errorCopy: Record<string, string> = {
     "소셜 가입 세션이 만료되었습니다. 다시 시도해주세요",
   OAUTH_PROVIDER_UNKNOWN: "지원하지 않는 소셜 로그인입니다",
   SMS_TOKEN_INVALID: "휴대폰 인증이 필요합니다",
+  SMS_ANOMALY_BLOCKED:
+    "비정상적인 인증 시도가 감지되어 24시간 동안 휴대폰 인증이 제한됩니다. 자동화된 접근으로 의심되는 경우 차단되며, 본인이 맞다면 잠시 후 다시 시도해 주세요.",
 
   // Story 9.2 — kill-switch
   // qa.py 503 응답의 표준 코드. 기존 SERVICE_KILL_SWITCH는 backwards-compat로 1주 유지.

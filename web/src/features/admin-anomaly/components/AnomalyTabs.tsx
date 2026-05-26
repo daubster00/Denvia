@@ -15,6 +15,7 @@ const ALL_TYPES: AnomalyType[] = [
   "repeated_question",
   "recovery_abuse",
   "rapid_followup_questions",
+  "sms_abuse",
 ];
 
 export function AnomalyTabs({ activeType, onChange }: Props) {

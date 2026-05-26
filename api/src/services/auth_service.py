@@ -51,6 +51,29 @@ _MAX_RETRIES = 3      # 시간당 최대 발송 횟수 (4번째 = 429)
 _MAX_WRONG = 3        # OTP 불일치 최대 횟수
 _TOKEN_TTL = 600      # phone_verification_token 10분
 
+# ── SMS 이상탐지 (봇/공격 패턴) ─────────────────────────────────────────────────
+# /auth/sms/send 호출이 1시간 안에 10회 이상이면 동일 번호의 send/verify 를 24시간 거절한다.
+# 카운터는 purpose 무관 — 같은 번호로 purpose 만 바꿔가며 두드리는 패턴까지 잡기 위해.
+# cooldown(60s)·시간당 한도(3회)에 막힌 요청도 카운트에 포함 — 거절 후에도 계속 두드리는
+# 자동화된 접근을 식별하는 게 본 임계의 목적이다.
+_SMS_ATTEMPT_KEY = "sms_attempt:{phone}"
+_SMS_BLOCK_KEY = "sms_block:{phone}"
+_SMS_ATTEMPT_WINDOW = 3600       # 1시간
+_SMS_BLOCK_TTL = 86400           # 24시간
+_SMS_ANOMALY_THRESHOLD = 10
+_SMS_ANOMALY_MESSAGE = (
+    "비정상적인 인증 시도가 감지되어 24시간 동안 휴대폰 인증이 제한됩니다. "
+    "자동화된 접근으로 의심되는 경우 차단되며, 본인이 맞다면 잠시 후 다시 시도해 주세요."
+)
+
+
+def _mask_phone_for_anomaly(phone: str) -> str:
+    """이상탐지 details 저장용 — 가운데 4자리 마스킹."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if len(digits) < 8:
+        return "***"
+    return f"{digits[:3]}****{digits[-4:]}"
+
 
 def _make_redis(base_url: str) -> Redis:
     return Redis.from_url(f"{base_url}/{REDIS_DB_OTP}", decode_responses=True)
@@ -122,12 +145,90 @@ def _otp_keys(purpose: str, phone: str) -> tuple[str, str, str]:
     )
 
 
+async def _record_sms_abuse_anomaly(
+    *,
+    phone: str,
+    purpose: str,
+    attempt_count: int,
+    db: AsyncSession | None,
+    ip: str | None = None,
+) -> None:
+    """SMS 이상탐지 발동 시 AnomalyEvent 1건 INSERT.
+
+    db 가 None 이면 (테스트·드물게 라우터가 세션을 전달 못한 경우) DB 기록은 skip 하고
+    구조 로그만 남긴다 — 차단(24h)·거절(429)은 어떤 경우에도 적용된다.
+    멱등 — Redis block_key SET 직후에만 호출되므로 24h 안에 같은 번호로 중복 INSERT 되지 않는다.
+    target_user_id 는 phone 으로 활성 사용자를 조회해 채우고, 없으면 NULL (signup 단계).
+
+    ip 는 라우터에서 추출한 클라이언트 IP. 차단 정책은 변경되지 않지만 이상탐지 리스트에서
+    추적 가능하도록 기록만 한다.
+    """
+    masked = _mask_phone_for_anomaly(phone)
+    logger.warning(
+        "auth.sms_abuse.detected",
+        phone_masked=masked,
+        purpose=purpose,
+        attempt_count=attempt_count,
+    )
+    if db is None:
+        return
+
+    try:
+        # 지연 import — auth_service 의 모듈 상단 import 사이클 회피.
+        from api.src.models.anomaly_event import AnomalyEvent as _AnomalyEvent
+
+        existing_user_id: int | None = None
+        try:
+            row = (
+                await db.execute(
+                    select(User.id).where(User.phone == phone, User.withdrawn_at.is_(None))
+                )
+            ).scalar_one_or_none()
+            existing_user_id = row if row is not None else None
+        except Exception:
+            logger.error("auth.sms_abuse.user_lookup_failed", exc_info=True)
+            existing_user_id = None
+
+        now_dt = datetime.now(tz=timezone.utc)
+        event = _AnomalyEvent(
+            type="sms_abuse",
+            target_user_id=existing_user_id,
+            ip=ip,
+            ua=None,
+            details={
+                "phone_masked": masked,
+                "purpose": purpose,
+                "attempt_count": int(attempt_count),
+                "window_seconds": _SMS_ATTEMPT_WINDOW,
+                "block_seconds": _SMS_BLOCK_TTL,
+                "auto_actioned": True,
+            },
+            status="actioned",
+            reviewed_by_admin_id=None,
+            reviewed_at=now_dt,
+            created_at=now_dt,
+        )
+        db.add(event)
+        try:
+            await db.flush()
+            # 이후 send_sms_otp_flow 가 HTTPException(429) 으로 빠지므로 라우터 commit 이
+            # 실행되지 않는다. 이상탐지 row 가 유실되지 않도록 여기서 명시 commit.
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.error("auth.sms_abuse.insert_failed", exc_info=True)
+    except Exception:
+        logger.error("auth.sms_abuse.hook_failed", exc_info=True)
+
+
 async def send_sms_otp_flow(
     phone: str,
     purpose: str,
     redis_url: str,
     messaging: MessagingProvider,
     expose_code: bool = False,
+    db: AsyncSession | None = None,
+    ip: str | None = None,
 ) -> dict:
     """SMS OTP 발송 플로우.
 
@@ -135,12 +236,49 @@ async def send_sms_otp_flow(
         {"sent_at": iso_str, "cooldown_seconds": 60, "max_retries": 3}
 
     Raises:
+        HTTPException 429 SMS_ANOMALY_BLOCKED — 1시간 내 10회 이상 시도로 24시간 차단 중
         HTTPException 429 SMS_COOLDOWN_ACTIVE — 60초 쿨다운 중
         HTTPException 429 SMS_MAX_RETRIES_EXCEEDED — 시간당 4회 초과
     """
     otp_key, cooldown_key, retry_key = _otp_keys(purpose, phone)
+    attempt_key = _SMS_ATTEMPT_KEY.format(phone=phone)
+    block_key = _SMS_BLOCK_KEY.format(phone=phone)
 
     async with _make_redis(redis_url) as r:
+        # 0) 24h 차단 키 우선 확인 — 어떤 카운터/쿨다운보다 먼저.
+        block_ttl = await r.ttl(block_key)
+        if isinstance(block_ttl, int) and block_ttl > 0:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "SMS_ANOMALY_BLOCKED",
+                    "message": _SMS_ANOMALY_MESSAGE,
+                    "retry_after_seconds": block_ttl,
+                },
+            )
+
+        # 1) 시도 카운터 INCR — purpose 무관·성공/실패 무관. 10회 도달 시 24h 차단으로 전이.
+        attempt_count = await r.incr(attempt_key)
+        if attempt_count == 1:
+            await r.expire(attempt_key, _SMS_ATTEMPT_WINDOW)
+        if attempt_count >= _SMS_ANOMALY_THRESHOLD:
+            await r.set(block_key, "1", ex=_SMS_BLOCK_TTL)
+            await _record_sms_abuse_anomaly(
+                phone=phone,
+                purpose=purpose,
+                attempt_count=int(attempt_count),
+                db=db,
+                ip=ip,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "SMS_ANOMALY_BLOCKED",
+                    "message": _SMS_ANOMALY_MESSAGE,
+                    "retry_after_seconds": _SMS_BLOCK_TTL,
+                },
+            )
+
         # 쿨다운 확인
         if await r.exists(cooldown_key):
             raise HTTPException(
@@ -198,14 +336,28 @@ async def verify_sms_otp_flow(
         phone_verification_token (UUID 문자열)
 
     Raises:
+        HTTPException 429 SMS_ANOMALY_BLOCKED — 1시간 내 10회 이상 시도로 24시간 차단 중
         HTTPException 400 SMS_CODE_INVALID — OTP 불일치
         HTTPException 400 SMS_SESSION_EXPIRED — OTP 없음/만료
         HTTPException 400 SMS_MAX_WRONG_ATTEMPTS — 3회 오류 후 무효화
     """
     otp_key, _, _ = _otp_keys(purpose, phone)
     wrong_key = f"otp_wrong:{purpose}:{phone}"
+    block_key = _SMS_BLOCK_KEY.format(phone=phone)
 
     async with _make_redis(redis_url) as r:
+        # 24h 차단 키 우선 확인 — send 단계에서 이미 OTP 가 발급됐어도 검증 단계에서 거절.
+        block_ttl = await r.ttl(block_key)
+        if isinstance(block_ttl, int) and block_ttl > 0:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "SMS_ANOMALY_BLOCKED",
+                    "message": _SMS_ANOMALY_MESSAGE,
+                    "retry_after_seconds": block_ttl,
+                },
+            )
+
         # 저장된 OTP 조회
         stored_otp = await r.get(otp_key)
         if stored_otp is None:

@@ -14,6 +14,7 @@ _AnomalyType = Enum(
     "repeated_question",
     "recovery_abuse",
     "rapid_followup_questions",
+    "sms_abuse",
     name="anomaly_event_type",
     create_constraint=False,
 )

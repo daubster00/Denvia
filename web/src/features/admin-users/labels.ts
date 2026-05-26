@@ -25,6 +25,7 @@ export const ANOMALY_TYPE_LABELS: Record<string, string> = {
   repeated_question: "반복 질의",
   recovery_abuse: "계정 복구 남용",
   rapid_followup_questions: "답변 직후 연속 질의",
+  sms_abuse: "휴대폰 인증 남용",
 };
 
 export function formatSegment(segment: Segment | null): string {

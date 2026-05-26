@@ -54,6 +54,9 @@ const DETECTION_CRITERIA: Record<AnomalyType, string> = {
   rapid_followup_questions:
     "직전 답변이 끝난 뒤 3초 이내에 새 질문을 연속 3회 던지면 자동으로 탐지됩니다. " +
     "시스템이 즉시 자동 쿨다운(질문 속도 제한)을 적용합니다.",
+  sms_abuse:
+    "동일 휴대폰 번호로 1시간 이내 SMS 인증 요청이 10회 이상 발생하면 탐지됩니다. " +
+    "시스템이 즉시 해당 번호를 24시간 자동 차단합니다.",
 };
 
 /**

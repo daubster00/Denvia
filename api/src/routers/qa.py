@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
@@ -33,6 +33,7 @@ async def qa_echo(
 @router.post("/stream")
 async def qa_stream(
     body: QAStreamRequest,
+    request: Request,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_session)],
     redis_quota: Annotated[AsyncRedis, Depends(get_redis_quota)],
@@ -69,12 +70,14 @@ async def qa_stream(
             },
         )
 
+    ip = request.client.host if request.client else None
     preflight = await _qa_service.preflight(
         user=user,
         redis_quota=redis_quota,
         redis_runtime=redis_runtime,
         db=db,
         question_text=body.question_text,
+        ip=ip,
     )
     return EventSourceResponse(
         _qa_service.stream(

@@ -35,6 +35,7 @@ ANOMALY_TYPES: tuple[str, ...] = (
     "repeated_question",
     "recovery_abuse",
     "rapid_followup_questions",
+    "sms_abuse",
 )
 ANOMALY_STATUSES: tuple[str, ...] = ("new", "reviewed", "actioned", "unblocked")
 
@@ -601,6 +602,7 @@ async def check_rapid_followup_questions(
     redis_quota,
     db: AsyncSession,
     redis_pubsub=None,
+    ip: str | None = None,
 ) -> bool:
     """qa_service.preflight 내 hook. admin 은 skip.
 
@@ -702,7 +704,7 @@ async def check_rapid_followup_questions(
         event = AnomalyEvent(
             type="rapid_followup_questions",
             target_user_id=user_id,
-            ip=None,
+            ip=ip,
             ua=None,
             details={
                 "streak": int(streak),
@@ -773,6 +775,7 @@ async def check_repeated_question(
     question_text: str,
     redis_quota,
     db: AsyncSession,
+    ip: str | None = None,
 ) -> bool:
     """qa_service.preflight 내 hook. admin 은 skip.
 
@@ -852,7 +855,7 @@ async def check_repeated_question(
         event = AnomalyEvent(
             type="repeated_question",
             target_user_id=user_id,
-            ip=None,
+            ip=ip,
             ua=None,
             details={
                 "streak": int(streak),

@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { sendSmsOtp, verifySmsOtp, lookupId } from "./api";
 import { PhoneNumberField } from "./PhoneNumberField";
 import { SMSCodeInput } from "./SMSCodeInput";
+import { ApiError } from "@/types/api";
+import { getErrorMessage } from "@/lib/error-copy";
 import authStyles from "@/styles/auth-forms.module.css";
 import styles from "@/styles/find-id.module.css";
 
@@ -49,8 +51,13 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
       setCooldownSeconds(res.cooldown_seconds);
       setDebugSmsCode(res.debug_code ?? null);
       setStep("otp");
-    } catch {
-      setPhoneError("인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } catch (e) {
+      // SMS_ANOMALY_BLOCKED 등 코드 매핑이 있는 에러는 명시적 안내를 보여준다.
+      if (e instanceof ApiError && e.code === "SMS_ANOMALY_BLOCKED") {
+        setPhoneError(getErrorMessage(e.code));
+      } else {
+        setPhoneError("인증번호 전송에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      }
     } finally {
       setSendingOtp(false);
     }
@@ -68,8 +75,12 @@ export function FindIdPopup({ onBack }: FindIdPopupProps) {
       const lookupResult = await lookupId({ phone_verification_token });
       setResult(lookupResult);
       setStep("result");
-    } catch {
-      setOtpError("인증번호가 올바르지 않습니다.");
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "SMS_ANOMALY_BLOCKED") {
+        setOtpError(getErrorMessage(e.code));
+      } else {
+        setOtpError("인증번호가 올바르지 않습니다.");
+      }
     }
   };
 

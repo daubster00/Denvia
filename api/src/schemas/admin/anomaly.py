@@ -21,6 +21,7 @@ class AnomalyEventItem(BaseModel):
         "repeated_question",
         "recovery_abuse",
         "rapid_followup_questions",
+        "sms_abuse",
     ]
     target_user_id: int | None = None
     target_user_email_masked: str | None = Field(

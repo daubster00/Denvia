@@ -12,7 +12,8 @@ export type AnomalyType =
   | "concurrent_ip_login"
   | "repeated_question"
   | "recovery_abuse"
-  | "rapid_followup_questions";
+  | "rapid_followup_questions"
+  | "sms_abuse";
 
 export type AnomalyStatus = "new" | "reviewed" | "actioned" | "unblocked";
 

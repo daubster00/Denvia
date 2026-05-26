@@ -22,6 +22,8 @@ const ERROR_COPY: Record<string, string> = {
   SMS_TOKEN_INVALID: "휴대폰 인증이 필요합니다.",
   SMS_COOLDOWN_ACTIVE: "잠시 후 다시 요청해주세요.",
   SMS_MAX_RETRIES_EXCEEDED: "인증번호 발송 한도를 초과했습니다. 1시간 후 다시 시도해주세요.",
+  SMS_ANOMALY_BLOCKED:
+    "비정상적인 인증 시도가 감지되어 24시간 동안 휴대폰 인증이 제한됩니다. 자동화된 접근으로 의심되는 경우 차단되며, 본인이 맞다면 잠시 후 다시 시도해 주세요.",
   SMS_CODE_INVALID: "인증번호가 일치하지 않습니다.",
   SMS_MAX_WRONG_ATTEMPTS: "인증 시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.",
 };

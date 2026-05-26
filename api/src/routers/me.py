@@ -492,7 +492,9 @@ def _mask_phone(phone: str) -> str:
 
 @router.post("/me/withdraw/send-otp", response_model=WithdrawOtpSendResponse)
 async def withdraw_send_otp(
+    request: Request,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
 ) -> WithdrawOtpSendResponse:
     """소셜 가입자 본인 인증용 OTP 발송 (Story 1.7 / AC-9).
 
@@ -515,12 +517,15 @@ async def withdraw_send_otp(
                 "message": "등록된 휴대폰이 없습니다.",
             },
         )
+    ip = request.client.host if request.client else None
     await send_sms_otp_flow(
         phone=current_user.phone,
         purpose="withdraw",
         redis_url=settings.redis_url,
         messaging=_get_messaging(),
         expose_code=settings.messaging_provider == "stub",
+        db=db,
+        ip=ip,
     )
     return WithdrawOtpSendResponse(masked_phone=_mask_phone(current_user.phone))
 

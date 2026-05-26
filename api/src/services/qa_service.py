@@ -152,6 +152,7 @@ class QAService:
         redis_runtime: Redis,
         db: AsyncSession,
         question_text: str | None = None,
+        ip: str | None = None,
     ) -> PreflightResult:
         """Quota INCR + 의도적 지연. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
 
@@ -177,6 +178,7 @@ class QAService:
             subscription_status=user.subscription_status,
             redis_quota=redis_quota,
             db=db,
+            ip=ip,
         )
 
         # repeated_question 탐지 (동일 텍스트 연속 3회) — question_text 제공 시에만.
@@ -187,6 +189,7 @@ class QAService:
                 question_text=question_text,
                 redis_quota=redis_quota,
                 db=db,
+                ip=ip,
             )
             # 두 hook 중 하나라도 새로 throttle 을 걸었으면 팝업 트리거.
             throttle_just_applied = throttle_just_applied or repeated_just_applied

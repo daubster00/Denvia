@@ -69,14 +69,21 @@ def _is_secure_env() -> bool:
 # ── SMS ──────────────────────────────────────────────────────────────────────
 
 @router.post("/sms/send", response_model=SmsSendResponse)
-async def sms_send(body: SmsSendRequest) -> SmsSendResponse:
-    """SMS OTP 발송 — 60초 쿨다운, 시간당 최대 3회."""
+async def sms_send(
+    body: SmsSendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> SmsSendResponse:
+    """SMS OTP 발송 — 60초 쿨다운, 시간당 최대 3회. 1h 내 10회 이상 시 24h 차단(sms_abuse)."""
+    ip = request.client.host if request.client else None
     result = await send_sms_otp_flow(
         phone=body.phone,
         purpose=body.purpose,
         redis_url=settings.redis_url,
         messaging=_get_messaging(),
         expose_code=settings.messaging_provider == "stub",
+        db=db,
+        ip=ip,
     )
     return SmsSendResponse(**result)
 
