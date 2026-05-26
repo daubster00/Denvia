@@ -194,13 +194,32 @@ async def list_user_qa_logs(
     user_id: int,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    from_: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ) -> UserQALogListResponse:
-    """관리자용 사용자 질의 로그 — 사용자 활동 로그 페이지의 질의 탭."""
+    """관리자용 사용자 질의 로그 — 사용자 활동 로그 페이지의 질의 탭.
+
+    ``from`` / ``to`` 쿼리스트링(YYYY-MM-DD, KST)으로 질문 일시 범위를
+    필터링한다. 둘 다 선택형이며 ``from > to`` 이면 422.
+    """
     await _require_user_exists(db, user_id)
+    if from_ is not None and to is not None and from_ > to:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_PARAM",
+                "message": "from은 to보다 이전이어야 합니다.",
+            },
+        )
     result = await admin_user_activity_service.list_user_qa_logs(
-        db, user_id=user_id, page=page, per_page=per_page
+        db,
+        user_id=user_id,
+        page=page,
+        per_page=per_page,
+        date_from=from_,
+        date_to=to,
     )
     logger.info(
         "admin.users.activity.qa_logs.viewed",
@@ -208,6 +227,8 @@ async def list_user_qa_logs(
         target_user_id=user_id,
         page=page,
         per_page=per_page,
+        date_from=from_.isoformat() if from_ else None,
+        date_to=to.isoformat() if to else None,
         total=result.total,
         trace_id=str(getattr(request.state, "trace_id", "")),
     )

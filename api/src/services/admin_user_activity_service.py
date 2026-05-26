@@ -13,8 +13,10 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.anomaly_event import AnomalyEvent
@@ -30,6 +32,7 @@ from api.src.schemas.admin.user_activity import (
     UserQALogItem,
     UserQALogListResponse,
 )
+from api.src.services.budget_service import KST
 
 logger = structlog.get_logger(__name__)
 
@@ -44,15 +47,42 @@ def _excerpt(text: str | None, length: int) -> str:
     return text[:length] + "…"
 
 
+def _kst_window(
+    f: date | None, t: date | None
+) -> tuple[datetime | None, datetime | None]:
+    """[from 00:00 KST, (to+1) 00:00 KST). 한쪽만 있으면 그쪽 경계만 반환."""
+    start = (
+        datetime(f.year, f.month, f.day, tzinfo=KST) if f is not None else None
+    )
+    end_excl = (
+        datetime(t.year, t.month, t.day, tzinfo=KST) + timedelta(days=1)
+        if t is not None
+        else None
+    )
+    return start, end_excl
+
+
 async def list_user_qa_logs(
     db: AsyncSession,
     *,
     user_id: int,
     page: int = 1,
     per_page: int = 20,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> UserQALogListResponse:
-    """qa_logs 페이지네이션 (user_id 필터, created_at DESC)."""
-    where_clause = QALog.user_id == user_id
+    """qa_logs 페이지네이션 (user_id 필터, created_at DESC).
+
+    date_from/date_to 는 KST 기준 자정~다음날 자정 윈도우로 변환해
+    qa_logs.created_at 에 적용한다.
+    """
+    conds = [QALog.user_id == user_id]
+    start, end_excl = _kst_window(date_from, date_to)
+    if start is not None:
+        conds.append(QALog.created_at >= start)
+    if end_excl is not None:
+        conds.append(QALog.created_at < end_excl)
+    where_clause = and_(*conds)
 
     total = (
         await db.execute(select(func.count()).select_from(QALog).where(where_clause))

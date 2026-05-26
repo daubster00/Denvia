@@ -206,19 +206,106 @@ function PanelChrome({
 function QATab({ userId }: { userId: number }) {
   const [page, setPage] = useState(1);
   const [openQaLogId, setOpenQaLogId] = useState<number | null>(null);
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const rangeInvalid =
+    dateFrom !== "" && dateTo !== "" && dateFrom > dateTo;
+
+  const effectiveFrom = rangeInvalid ? "" : dateFrom;
+  const effectiveTo = rangeInvalid ? "" : dateTo;
+
   const query = useQuery<PagedResponse<UserQALogItem>>({
-    queryKey: ["admin", "users", userId, "qa-logs", page],
-    queryFn: () => fetchUserQALogs({ userId, page, perPage: PER_PAGE }),
+    queryKey: [
+      "admin",
+      "users",
+      userId,
+      "qa-logs",
+      page,
+      effectiveFrom,
+      effectiveTo,
+    ],
+    queryFn: () =>
+      fetchUserQALogs({
+        userId,
+        page,
+        perPage: PER_PAGE,
+        dateFrom: effectiveFrom || null,
+        dateTo: effectiveTo || null,
+      }),
     placeholderData: keepPreviousData,
     staleTime: 10_000,
     refetchOnWindowFocus: false,
+    enabled: !rangeInvalid,
   });
   const items = query.data?.items ?? [];
+
+  const handleFromChange = (value: string) => {
+    setDateFrom(value);
+    setPage(1);
+  };
+  const handleToChange = (value: string) => {
+    setDateTo(value);
+    setPage(1);
+  };
+  const handleReset = () => {
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  };
+
+  const filterBar = (
+    <div className={styles.filterBar} data-testid="qa-log-date-filter">
+      <label className={styles.filterLabel}>
+        <span className={styles.filterLabelText}>시작일</span>
+        <input
+          type="date"
+          className={styles.filterInput}
+          value={dateFrom}
+          max={dateTo || undefined}
+          onChange={(e) => handleFromChange(e.target.value)}
+          data-testid="qa-log-date-from"
+          aria-label="질문 일시 시작일"
+        />
+      </label>
+      <span className={styles.filterSep} aria-hidden="true">
+        ~
+      </span>
+      <label className={styles.filterLabel}>
+        <span className={styles.filterLabelText}>종료일</span>
+        <input
+          type="date"
+          className={styles.filterInput}
+          value={dateTo}
+          min={dateFrom || undefined}
+          onChange={(e) => handleToChange(e.target.value)}
+          data-testid="qa-log-date-to"
+          aria-label="질문 일시 종료일"
+        />
+      </label>
+      <button
+        type="button"
+        className={styles.filterReset}
+        onClick={handleReset}
+        disabled={dateFrom === "" && dateTo === ""}
+        data-testid="qa-log-date-reset"
+      >
+        초기화
+      </button>
+      {rangeInvalid ? (
+        <span className={styles.filterError} role="alert">
+          시작일은 종료일보다 이전이어야 합니다.
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
-    <PanelChrome state={query} emptyText="질의 기록이 없습니다.">
-      {items.length === 0 ? (
-        <p className={styles.empty}>질의 기록이 없습니다.</p>
-      ) : (
+    <>
+      {filterBar}
+      <PanelChrome state={query} emptyText="질의 기록이 없습니다.">
+        {items.length === 0 ? (
+          <p className={styles.empty}>질의 기록이 없습니다.</p>
+        ) : (
         <div className={styles.tableWrap}>
           <table className={styles.table} data-testid="user-qa-logs-table">
             <thead>
@@ -283,7 +370,8 @@ function QATab({ userId }: { userId: number }) {
           onClose={() => setOpenQaLogId(null)}
         />
       ) : null}
-    </PanelChrome>
+      </PanelChrome>
+    </>
   );
 }
 

@@ -70,6 +70,13 @@ export interface ActivityFetchParams {
   perPage?: number;
 }
 
+export interface QALogFetchParams extends ActivityFetchParams {
+  /** YYYY-MM-DD (KST) — 질문 일시 시작일 (포함). */
+  dateFrom?: string | null;
+  /** YYYY-MM-DD (KST) — 질문 일시 종료일 (포함). */
+  dateTo?: string | null;
+}
+
 function buildQuery(params: ActivityFetchParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -86,11 +93,15 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 export async function fetchUserQALogs(
-  params: ActivityFetchParams,
+  params: QALogFetchParams,
 ): Promise<PagedResponse<UserQALogItem>> {
-  const qs = buildQuery(params);
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.perPage) q.set("per_page", String(params.perPage));
+  if (params.dateFrom) q.set("from", params.dateFrom);
+  if (params.dateTo) q.set("to", params.dateTo);
   return fetchJSON(
-    `${API_BASE}/api/v1/admin/users/${params.userId}/qa-logs?${qs}`,
+    `${API_BASE}/api/v1/admin/users/${params.userId}/qa-logs?${q.toString()}`,
   );
 }
 

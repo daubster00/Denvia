@@ -284,3 +284,71 @@
   word-break: break-word;
   color: #4b5563;
 }
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 8px;
+  font-size: 13px;
+}
+
+.filterLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filterLabelText {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.filterInput {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111827;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.filterInput:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: -1px;
+  border-color: #2563eb;
+}
+
+.filterSep {
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.filterReset {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filterReset:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.filterReset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.filterError {
+  color: #b91c1c;
+  font-size: 12px;
+}
