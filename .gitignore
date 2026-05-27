@@ -39,10 +39,10 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-# Next.js 라우트 폴더는 logs/ 규칙에서 예외 처리 (관리자 사용자 로그기록 페이지)
-# [userId]의 대괄호는 gitignore에서 문자 클래스로 해석되므로 이스케이프 필수
-!web/src/app/admin/users/\[userId\]/logs/
-!web/src/app/admin/users/\[userId\]/logs/**
+# Next.js app 라우트 안의 logs/ 폴더는 코드라서 예외
+# (관리자 페이지의 "로그" 라우트 등 — 새 logs 라우트 추가돼도 자동 커버)
+!web/src/app/**/logs/
+!web/src/app/**/logs/**
 
 # 테스트
 coverage/
