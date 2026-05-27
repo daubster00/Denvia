@@ -141,6 +141,9 @@ class PreflightResult:
 
     throttled: bool          # 이번 호출 시점에 anomaly throttle 적용 중인지
     throttle_just_applied: bool  # 이번 호출에서 새로 throttle 이 적용되었는지 (팝업 트리거)
+    # throttle_just_applied=True 일 때 어떤 탐지가 trigger 했는지 — 프론트 팝업 문구 분기에 사용.
+    # 값: "rapid_followup_questions" | "repeated_question" | None
+    throttle_anomaly_type: str | None = None
 
 
 class QAService:
@@ -168,12 +171,16 @@ class QAService:
         rapid_followup 과 동일 조치(즉시 throttle + 자동 actioned).
         """
         if user.subscription_status == "admin":
-            return PreflightResult(throttled=False, throttle_just_applied=False)
+            return PreflightResult(
+                throttled=False,
+                throttle_just_applied=False,
+                throttle_anomaly_type=None,
+            )
 
         t0 = time.perf_counter()
 
         # rapid_followup_questions 탐지 (답변 직후 3초 이내 연속 3회)
-        throttle_just_applied = await anomaly_service.check_rapid_followup_questions(
+        rapid_just_applied = await anomaly_service.check_rapid_followup_questions(
             user_id=user.id,
             subscription_status=user.subscription_status,
             redis_quota=redis_quota,
@@ -182,6 +189,7 @@ class QAService:
         )
 
         # repeated_question 탐지 (동일 텍스트 연속 3회) — question_text 제공 시에만.
+        repeated_just_applied = False
         if question_text is not None:
             repeated_just_applied = await anomaly_service.check_repeated_question(
                 user_id=user.id,
@@ -191,8 +199,16 @@ class QAService:
                 db=db,
                 ip=ip,
             )
-            # 두 hook 중 하나라도 새로 throttle 을 걸었으면 팝업 트리거.
-            throttle_just_applied = throttle_just_applied or repeated_just_applied
+
+        # 두 hook 중 하나라도 새로 throttle 을 걸었으면 팝업 트리거.
+        # rapid_followup 이 먼저 평가되므로 동시 trigger 가능성은 낮지만, 둘 다 True 면
+        # rapid 를 우선한다 — 답변 직후 3초 패턴이 더 명확한 신호.
+        throttle_just_applied = rapid_just_applied or repeated_just_applied
+        throttle_anomaly_type: str | None = None
+        if rapid_just_applied:
+            throttle_anomaly_type = "rapid_followup_questions"
+        elif repeated_just_applied:
+            throttle_anomaly_type = "repeated_question"
 
         if throttle_just_applied:
             # 메모리상 user 객체에도 반영 — 아래 throttle 분기에서 즉시 사용.
@@ -354,6 +370,7 @@ class QAService:
         return PreflightResult(
             throttled=throttle_active,
             throttle_just_applied=throttle_just_applied,
+            throttle_anomaly_type=throttle_anomaly_type,
         )
 
     async def echo(
@@ -526,6 +543,9 @@ class QAService:
                         preflight_result.throttle_just_applied
                         and user.subscription_status == "free"
                     ),
+                    # 프론트에서 팝업 문구를 케이스별로 분기하기 위해 trigger 타입 동봉.
+                    # rapid_followup_questions | repeated_question | null.
+                    "anomaly_type": preflight_result.throttle_anomaly_type,
                 }
 
             yield {

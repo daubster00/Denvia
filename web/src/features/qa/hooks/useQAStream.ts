@@ -168,10 +168,21 @@ export function useQAStream() {
             // 안내 팝업을 띄운다. 유료 사용자는 throttle 적용되어도 팝업 미노출
             // (백엔드 done 이벤트에서 show_popup 을 false 로 내려준다).
             if (data?.show_popup === true) {
+              const anomalyType = data?.anomaly_type as string | null | undefined;
+              const { title, description } =
+                anomalyType === "repeated_question"
+                  ? {
+                      title: "같은 질문이 반복되어 이상탐지 되었습니다.",
+                      description: "답변의 속도를 제한합니다.",
+                    }
+                  : {
+                      title: "질문의 속도가 비정상적으로 빨라 이상탐지 되었습니다.",
+                      description: "답변의 속도를 제한합니다.",
+                    };
               useAlertStore.getState().show({
                 level: "warning",
-                title: "질문의 속도가 비정상적으로 빨라 이상탐지 되었습니다.",
-                description: "답변의 속도를 제한합니다.",
+                title,
+                description,
                 dedupeKey: "anomaly_throttle_applied",
               });
             }
