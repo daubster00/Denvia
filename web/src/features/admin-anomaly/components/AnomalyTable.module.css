@@ -93,7 +93,8 @@
   cursor: not-allowed;
 }
 
-.starActive {
+/* .starButton.starIcon (0,2,0) 가 .starActive (0,1,0) 를 이겨서 회색이 적용되던 문제 — 셀렉터를 명시해 specificity 동등 이상으로 끌어올림 */
+.starButton.starIcon.starActive {
   color: #111827;
 }
 
