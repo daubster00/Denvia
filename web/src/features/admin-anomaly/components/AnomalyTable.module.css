@@ -78,6 +78,25 @@
   color: var(--color-text-secondary, #9ca3af);
 }
 
+.starButton.starIcon {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  font-size: var(--admin-title, 24px) !important;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.starButton:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.starActive {
+  color: #111827;
+}
+
 .pagination {
   display: flex;
   justify-content: center;

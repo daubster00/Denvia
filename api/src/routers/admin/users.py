@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from redis.asyncio import Redis as AsyncRedis
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_quota, get_redis_rate_limit
 from api.src.middleware.audit_actions import (
     AUDIT_ADMIN_DM_SEND,
@@ -64,7 +64,11 @@ from api.src.utils.jwt import (
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/users", tags=["admin-users"])
+router = APIRouter(
+    prefix="/admin/users",
+    tags=["admin-users"],
+    dependencies=[Depends(require_admin_page("/admin/users"))],
+)
 
 
 async def _require_user_exists(db: AsyncSession, user_id: int) -> None:

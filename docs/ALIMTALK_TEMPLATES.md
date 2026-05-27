@@ -96,6 +96,11 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 16 | `admin.support_inquiry_created` | Denvia 신규 1:1 문의 접수 알림 | `UH_9848` | ✅ 승인 |
 | 17 | `admin.anomaly_detected` | Denvia 이상탐지 관리자 알림 | `UH_9849` | ✅ 승인 |
 | 18 | `billing.refund_manual` | Denvia 운영 환불 처리 완료 | `UI_1758` | ✅ 승인 (2026-05-26) |
+| 19 | `admin.account.signup_request` | Denvia 신규 관리자 가입 신청 접수 | `_______________` | 🟡 신규 — 알리고 콘솔 등록·심사 대기 (Story 10.2, 2026-05-27) |
+
+> **2026-05-27 신규 관리자 가입 알림톡 추가**: Story 10.2 — ADR-0001 편차 #6(다중 관리자 RBAC). `/admin/signup` 신청 시 master/operator 활성 관리자에게 발송. `tpl_code`는 알리고 콘솔 등록 후 환경변수에 추가.
+
+> **2026-05-27 관리자 계정 수명주기 알림톡 4종 폐기**: Story 10.3 진행 중 일시 추가했던 `admin.account.{approved,blocked,unblocked,deleted}` 4종을 즉시 제거(같은 날). 운영자가 `/admin/admins` 페이지에서 대상자 휴대폰을 보고 직접 안내하는 것으로 충분 — 알림톡 surface 추가 보류. 본 문서·`templates.py`·알리고 콘솔 모두 미등록 상태로 유지.
 
 > **2026-05-26 환불 알림톡 분리 완료**: 기존 `billing.refund_success`(UH_9832)에 통합돼 있던 3종 환불(청약철회 + 관리자 전액 + 관리자 부분) 중 관리자 수동 환불(전액·부분) 2종을 신규 #18 `billing.refund_manual`(UI_1758)로 분리. `billing.refund_success`(UH_9832)는 이제 청약철회(cooling_off) 전용으로만 사용.
 
@@ -129,6 +134,11 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 20 | 시스템 | `admin.anomaly_detected` | (자동 발송 폐기 — 2026-05-22) 이상탐지 발생만으로는 더 이상 발송하지 않음. 관리자가 직접 차단 버튼을 누른 시점에만 발송하는 정책으로 변경 — 차단 트리거 연결은 후속 작업 | 관리자 | 🟡 템플릿 등록(UH_9849)·`templates.py` 정의는 유지. **이상탐지 자동 발송 호출 4종 모두 제거(2026-05-22)** — `anomaly_service.schedule_admin_anomaly_alimtalk` 헬퍼 삭제. 차단 시점 발송 연결은 후속 작업 |
 | 21 | ~~구독~~ | ~~`subscription.extended_due_to_killswitch`~~ | ~~킬스위치 발동으로 구독 기간 자동 연장됐을 때~~ | ~~사용자~~ | **❌ 폐기 — 2026-05-18** — 클라이언트 v4 검수서(Google Docs 2026-05-15) 미포함. 카탈로그·호출처·docs 본문 섹션 제거. 킬스위치 시 구독 기간 연장 자체는 유지하되 사용자 안내는 인앱 공지·1:1 쪽지로 대체 |
 | 22 | 결제 | `billing.refund_manual` | 관리자가 운영 환불(전액 또는 부분)을 처리한 직후 — 2026-05-26 신규. 1:1 문의 응답과 함께 발송되어 사용자에게 환불 사실 + 금액을 알린다. | 사용자 | ✅ 코드 반영 + 발송 연결 완료 (UI_1758 승인, 2026-05-26) — `admin_payment_service.notify_refund_succeeded` |
+| 23 | 시스템 | `admin.account.signup_request` | 신규 관리자가 `/admin/signup`으로 가입 신청을 완료한 직후 — 2026-05-27 신규(Story 10.2). master/operator 활성 관리자(휴대폰 등록) 모두에게 발송되어 승인 액션을 유도한다. | 관리자(master/operator) | ✅ 코드 반영 (`admin_signup_service.enqueue_admin_signup_request_alert`) · 🟡 알리고 콘솔 등록 + 카카오 심사 대기 |
+| ~~24~~ | ~~시스템~~ | ~~`admin.account.approved`~~ | ~~master/operator가 pending 관리자를 승인했을 때~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** — 운영자가 `/admin/admins` 페이지에서 대상자 휴대폰을 직접 보고 안내. 알림톡 surface 추가 보류 |
+| ~~25~~ | ~~시스템~~ | ~~`admin.account.blocked`~~ | ~~master/operator가 다른 관리자를 일시 차단했을 때~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** |
+| ~~26~~ | ~~시스템~~ | ~~`admin.account.unblocked`~~ | ~~수동 해제 또는 Celery 자동 만료~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** |
+| ~~27~~ | ~~시스템~~ | ~~`admin.account.deleted`~~ | ~~master/operator가 다른 관리자를 소프트 삭제했을 때~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** |
 
 > SMS OTP(회원가입·아이디찾기·비밀번호찾기 인증번호 발송)와 임시 비밀번호 발송은 **알림톡이 아니라 일반 SMS**로 보냅니다. 알리고 콘솔에서는 별도 템플릿 등록이 필요 없습니다(SMS는 자유 텍스트). 본 문서 제일 아래 §8에 정리합니다.
 
@@ -848,6 +858,54 @@ Denvia RAG 재빌드가 실패했습니다.
 > 알리고 콘솔에서 **버튼** 추가 권장 — 라벨: `관리자 페이지 바로가기`, 링크: `https://denvia.kr/admin/anomaly`
 >
 > 향후 발송 연결 시 멱등 키 권장: `anomaly:{user_id}:{anomaly_type}:{detected_at_unix}` (중복 발송 방지).
+
+---
+
+### 21) `admin.account.signup_request` — 신규 관리자 가입 신청 접수 (신규 — Story 10.2, 2026-05-27)
+
+- **언제**: 신규 관리자 후보가 `/admin/signup`으로 가입 신청을 완료(POST /api/v1/admin/auth/signup 201)한 직후
+- **수신자**: master/operator 활성 관리자 모두 (휴대폰 등록 계정 한정)
+- **사용자 측 알림톡**: 발송 안 함 (신청자 본인에게는 가입 폼 성공 토스트로 안내)
+- **알리고 분류**: 정보성 / 회원·계정 안내
+- **야간 발송**: 즉시 (운영 알림 — SYSTEM 카테고리)
+- **알리고 tpl_code**: `_______________` (등록 후 기입)
+- **구현 상태**: ✅ `admin_signup_service.enqueue_admin_signup_request_alert` — `notification_queue` enqueue. 멱등 키 `admin_signup:{user_id}:{admin_id}` — 동일 신청·동일 수신자 중복 enqueue 차단.
+
+**제목**
+```
+신규 관리자 가입 신청 접수
+```
+
+**알리고 콘솔 입력 본문**
+```
+[Denvia 관리자] 신규 관리자 가입 신청이 접수되었습니다.
+
+신청자: #{applicant_email_masked}
+시각: #{applied_at_kst}
+
+/admin/admins 페이지에서 승인해주세요.
+```
+
+**변수**
+
+| 변수 | 의미 | 예시 |
+|---|---|---|
+| `applicant_email_masked` | 신청자 이메일 마스킹 (`mask_email`) | `ab****@example.com` |
+| `applied_at_kst` | 신청 시각 KST | `2026-05-27 14:32` |
+
+> **운영 플로우** — ① 신청자가 `/admin/signup` 폼 제출 → ② master/operator 모두에게 동시 발송 → ③ 운영자가 `/admin/admins` 진입 → 승인/거절 액션. 본 템플릿은 발송 자체로 끝(승인된 신청자에게는 별도 `admin.account.approved` 발송 — Story 10.3).
+>
+> 알리고 콘솔에서 **버튼** 추가 권장 — 라벨: `관리자 페이지 바로가기`, 링크: `https://denvia.kr/admin/admins`
+
+---
+
+### 22~25) ~~`admin.account.{approved,blocked,unblocked,deleted}`~~ — 관리자 계정 수명주기 알림 [❌ 폐기 — 2026-05-27]
+
+> ⚠ **본 4종은 Story 10.3 진행 중 일시 추가됐다가 같은 날 제거되었습니다.** 운영자가 `/admin/admins` 페이지에서 대상자 휴대폰을 직접 보고 안내하는 것으로 충분하여 알림톡 surface 추가를 보류했습니다.
+>
+> **알리고 콘솔 등록**: 등록하지 마세요. `tpl_code` 매핑(`ALIMTALK_TEMPLATE_MAP_JSON`)에도 키를 추가하지 않습니다.
+>
+> **코드 상태**: `api/src/integrations/messaging/templates.py` 카탈로그·`api/src/services/admin_account_service.py` 의 알림톡 enqueue 호출·`api/src/workers/anomaly_tasks.py` 의 자동 만료 시 발송 모두 미포함. 차단 자동 만료 알림도 발송하지 않으며, 운영자가 `/admin/admins` 페이지의 차단 상태 칩으로 사후 인지합니다.
 
 ---
 

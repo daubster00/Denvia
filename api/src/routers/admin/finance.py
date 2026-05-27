@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.finance import (
@@ -29,7 +29,11 @@ from api.src.services.budget_service import KST
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/payments", tags=["admin-finance"])
+router = APIRouter(
+    prefix="/admin/payments",
+    tags=["admin-finance"],
+    dependencies=[Depends(require_admin_page("/admin/finance"))],
+)
 
 _ALLOWED_PER_PAGE = (50, 100, 200)
 _VALID_STATUS = {"pending", "success", "failed", "refunded", "refund_pending"}

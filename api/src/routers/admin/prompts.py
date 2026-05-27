@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.middleware.audit_actions import (
     AUDIT_MODEL_PARAMS_EDIT,
     AUDIT_PROMPT_EDIT,
@@ -20,7 +20,11 @@ from api.src.schemas.admin.prompts import (
 )
 from api.src.services import prompt_config_service
 
-router = APIRouter(prefix="/admin/rag", tags=["admin-rag"])
+router = APIRouter(
+    prefix="/admin/rag",
+    tags=["admin-rag"],
+    dependencies=[Depends(require_admin_page("/admin/rag"))],
+)
 
 
 @router.get("/prompts", response_model=PromptsListResponse)

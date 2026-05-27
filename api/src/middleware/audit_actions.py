@@ -47,6 +47,15 @@ AUDIT_RUNTIME_CONFIG_UPDATE = "runtime_config.update"   # A-303/A-305 (Story 7.3
 AUDIT_BUDGET_LIMIT_UPDATE = "budget.monthly_limit.update"  # 관리자 설정 — 당월 KST 예산 한도 조정
 AUDIT_SEO_CONFIG_UPDATE = "seo_config.update"           # 관리자 설정 → SEO — 사이트 이름/설명/키워드/OG/파비콘 편집
 AUDIT_SEO_ASSET_UPLOAD = "seo_config.asset_upload"      # 관리자 설정 → SEO — 파비콘/OG 이미지 업로드
+# Story 10.3 — /admin/admins 페이지 CRUD (Epic 10 RBAC)
+AUDIT_ADMIN_ACCOUNT_APPROVED = "admin.account.approved"               # pending → sub_operator/operator 승인
+AUDIT_ADMIN_ACCOUNT_BLOCKED = "admin.account.blocked"                 # 다른 관리자 일시 차단
+AUDIT_ADMIN_ACCOUNT_UNBLOCKED = "admin.account.unblocked"             # 차단 해제(수동) — 자동 만료는 Celery actor
+AUDIT_ADMIN_ACCOUNT_DELETED = "admin.account.deleted"                 # 소프트 삭제(withdrawn_at)
+AUDIT_ADMIN_ACCOUNT_GRADE_UPDATED = "admin.account.grade_updated"     # 등급 변경
+AUDIT_ADMIN_MASTER_PROTECTION_TRIGGERED = "admin.master.protection_triggered"  # master 행 변경 시도 거부(이상행동 감사용)
+# Story 10.5 — 등급 × 페이지 권한 매트릭스 편집
+AUDIT_ADMIN_GRADE_PERMISSION_UPDATED = "admin.grade_permission.updated"  # /admin/admins/permissions 셀 토글
 
 
 def audit_action(action: str):

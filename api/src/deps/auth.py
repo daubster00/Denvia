@@ -2,6 +2,7 @@
 
 일반 사이트:  denvia_session 쿠키 → get_current_user / get_current_user_allow_blocked / get_current_user_optional
 관리자 콘솔: denvia_admin_session 쿠키 → get_current_admin / require_admin
+RBAC (Story 10.1) : require_admin_grade(*allowed_grades) / require_admin_page(page_route)
 
 두 쿠키는 path가 분리되어 있으며, JWT의 aud 클레임으로 토큰 자체도 구분된다.
 일반 세션 쿠키로는 절대 관리자 API를 통과할 수 없다.
@@ -166,6 +167,17 @@ async def get_current_admin(
                 "message": "관리자 로그인이 필요합니다.",
             },
         )
+    # Story 10.1 — pending 등급은 가입 신청 완료 상태일 뿐 활성 관리자가 아니므로 즉시 차단.
+    # admin_grade 가 NULL 인 경우(마이그레이션 0054 백필 누락·신규 admin 시드 미적용) 통과시킨다 —
+    # 본 컬럼은 role=='admin' 인 행에만 의미가 있으나, 운영 안전을 위해 NULL 은 정상 admin 으로 간주.
+    if getattr(user, "admin_grade", None) == "pending":
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "ADMIN_PENDING_APPROVAL",
+                "message": "관리자 승인 대기 중입니다.",
+            },
+        )
     return user
 
 
@@ -174,3 +186,71 @@ async def require_admin(
 ) -> User:
     """관리자 라우터 진입 가드 — denvia_admin_session 쿠키 전용."""
     return admin
+
+
+def require_admin_grade(*allowed_grades: str):
+    """Story 10.1 — 특정 등급(들)만 통과시키는 의존성 팩토리.
+
+    사용 예:
+        @router.post("/admin/admins/{id}/approve",
+                     dependencies=[Depends(require_admin_grade("master", "operator"))])
+
+    admin_grade 가 NULL 인 경우는 백필 누락된 레거시 admin 으로 간주하여 일단 허용한다.
+    (NULL → 백필 누락은 Story 10.3 일괄 교체 시점에 정리됨)
+    """
+
+    async def _checker(admin: User = Depends(get_current_admin)) -> User:
+        grade = getattr(admin, "admin_grade", None)
+        if grade is None:
+            # 백필 누락 admin — 일단 통과 (Story 10.3에서 정리)
+            return admin
+        if grade not in allowed_grades:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "ADMIN_FORBIDDEN_GRADE",
+                    "message": "권한이 부족합니다.",
+                },
+            )
+        return admin
+
+    return _checker
+
+
+def require_admin_page(page_route: str):
+    """Story 10.5 — 등급 × 페이지 매트릭스 기반 접근 권한 검증.
+
+    매트릭스(FR61 갱신):
+    - master           : 항상 통과
+    - operator         : admin_grade_page_permissions(operator, page_route)=true 이면 통과 (default true)
+    - sub_operator     : admin_grade_page_permissions(sub_operator, page_route)=true 이면 통과 (default false)
+    - pending          : get_current_admin 단계에서 이미 401로 차단됨
+    - NULL (백필 누락) : 일단 통과 (operator 와 동일 취급)
+
+    page_route 는 ADMIN_PAGE_ROUTES(admin_grade_permission_service)의 1차 라우트.
+    """
+
+    async def _checker(
+        admin: User = Depends(get_current_admin),
+        db: AsyncSession = Depends(get_session),
+    ) -> User:
+        # 지연 import — 순환 import 방지(service → deps 단방향 보장) + 테스트 monkeypatch 호환.
+        from api.src.services import admin_grade_permission_service
+
+        grade = getattr(admin, "admin_grade", None)
+        if grade is None or grade == "master":
+            return admin
+        allowed = await admin_grade_permission_service.is_page_allowed(
+            db, admin_grade=grade, page_route=page_route
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "ADMIN_FORBIDDEN_PAGE",
+                    "message": "이 페이지 접근 권한이 없습니다.",
+                },
+            )
+        return admin
+
+    return _checker

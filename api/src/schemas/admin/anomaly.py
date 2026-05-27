@@ -47,6 +47,9 @@ class AnomalyEventItem(BaseModel):
     # target_user_id 가 NULL 이거나 탈퇴 사용자면 둘 다 False.
     user_blocked_now: bool = False
     user_auto_throttled_now: bool = False
+    # 주의 계정(watch list) 등록 여부. target_user_id가 있는 행만 의미가 있고,
+    # NULL이면 항상 False (IP only 이벤트는 별 토글 불가).
+    is_watched: bool = False
 
 
 class AnomalyListResponse(BaseModel):

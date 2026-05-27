@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.src.models.anomaly_event import AnomalyEvent
 from api.src.models.inbox_message import InboxMessage
 from api.src.models.user import User
+from api.src.models.user_watch_flag import UserWatchFlag
 from api.src.utils.html_sanitize import sanitize_body_html
 
 logger = structlog.get_logger(__name__)
@@ -38,6 +39,17 @@ ANOMALY_TYPES: tuple[str, ...] = (
     "sms_abuse",
 )
 ANOMALY_STATUSES: tuple[str, ...] = ("new", "reviewed", "actioned", "unblocked")
+
+# admin.anomaly_detected 알림톡 본문 {anomaly_type} 변수에 들어가는 한국어 라벨.
+# ENUM 값을 그대로 노출하면 관리자가 알아보기 어려워 한국어로 변환한다.
+ANOMALY_TYPE_LABELS_KO: dict[str, str] = {
+    "login_brute_force": "비밀번호 반복 실패",
+    "concurrent_ip_login": "동일 IP 다중 로그인",
+    "repeated_question": "동일 질문 반복",
+    "recovery_abuse": "비밀번호 찾기 남용",
+    "rapid_followup_questions": "답변 직후 연속 질문",
+    "sms_abuse": "휴대폰 인증 남용",
+}
 
 _HIGH_SEVERITY_TYPES: frozenset[str] = frozenset(
     {"repeated_question", "concurrent_ip_login"}
@@ -254,6 +266,18 @@ async def list_anomaly_events(
 
     now_dt = datetime.now(tz=timezone.utc)
 
+    # 주의 계정(watch list) 등록 여부 — target_user_id 가 있는 행에 한해 채운다.
+    watched_user_ids: set[int] = set()
+    if user_ids:
+        watched_rows = (
+            await db.execute(
+                select(UserWatchFlag.user_id).where(
+                    UserWatchFlag.user_id.in_(user_ids)
+                )
+            )
+        ).scalars().all()
+        watched_user_ids = {int(x) for x in watched_rows}
+
     items = []
     for r in rows:
         ev = r.AnomalyEvent
@@ -295,6 +319,10 @@ async def list_anomaly_events(
                 "last_occurred_at": r.la,
                 "user_blocked_now": blocked_now,
                 "user_auto_throttled_now": throttled_now,
+                "is_watched": (
+                    ev.target_user_id is not None
+                    and ev.target_user_id in watched_user_ids
+                ),
             }
         )
 
@@ -417,6 +445,18 @@ async def get_anomaly_detail(
         }
         for h in history_rows
     ]
+
+    # 주의 계정(watch list) 등록 여부 — target_user_id 가 있는 경우만 의미.
+    base["is_watched"] = False
+    if event.target_user_id is not None:
+        watched_row = (
+            await db.execute(
+                select(UserWatchFlag.id).where(
+                    UserWatchFlag.user_id == event.target_user_id
+                )
+            )
+        ).scalar_one_or_none()
+        base["is_watched"] = watched_row is not None
 
     # 대상 사용자 현황.
     user_email: str | None = None
@@ -581,6 +621,14 @@ async def check_concurrent_ip_login(
                 anomaly_id=event.id,
             )
 
+            await schedule_admin_anomaly_alimtalk(
+                db=db,
+                anomaly_id=event.id,
+                anomaly_type="concurrent_ip_login",
+                target_user_id=event.target_user_id,
+                ip=ip,
+            )
+
             if redis_pubsub is not None:
                 await _publish_anomaly_alert(
                     redis_pubsub,
@@ -741,6 +789,14 @@ async def check_rapid_followup_questions(
             anomaly_id=event.id,
         )
 
+        await schedule_admin_anomaly_alimtalk(
+            db=db,
+            anomaly_id=event.id,
+            anomaly_type="rapid_followup_questions",
+            target_user_id=user_id,
+            ip=ip,
+        )
+
         # severity='medium' — SSE publish skip.
         return not already_throttled
     except Exception:
@@ -891,6 +947,14 @@ async def check_repeated_question(
             anomaly_id=event.id,
         )
 
+        await schedule_admin_anomaly_alimtalk(
+            db=db,
+            anomaly_id=event.id,
+            anomaly_type="repeated_question",
+            target_user_id=user_id,
+            ip=ip,
+        )
+
         return not already_throttled
     except Exception:
         logger.error("anomaly.repeated_question.hook_failed", exc_info=True)
@@ -1011,6 +1075,118 @@ async def clear_user_anomaly_throttle(
     return True
 
 
+# ── 관리자 알림톡 schedule (admin.anomaly_detected / UH_9849) ─────────────────
+
+
+async def schedule_admin_anomaly_alimtalk(
+    *,
+    db: AsyncSession,
+    anomaly_id: int,
+    anomaly_type: str,
+    target_user_id: int | None,
+    ip: str | None = None,
+) -> None:
+    """이상탐지 발생 시 관리자에게 알림톡 발송을 예약한다 (template: admin.anomaly_detected).
+
+    notification_queue 에 status='queued' INSERT — Celery dispatch_queued (5분 간격)가
+    실제 발송을 담당한다. 같은 DB 세션에서 anomaly_event INSERT 와 함께 커밋된다.
+
+    수신자: resolve_admin_target — admin 또는 phone 없으면 silent skip.
+    멱등 키: f"anomaly:{anomaly_id}:admin_alert" — 동일 anomaly 중복 enqueue 차단
+    (UNIQUE index uq_notification_queue_idempotency 파셜 인덱스 ON CONFLICT DO NOTHING).
+
+    호출 위치: 각 AnomalyEvent INSERT 직후 (db.flush() 로 event.id 확보 후).
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from api.src.integrations.messaging.admin_recipient import resolve_admin_target
+    from api.src.models.notification_queue import (
+        CHANNEL_ALIMTALK,
+        STATUS_QUEUED,
+        NotificationQueue,
+    )
+
+    try:
+        admin, admin_phone = await resolve_admin_target(db)
+    except Exception:
+        logger.error("anomaly.admin_alimtalk.resolve_failed", exc_info=True)
+        return
+
+    if admin is None or not admin_phone:
+        logger.info(
+            "anomaly.admin_alimtalk.skip_no_admin_phone",
+            anomaly_id=anomaly_id,
+            anomaly_type=anomaly_type,
+        )
+        return
+
+    label = ANOMALY_TYPE_LABELS_KO.get(anomaly_type, anomaly_type)
+    user_identifier = await _resolve_anomaly_user_identifier(
+        db, target_user_id=target_user_id, ip=ip
+    )
+
+    now_dt = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+    stmt = (
+        pg_insert(NotificationQueue)
+        .values(
+            user_id=admin.id,
+            template_code="admin.anomaly_detected",
+            variables={
+                "anomaly_type": label,
+                "user_identifier": user_identifier,
+            },
+            channel=CHANNEL_ALIMTALK,
+            status=STATUS_QUEUED,
+            attempts=0,
+            idempotency_key=f"anomaly:{anomaly_id}:admin_alert",
+            created_at=now_dt,
+        )
+        .on_conflict_do_nothing(
+            index_elements=["user_id", "template_code", "idempotency_key"],
+            index_where=NotificationQueue.user_id.is_not(None),
+        )
+    )
+    try:
+        await db.execute(stmt)
+        logger.info(
+            "anomaly.admin_alimtalk.enqueued",
+            anomaly_id=anomaly_id,
+            anomaly_type=anomaly_type,
+            admin_user_id=admin.id,
+        )
+    except Exception:
+        # 큐 INSERT 실패는 silent — 이상탐지 자체는 이미 기록됐고 알림톡은 best-effort.
+        logger.error(
+            "anomaly.admin_alimtalk.enqueue_failed",
+            anomaly_id=anomaly_id,
+            exc_info=True,
+        )
+
+
+async def _resolve_anomaly_user_identifier(
+    db: AsyncSession,
+    *,
+    target_user_id: int | None,
+    ip: str | None,
+) -> str:
+    """알림톡 본문 {user_identifier} 변수 결정. email > user_id > IP > "비로그인 사용자"."""
+    if target_user_id is not None:
+        try:
+            email = (
+                await db.execute(
+                    select(User.email).where(User.id == target_user_id)
+                )
+            ).scalar_one_or_none()
+            if email:
+                return email
+        except Exception:
+            pass
+        return f"user_id:{target_user_id}"
+    if ip:
+        return f"IP:{ip}"
+    return "비로그인 사용자"
+
+
 # ── SSE publish ────────────────────────────────────────────────────────────────
 
 
@@ -1069,6 +1245,7 @@ def _serialize_event(event: AnomalyEvent) -> dict[str, Any]:
         "reviewed_by_admin_id": event.reviewed_by_admin_id,
         "reviewed_at": event.reviewed_at,
         "created_at": event.created_at,
+        "is_watched": False,
     }
 
 
@@ -1096,6 +1273,7 @@ async def _serialize_event_with_email(
 __all__ = [
     "ANOMALY_TYPES",
     "ANOMALY_STATUSES",
+    "ANOMALY_TYPE_LABELS_KO",
     "RAPID_FOLLOWUP_WINDOW_SECONDS",
     "RAPID_FOLLOWUP_STREAK_THRESHOLD",
     "REPEATED_QUESTION_STREAK_THRESHOLD",
@@ -1111,4 +1289,5 @@ __all__ = [
     "record_stream_done",
     "clear_user_anomaly_throttle",
     "clear_user_login_lockout",
+    "schedule_admin_anomaly_alimtalk",
 ]

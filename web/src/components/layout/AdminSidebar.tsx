@@ -15,6 +15,8 @@ import {
   IconWrite,
   IconChevronRight,
 } from "@wanteddev/wds-icon";
+import { useAdminSessionStore } from "@/stores/admin-session-store";
+import { canAccessAdminPath } from "@/features/admin-auth/pageAccess";
 import styles from "./AdminSidebar.module.css";
 
 type IconComponent = React.ComponentType<React.SVGProps<SVGSVGElement>>;
@@ -34,7 +36,15 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { icon: IconApps as IconComponent, label: "대시보드", href: "/admin" },
   { icon: IconPersons as IconComponent, label: "고객관리", href: "/admin/users" },
-  { icon: IconCircleBlock as IconComponent, label: "이상탐지", href: "/admin/anomaly" },
+  {
+    icon: IconCircleBlock as IconComponent,
+    label: "이상탐지",
+    href: "/admin/anomaly",
+    children: [
+      { label: "이상 이벤트", href: "/admin/anomaly" },
+      { label: "주의 계정", href: "/admin/anomaly/watched" },
+    ],
+  },
   {
     icon: IconDocument as IconComponent,
     label: "콘텐츠",
@@ -67,6 +77,19 @@ const MENU_ITEMS: MenuItem[] = [
   },
   { icon: IconBubble as IconComponent, label: "CS", href: "/admin/cs" },
   { icon: IconWrite as IconComponent, label: "수정요청", href: "/admin/board" },
+  // Story 10.3 — master/operator 만 보이는 항목. sub_operator 가 클릭해도 백엔드 403.
+  // Story 10.4 — children: 관리자 목록 + 활동 로그.
+  // Story 10.5 — "페이지 권한" children 추가 (조회 master/operator, 수정 master 전용).
+  {
+    icon: IconPersons as IconComponent,
+    label: "관리자 관리",
+    href: "/admin/admins",
+    children: [
+      { label: "관리자 목록", href: "/admin/admins" },
+      { label: "페이지 권한", href: "/admin/admins/permissions" },
+      { label: "활동 로그", href: "/admin/admins/logs" },
+    ],
+  },
   {
     icon: IconSetting as IconComponent,
     label: "설정",
@@ -95,10 +118,23 @@ function isSubItemActive(pathname: string, href: string, parentHref: string): bo
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const admin = useAdminSessionStore((s) => s.admin);
   const [isTabletExpanded, setIsTabletExpanded] = useState(false);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
 
   const isActive = (href: string) => isHrefActive(pathname, href);
+
+  // 본 관리자 권한으로 접근 불가한 항목은 사이드바에서 숨긴다.
+  // children 이 있으면, 접근 가능한 child 가 하나라도 있을 때만 부모를 노출.
+  const visibleItems = MENU_ITEMS.flatMap((item) => {
+    const children = item.children;
+    if (children && children.length > 0) {
+      const visibleChildren = children.filter((c) => canAccessAdminPath(c.href, admin));
+      if (visibleChildren.length === 0) return [];
+      return [{ ...item, children: visibleChildren }];
+    }
+    return canAccessAdminPath(item.href, admin) ? [item] : [];
+  });
 
   return (
     <>
@@ -139,7 +175,7 @@ export function AdminSidebar() {
         </div>
 
         <ul className={styles.menu}>
-          {MENU_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const { icon: Icon, label, href, children } = item;
             const hasChildren = !!children && children.length > 0;
             const childActive =

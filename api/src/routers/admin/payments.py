@@ -32,7 +32,7 @@ from fastapi import (
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.middleware.rate_limit import limiter
 from api.src.models.base import get_session
 from api.src.models.user import User
@@ -52,7 +52,11 @@ from api.src.utils.jwt import (
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/payments", tags=["admin-payments"])
+router = APIRouter(
+    prefix="/admin/payments",
+    tags=["admin-payments"],
+    dependencies=[Depends(require_admin_page("/admin/finance"))],
+)
 
 
 def _admin_user_id_key(request: Request) -> str:

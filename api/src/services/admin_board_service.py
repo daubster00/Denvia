@@ -1,7 +1,7 @@
 """관리자 수정요청 게시판 서비스 — CRUD + 댓글 + 이미지 업로드.
 
-권한 모델:
-- btmdesign 마스터 계정: users.email == BTMDESIGN_EMAIL
+권한 모델 (Story 10.3 — admin_grade='master' DB 컬럼 기준):
+- master 등급(`users.admin_grade='master'`):
   · 모든 글/댓글 수정·삭제 가능
   · 상태(status) 변경 가능 (다른 admin은 불가)
 - 일반 admin: 본인이 작성한 글/댓글만 수정·삭제 가능
@@ -45,6 +45,9 @@ logger = structlog.get_logger(__name__)
 
 
 # ── 상수 ──────────────────────────────────────────────────────────────────────
+# DEPRECATED alias — Story 10.3에서 admin_grade='master' DB 컬럼 기준으로 일괄 교체됨.
+# 외부에서 직접 import 하던 호출 경로 보호를 위해 1 사이클 유지(후속 클린업 마이그에서 제거 검토).
+# 신규 코드는 사용하지 말 것. 마스터 식별은 `is_btmdesign(user)` 또는 직접 `user.admin_grade == 'master'`.
 BTMDESIGN_EMAIL = "btmdesign@naver.com"
 
 # 카테고리 라벨 — 응답 메타로 노출. key 는 BoardCategory Literal 과 일치해야 한다.
@@ -92,8 +95,12 @@ _MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 # ── 권한 헬퍼 ────────────────────────────────────────────────────────────────
 def is_btmdesign(user: User) -> bool:
-    """btmdesign 마스터 계정 여부 — 이메일 단일 식별."""
-    return (user.email or "").lower() == BTMDESIGN_EMAIL
+    """마스터 등급 여부 — Story 10.3 이후 admin_grade='master' 기준.
+
+    함수명은 호출 측 호환을 위해 유지하지만 내부 판정은 DB 컬럼 기반으로 전환됨.
+    추후 함수명을 `is_master_admin(user)` 로 정리할 수 있음(클린업 마이그).
+    """
+    return getattr(user, "admin_grade", None) == "master"
 
 
 def _display_name(email: str) -> str:

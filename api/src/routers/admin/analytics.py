@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from redis.asyncio import Redis as AsyncRedis
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.qa_log import QALog
@@ -55,7 +55,11 @@ from api.src.services.finance_service import _excel_safe_cell
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/analytics", tags=["admin-analytics"])
+router = APIRouter(
+    prefix="/admin/analytics",
+    tags=["admin-analytics"],
+    dependencies=[Depends(require_admin_page("/admin"))],
+)
 
 
 class UserTokensRow(BaseModel):

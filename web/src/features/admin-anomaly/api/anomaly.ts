@@ -41,6 +41,11 @@ export interface AnomalyEventItem {
    * users.anomaly_throttled_at IS NOT NULL, 또는 login_brute_force 의 Redis 자동 락아웃 활성.
    */
   user_auto_throttled_now: boolean;
+  /**
+   * 주의 계정(watch list) 등록 여부. target_user_id 가 NULL 이면 항상 false.
+   * 별 모양 버튼의 활성/비활성 색을 결정한다.
+   */
+  is_watched: boolean;
 }
 
 export interface AnomalyHistoryItem {
@@ -211,6 +216,97 @@ export async function clearLoginLockout(userId: number): Promise<void> {
   if (!res.ok && res.status !== 204) {
     await _throwFromResponse(res, "로그인 잠금 해제에 실패했습니다.");
   }
+}
+
+// ── 주의 계정 (watch list) ─────────────────────────────────────────────────────
+
+export interface WatchToggleResponse {
+  user_id: number;
+  is_watched: boolean;
+}
+
+export interface WatchedAnomalyItem {
+  anomaly_id: number;
+  type: AnomalyType;
+  created_at: string;
+}
+
+export interface WatchedAccountItem {
+  user_id: number;
+  email_masked: string | null;
+  anomalies: WatchedAnomalyItem[];
+  user_subscription_status: "free" | "pro" | "blocked" | null;
+  user_blocked_now: boolean;
+  user_auto_throttled_now: boolean;
+  flagged_by_admin_id: number | null;
+  flagged_at: string;
+}
+
+export interface WatchedAccountListResponse {
+  items: WatchedAccountItem[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export async function addAnomalyWatch(
+  anomalyId: number,
+): Promise<WatchToggleResponse> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  const headers: Record<string, string> = {};
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/anomaly/${anomalyId}/watch`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers,
+    },
+  );
+  if (!res.ok) {
+    await _throwFromResponse(res, "주의 계정 등록에 실패했습니다.");
+  }
+  return res.json() as Promise<WatchToggleResponse>;
+}
+
+export async function removeAnomalyWatch(
+  userId: number,
+): Promise<WatchToggleResponse> {
+  const csrf = _readCookie("denvia_admin_csrf");
+  const headers: Record<string, string> = {};
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/anomaly/users/${userId}/watch`,
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers,
+    },
+  );
+  if (!res.ok) {
+    await _throwFromResponse(res, "주의 계정 해제에 실패했습니다.");
+  }
+  return res.json() as Promise<WatchToggleResponse>;
+}
+
+export async function fetchWatchedAccounts(params: {
+  page?: number;
+  per_page?: number;
+} = {}): Promise<WatchedAccountListResponse> {
+  const search = new URLSearchParams();
+  if (params.page !== undefined) search.set("page", String(params.page));
+  if (params.per_page !== undefined)
+    search.set("per_page", String(params.per_page));
+
+  const qs = search.toString();
+  const url = `${API_BASE}/api/v1/admin/anomaly/watched${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) {
+    await _throwFromResponse(res, "주의 계정 목록을 불러오지 못했습니다.");
+  }
+  return res.json() as Promise<WatchedAccountListResponse>;
 }
 
 export async function markAnomalyReviewed(

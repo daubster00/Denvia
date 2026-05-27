@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_BUDGET_LIMIT_UPDATE,
@@ -25,7 +25,11 @@ from api.src.services.budget_service import (
 )
 from api.src.services.killswitch_service import get_active_modes
 
-router = APIRouter(prefix="/admin/budget", tags=["admin-budget"])
+router = APIRouter(
+    prefix="/admin/budget",
+    tags=["admin-budget"],
+    dependencies=[Depends(require_admin_page("/admin"))],
+)
 
 
 class BudgetCurrentMonthResponse(BaseModel):

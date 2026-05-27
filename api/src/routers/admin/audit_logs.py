@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_grade
 from api.src.models.audit_log import AuditLog
 from api.src.models.base import get_session
 from api.src.models.user import User
@@ -20,7 +20,13 @@ from api.src.schemas.admin.audit_log import AuditLogItem, AuditLogListResponse
 
 logger = structlog.get_logger()
 
-router = APIRouter(prefix="/admin", tags=["admin-audit-logs"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin-audit-logs"],
+    # /admin/audit-logs 는 /admin/admins/logs 페이지(master·operator 전용) 가 호출한다.
+    # sub_operator 는 본 페이지가 매트릭스 밖이므로 grade 가드로 차단.
+    dependencies=[Depends(require_admin_grade("master", "operator"))],
+)
 
 
 def _parse_action_in(action_in: str | None) -> list[str]:

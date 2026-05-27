@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import redis.asyncio as aioredis
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_client, get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_KILLSWITCH_MANUAL_TOTAL_ACTIVATE,
@@ -59,7 +59,11 @@ from api.src.utils.jwt import (
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/killswitch", tags=["admin-killswitch"])
+router = APIRouter(
+    prefix="/admin/killswitch",
+    tags=["admin-killswitch"],
+    dependencies=[Depends(require_admin_page("/admin/finance"))],
+)
 
 
 def _admin_user_id_key(request: Request) -> str:

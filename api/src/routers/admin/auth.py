@@ -25,13 +25,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import get_current_admin
+from api.src.models.audit_log import AuditLog
 from api.src.models.base import get_session
 from api.src.models.user import User
-from api.src.services.admin_board_service import BTMDESIGN_EMAIL
+from api.src.services.admin_account_service import grade_label_for_user as _grade_label_for_user
+from api.src.services.admin_grade_permission_service import (
+    get_allowed_pages_for_admin,
+)
+from api.src.services.admin_signup_service import (
+    enqueue_admin_signup_request_alert,
+    signup_admin_pending,
+)
 from api.src.services.auth_service import login_user
 from api.src.settings import settings
 from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_admin_session_jwt
+from api.src.utils.mask import mask_email
 
 logger = structlog.get_logger(__name__)
 
@@ -113,6 +122,11 @@ class AdminMeResponse(BaseModel):
     role: str  # 항상 "admin"
     # 마스터 권한 — btmdesign@naver.com 만 True. 게시판 상태 변경·등급 표시 등에서 사용.
     is_master: bool = False
+    # Story 10.5 — 프론트 사이드바·라우트 가드용. master|operator|sub_operator|pending|None.
+    admin_grade: str | None = None
+    # 매트릭스에 정의된 1차 라우트 중 본 관리자가 접근 가능한 목록.
+    # master / 레거시 NULL → 전체. sub_operator → 매트릭스 토글 따라 가변.
+    allowed_pages: list[str] = []
 
 
 class AdminProfileResponse(BaseModel):
@@ -168,6 +182,59 @@ class AdminProfileUpdateRequest(BaseModel):
         return v or None
 
 
+class AdminSignupRequest(BaseModel):
+    """POST /api/v1/admin/auth/signup — 관리자 가입 신청.
+
+    role='admin' + admin_grade='pending' 으로 INSERT. 세션 쿠키 미발급(승인 후 명시적 로그인).
+    2026-05-27: 휴대폰 OTP 인증 단계 제거 — 이름/이메일/연락처/비밀번호만 수집.
+    """
+
+    name: str
+    email: str
+    password: str
+    phone: str
+
+    @field_validator("name")
+    @classmethod
+    def name_required(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("이름을 입력하세요.")
+        if len(v) > 50:
+            raise ValueError("이름은 50자 이하여야 합니다.")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_format(cls, v: str) -> str:
+        v = v.strip()
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("올바른 이메일을 입력하세요.")
+        return v.lower()
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("PASSWORD_TOO_SHORT")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def phone_format(cls, v: str) -> str:
+        cleaned = re.sub(r"[^0-9]", "", v)
+        if not re.match(r"^010\d{8}$", cleaned):
+            raise ValueError("올바른 연락처를 입력하세요.")
+        return cleaned
+
+
+class AdminSignupResponse(BaseModel):
+    user_id: int
+    email: str
+    admin_grade: str  # 항상 "pending"
+    message: str
+
+
 class AdminPasswordChangeRequest(BaseModel):
     """POST /api/v1/admin/auth/password — 현재 비밀번호 확인 + 신규 비밀번호 교체."""
 
@@ -182,10 +249,10 @@ class AdminPasswordChangeRequest(BaseModel):
         return v
 
 
-def _grade_label_for(email: str) -> tuple[bool, str]:
-    """이메일로 마스터 여부 + 화면 표시용 라벨 산출."""
-    is_master = email.lower() == BTMDESIGN_EMAIL.lower()
-    return is_master, ("마스터" if is_master else "관리자")
+# Story 10.3 — 마스터 식별을 `admin_grade='master'` DB 컬럼으로 일괄 교체.
+# _grade_label_for_user 는 admin_account_service.grade_label_for_user 의 alias.
+# (이메일 기반 BTMDESIGN_EMAIL 하드코딩은 제거됨 — admin_board_service.BTMDESIGN_EMAIL 상수는
+#  deprecated alias 로만 1 사이클 유지)
 
 
 @router.post("/login", response_model=AdminMeResponse)
@@ -234,14 +301,87 @@ async def admin_login(
             },
         )
 
+    # Story 10.2 — pending 등급은 운영자 승인 전이므로 비밀번호가 맞아도 세션을 발급하지 않는다.
+    # audit_logs 미들웨어는 4xx에 INSERT하지 않으므로 여기서 수동으로 기록한다(NFR-O2 이상행동 탐지 대상).
+    if getattr(user, "admin_grade", None) == "pending":
+        try:
+            db.add(
+                AuditLog(
+                    actor_user_id=user.id,
+                    action="admin.auth.pending_login_attempt",
+                    target_type="user",
+                    target_id=user.id,
+                    ip=ip,
+                    ua=ua,
+                )
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.error("admin.auth.pending_audit_failed", exc_info=True)
+        logger.info("admin.auth.pending_login_attempt", user_id=user.id, ip=ip)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "ADMIN_PENDING_APPROVAL",
+                "message": "관리자 승인 대기 중입니다. 운영자 승인 후 이용 가능합니다.",
+            },
+        )
+
     token = encode_admin_session_jwt(user_id=user.id)
     _set_admin_cookies(response, token)
 
     logger.info("admin.auth.login.success", user_id=user.id, ip=ip)
 
-    is_master, _ = _grade_label_for(user.email)
+    is_master, _ = _grade_label_for_user(user)
+    grade = getattr(user, "admin_grade", None)
+    allowed_pages = await get_allowed_pages_for_admin(db, admin_grade=grade)
     return AdminMeResponse(
-        user_id=user.id, email=user.email, role=user.role, is_master=is_master
+        user_id=user.id,
+        email=user.email,
+        role=user.role,
+        is_master=is_master,
+        admin_grade=grade,
+        allowed_pages=allowed_pages,
+    )
+
+
+# ── Story 10.2: 관리자 가입 신청 ───────────────────────────────────────────────
+
+@router.post("/signup", response_model=AdminSignupResponse, status_code=201)
+async def admin_signup(
+    body: AdminSignupRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> AdminSignupResponse:
+    """관리자 가입 신청 — admin_grade='pending' INSERT + 세션 쿠키 미발급 + master/operator 알림톡 enqueue.
+
+    검증 순서:
+    1. 이메일 중복 — 활성 사용자(관리자/일반) 전체
+    2. 연락처 중복 — 활성 사용자(관리자/일반) 전체
+    """
+    user = await signup_admin_pending(
+        name=body.name,
+        email=body.email,
+        password=body.password,
+        phone=body.phone,
+        db=db,
+    )
+    # signup_admin_pending 이 flush 까지만 — commit 은 enqueue 와 함께 일관성 있게 처리.
+    await enqueue_admin_signup_request_alert(db=db, new_admin_user_id=user.id)
+    await db.commit()
+
+    logger.info(
+        "admin.auth.signup.completed",
+        user_id=user.id,
+        email_masked=mask_email(user.email),
+    )
+
+    return AdminSignupResponse(
+        user_id=user.id,
+        email=user.email,
+        admin_grade="pending",
+        message="가입 신청이 접수되었습니다. 운영자 승인 후 로그인 가능합니다.",
     )
 
 
@@ -253,11 +393,21 @@ async def admin_logout(response: Response) -> dict:
 
 
 @router.get("/me", response_model=AdminMeResponse)
-async def admin_me(admin: User = Depends(get_current_admin)) -> AdminMeResponse:
+async def admin_me(
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AdminMeResponse:
     """현재 관리자 세션 정보 (미인증 시 401)."""
-    is_master, _ = _grade_label_for(admin.email)
+    is_master, _ = _grade_label_for_user(admin)
+    grade = getattr(admin, "admin_grade", None)
+    allowed_pages = await get_allowed_pages_for_admin(db, admin_grade=grade)
     return AdminMeResponse(
-        user_id=admin.id, email=admin.email, role=admin.role, is_master=is_master
+        user_id=admin.id,
+        email=admin.email,
+        role=admin.role,
+        is_master=is_master,
+        admin_grade=grade,
+        allowed_pages=allowed_pages,
     )
 
 
@@ -266,7 +416,7 @@ async def admin_get_profile(
     admin: User = Depends(get_current_admin),
 ) -> AdminProfileResponse:
     """관리자 본인 계정 정보 — /admin/account 페이지 진입 시 호출."""
-    is_master, grade_label = _grade_label_for(admin.email)
+    is_master, grade_label = _grade_label_for_user(admin)
     return AdminProfileResponse(
         user_id=admin.id,
         email=admin.email,
@@ -344,7 +494,7 @@ async def admin_update_profile(
         await db.commit()
         logger.info("admin.profile.updated", user_id=admin.id)
 
-    is_master, grade_label = _grade_label_for(admin.email)
+    is_master, grade_label = _grade_label_for_user(admin)
     return AdminProfileResponse(
         user_id=admin.id,
         email=admin.email,

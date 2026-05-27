@@ -22,7 +22,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.middleware.audit_actions import (
     AUDIT_SUPPORT_REPLY_IMAGE_UPLOAD,
     audit_action,
@@ -50,7 +50,11 @@ from api.src.utils.jwt import (
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/support", tags=["admin-support"])
+router = APIRouter(
+    prefix="/admin/support",
+    tags=["admin-support"],
+    dependencies=[Depends(require_admin_page("/admin/cs"))],
+)
 
 _ALLOWED_PER_PAGE = (50, 100, 200)
 _VALID_STATUSES = {"open", "in_progress", "resolved"}

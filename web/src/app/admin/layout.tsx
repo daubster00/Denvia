@@ -3,7 +3,9 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { adminFetchMe } from "@/features/admin-auth/api";
+import { canAccessAdminPath } from "@/features/admin-auth/pageAccess";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { fetchRagStatus } from "@/features/admin-rag/api/knowledge";
 import { useAdminEventsSSE } from "@/features/admin-dashboard/hooks/useAdminEventsSSE";
@@ -20,9 +22,9 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
 
-  // /admin/login 페이지는 이 레이아웃의 인증 가드를 통과시키지 않고 그대로 렌더 — 무한 리다이렉트 방지.
-  // 사이드바·탑네비·SSE 같은 admin 셸 요소도 로그인 화면에는 불필요하므로 children만 반환한다.
-  if (pathname === "/admin/login") {
+  // /admin/login, /admin/signup 페이지는 이 레이아웃의 인증 가드를 통과시키지 않고 그대로 렌더 — 무한 리다이렉트 방지.
+  // 사이드바·탑네비·SSE 같은 admin 셸 요소도 비로그인 화면에는 불필요하므로 children만 반환한다.
+  if (pathname === "/admin/login" || pathname === "/admin/signup") {
     return <>{children}</>;
   }
 
@@ -108,6 +110,10 @@ function AdminAuthenticatedShell({
     return null;
   }
 
+  // Story 10.5 — URL 직접 접근 가드. 권한 없는 페이지는 children 대신 안내 화면을 렌더.
+  // 사이드바·TopNav 는 그대로 노출해서 다른 페이지로 이동할 수 있게 한다.
+  const allowedHere = pathname ? canAccessAdminPath(pathname, admin) : false;
+
   return (
     <div className={styles.adminShell}>
       <AdminSidebar />
@@ -119,8 +125,26 @@ function AdminAuthenticatedShell({
           <p>데스크톱에서 최적 사용 가능합니다.</p>
         </div>
         <main id="admin-main" tabIndex={-1} className={styles.adminMain}>
-          {children}
+          {allowedHere ? children : <AdminAccessDenied />}
         </main>
+      </div>
+    </div>
+  );
+}
+
+function AdminAccessDenied() {
+  return (
+    <div className={styles.forbiddenWrap}>
+      <div className={styles.forbiddenCard}>
+        <h2 className={styles.forbiddenTitle}>접근 권한이 없습니다</h2>
+        <p className={styles.forbiddenBody}>
+          이 페이지에 접근할 수 있는 권한이 부여되어 있지 않습니다.
+          <br />
+          권한이 필요하다면 마스터 관리자에게 문의해 주세요.
+        </p>
+        <Link href="/admin" className={styles.forbiddenAction}>
+          대시보드로 돌아가기
+        </Link>
       </div>
     </div>
   );

@@ -290,6 +290,28 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["user_name", "inquiry_subject"],
         category=TemplateCategory.SYSTEM,
     ),
+    # ── 관리자 가입 신청 알림 (Story 10.2 — 2026-05-27) ─────────────────────
+    # 신규 관리자가 /admin/signup으로 가입 신청을 완료하면 master/operator 활성 관리자
+    # 휴대폰으로 발송(notification_queue 등재 → dispatch_queued 발송). 알리고 콘솔
+    # 등록명 "Denvia 신규 관리자 가입 신청 접수" — tpl_code는 후속 운영 작업으로 매핑 추가.
+    "admin.account.signup_request": TemplateDefinition(
+        title="Denvia 신규 관리자 가입 신청 접수",
+        body=(
+            "[Denvia 관리자] 신규 관리자 가입 신청이 접수되었습니다.\n"
+            "\n"
+            "신청자: {applicant_email_masked}\n"
+            "시각: {applied_at_kst}\n"
+            "\n"
+            "/admin/admins 페이지에서 승인해주세요."
+        ),
+        variables=["applicant_email_masked", "applied_at_kst"],
+        category=TemplateCategory.SYSTEM,
+    ),
+    # ── 관리자 계정 수명주기 알림 (Story 10.3) — 발송 폐기 (2026-05-27) ───
+    # admin.account.approved / blocked / unblocked / deleted 4종을 한 차례 추가했다가
+    # 즉시 제거. 운영자가 /admin/admins 페이지에서 대상자 휴대폰을 직접 보고
+    # 필요 시 별도 채널로 안내하는 것으로 충분 — 알림톡 surface 추가 보류.
+    # 신규 발송 트리거 없음. 본 카탈로그·docs/ALIMTALK_TEMPLATES.md·알리고 콘솔 모두 미등록.
     # ── 관리자 이상탐지 알림 (2026-05-18 고객 추가요청) ──────────────────────
     # 사용자 측 보안 알림(5-1~5-6)을 모두 폐기하고, 이상탐지 시 관리자에게만
     # 단일 채널로 발송. 무료/유료 구분 없음. 발송 연결은 Story 6.2 후속.

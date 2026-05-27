@@ -1,14 +1,14 @@
-# ADR-0001: SSOT 편차 5건 — 가입유형 권한·세그먼트 통합·아이디 찾기·kill-switch 이원화·환불 정책 부분환불 전환
+# ADR-0001: SSOT 편차 6건 — 가입유형 권한·세그먼트 통합·아이디 찾기·kill-switch 이원화·환불 정책 부분환불 전환·다중 관리자 RBAC
 
-> **최종 수정일:** 2026-05-13
+> **최종 수정일:** 2026-05-26
 > **작성자:** Hyung woo
 > **승인자:** (인수자 검토 시 기입)
-> **버전:** v1.1
-> **관련 FR/Story:** FR10·FR11·FR17·FR19·FR28·FR29·FR55·FR56 / Story 1.3·1.5·1.6·3.3·3.4·3.6·4.3·4.4·5.2·6.2·6.4·9.2·9.3·9.4
+> **버전:** v1.2
+> **관련 FR/Story:** FR10·FR11·FR17·FR19·FR28·FR29·FR55·FR56·FR58·FR59·FR60·FR61·FR62·FR63 / Story 1.3·1.5·1.6·3.3·3.4·3.6·4.3·4.4·5.2·6.2·6.4·9.2·9.3·9.4·10.1·10.2·10.3·10.4·10.5
 
 ---
 
-본 ADR은 단일 진실 공급원(SSOT, Single Source of Truth: 클라이언트 측 기획서·기능명세서·협의서)과 PRD(Product Requirements Document) 사이의 **공식 편차 5건**을 정식 등재한다. 각 편차는 클라이언트와 합의·확정된 후 PRD에 반영되었으며, 본 ADR은 그 결정 경위와 영향 범위를 영구 기록으로 보존한다.
+본 ADR은 단일 진실 공급원(SSOT, Single Source of Truth: 클라이언트 측 기획서·기능명세서·협의서)과 PRD(Product Requirements Document) 사이의 **공식 편차 6건**을 정식 등재한다. 각 편차는 클라이언트와 합의·확정된 후 PRD에 반영되었으며, 본 ADR은 그 결정 경위와 영향 범위를 영구 기록으로 보존한다.
 
 > ⚠️ **PRD 본문 정합성 주의:** 편차 #4(kill-switch)의 경우 `_bmad-output/planning-artifacts/prd.md` FR56 본문이 여전히 SSOT 초판 표현("유료 질의 전역 차단")으로 남아있다. **본 ADR이 정정 SSOT**이며, PRD 본문 교정은 Post-MVP 문서 유지보수 작업으로 분리한다.
 
@@ -336,6 +336,106 @@ SSOT 측 정의(F-207 + 협의서 #B-03 + PRD FR19 초판):
 
 ---
 
+## 편차 #6 — 다중 관리자 RBAC 도입(단일 관리자 → 4등급 권한 체계)
+
+### 상태
+
+**Accepted** (2026-05-26 클라이언트 확정)
+
+### 맥락
+
+SSOT 측 정의(기능명세서 §관리자 + PRD FR33~FR57 초판):
+- 관리자는 **단일 계정**으로 운영한다(개발자 시드 `btmdesign@naver.com` 1개).
+- 등급·페이지별 권한·승인 워크플로·관리자 활동 로그 등 RBAC 요소는 정의되어 있지 않다.
+- 마스터 식별은 코드 하드코딩(`api/src/services/admin_board_service.py:BTMDESIGN_EMAIL` 상수)으로 구현되어 있다.
+
+운영상 검토(2026-05-26 클라이언트 미팅):
+- **휴가·이양·업무 분담 불능**: 단일 계정 운영 시 개발자 부재 기간(휴가·이양·이직) 동안 관리자 액션이 0건이 된다.
+- **운영 책임 단일 의존**: 모든 관리자 액션이 한 사람에게 귀속 — 책임 분담·이중 점검·역할 분리(SoD, Separation of Duties)가 불가.
+- **외주 운영 시 제약**: 클라이언트 측 운영 인력(고객 응대·콘텐츠 발행)에게 일부 페이지만 위임하고 싶어도 전체 권한이 묶여 있어 불가.
+- **마스터 하드코딩 부담**: `BTMDESIGN_EMAIL` 상수를 코드에 박아두는 방식은 이메일 변경 시 배포가 필요하며 이양 시 git diff에 노출된다.
+
+### 결정
+
+관리자 시스템을 **단일 계정 → 다중 관리자 + 4등급 RBAC**로 확장한다. PRD에 **§10 Admin Account & RBAC**(FR58~FR63) 섹션을 신설하고, Epic 10을 추가하여 5개 Story로 분해한다.
+
+**(a) 등급 체계 — 4종 고정**
+
+| 등급 코드 | 한글명 | 권한 범위 | 단일성 |
+|---|---|---|---|
+| `master` | 마스터 | 모든 관리자 기능 + 운영 관리자 자체의 승인/차단/삭제/등급 변경 + 페이지 권한 매트릭스 편집 | **DB partial UNIQUE로 1개만 허용** |
+| `operator` | 운영 관리자 | 마스터 전용 기능 제외한 모든 관리자 페이지 접근 | 다수 가능 |
+| `sub_operator` | 부운영자 | 운영 관리자가 부여한 페이지만 접근(기본 권한 0) | 다수 가능 |
+| `pending` | 승인대기 | 모든 관리자 페이지 접근 불가(로그인 자체 차단, 세션 미발급) | 다수 가능 |
+
+**(b) 가입 워크플로**
+
+- 가입 경로: **`/admin/signup`**(독립 경로, 일반 사용자 가입 폼과 완전 분리, 일반 사이트 어디에서도 링크 노출 없음 — `/admin/login` 페이지 내부에서만 진입 가능)
+- 가입 시 자동으로 `admin_grade='pending'` 부여
+- 가입 알림은 마스터·운영 관리자 휴대폰으로 알림톡 발송(이메일 0건 원칙 — `project_email_zero_policy.md`)
+- 승인 단계에서 `pending → sub_operator`(기본) 또는 `pending → operator`(마스터만 가능)
+
+**(c) 등급 부여 규칙 — "자기 등급 이상은 못 줌"**
+
+- `operator`는 다른 `operator`·`master`를 만들거나 그들에게 영향을 줄 수 없음 → `sub_operator`·`pending` 대상만 관리
+- `master`는 모든 등급을 부여 가능(단, master 부여는 단일성 제약으로 불가)
+- 권한 검증은 백엔드 서비스 레이어(`admin_account_service.py`)에서 강제 + 프론트 UI에서도 액션 버튼 사전 비활성
+
+**(d) 페이지별 권한 매트릭스 — `sub_operator` 한정**
+
+- 페이지 단위: 관리자 사이드바의 1차 라우트 8종(`/admin/dashboard`·`/admin/users`·`/admin/finance`·`/admin/rag`·`/admin/content`·`/admin/anomaly`·`/admin/support`·`/admin/admins`)
+- 신규 테이블 `admin_page_permissions(admin_user_id BIGINT FK, page_route VARCHAR(64), allowed BOOL, granted_by_admin_id BIGINT FK, granted_at TIMESTAMPTZ)` — 행 단위 ON/OFF
+- `master`·`operator`는 본 매트릭스 적용 대상 아님(항상 모든 페이지 접근)
+- `/admin/admins`·`/admin/admins/permissions` 자체는 매트릭스 적용 대상이 아니며 `master`·`operator`만 접근 가능
+
+**(e) 관리자 활동 로그 — 기존 `audit_logs` 재사용**
+
+- 신규 액션 코드: `admin.account.{approved,blocked,unblocked,deleted,grade_changed,permission_changed}` + `admin.master.protection_triggered`
+- 뷰 페이지: **`/admin/admins/logs`** — 관리자별·기간별·액션 코드별 필터
+- `operator`는 자기 자신 + `sub_operator`의 활동만 조회 / `master`는 전체 조회
+
+**(f) 마스터 무결성 보장**
+
+- DB partial UNIQUE: `uq_admin_grade_master ON users(admin_grade) WHERE admin_grade='master' AND withdrawn_at IS NULL`
+- API 레벨 403: master 대상 차단·삭제·등급 변경 요청 거부
+- UI 액션 버튼 비활성 + 비정상 시도는 `admin.master.protection_triggered`로 별도 기록
+- 마스터 이양·복수 등록 정책은 본 MVP 범위 외(Post-MVP 클라이언트 협의)
+
+**(g) 기존 단일 관리자 마이그레이션**
+
+- 마이그레이션 시점에 `users` 테이블에서 `role='admin' AND withdrawn_at IS NULL`인 모든 행을 다음 규칙으로 백필:
+  - `email = 'btmdesign@naver.com'` → `admin_grade = 'master'`
+  - 그 외 → `admin_grade = 'operator'`(현재 시드된 관리자가 마스터 단 1개뿐이라 사실상 master 백필만 적용됨)
+- `BTMDESIGN_EMAIL` 상수는 마이그레이션 후 **deprecation 주석**으로 표시되며 후속 Story에서 일괄 제거(`admin_grade='master'` 컬럼 조회로 대체)
+
+### 근거
+
+- **운영 안전망**: 단일 의존 제거 → 휴가·이양·업무 분담 가능. SoD(Separation of Duties) 도입으로 이중 점검 경로 확보.
+- **유연한 권한 위임**: 페이지별 매트릭스로 고객 응대·콘텐츠 발행·결제 운영 등을 부운영자에게 부분 위임 가능. 외주 운영 인력 도입 시에도 보안 부담 최소화.
+- **하드코딩 제거**: `BTMDESIGN_EMAIL` 상수를 DB 컬럼으로 이관 → 마스터 이양·이메일 변경 시 코드 배포 불필요. ENUM 1개 + partial UNIQUE 1개로 단순 모델 유지.
+- **기존 인프라 재사용**: 가입 SMS OTP·관리자 쿠키 분리(`denvia_admin_session`, path `/api/v1/admin`)·`audit_logs`·관리자 알림톡 발송 경로는 모두 기존 인프라 그대로 활용. 신규 컬럼 2개 + 신규 테이블 1개로 surface 최소화.
+- **이메일 0건 원칙 준수**: 가입·승인·차단 알림은 모두 알림톡으로 발송(`project_email_zero_policy.md`).
+
+### 영향받는 산출물
+
+| 분류 | 항목 |
+|---|---|
+| PRD FR | **신규 FR58·FR59·FR60·FR61·FR62·FR63** (§10 Admin Account & RBAC) |
+| Epic/Story | **신규 Epic 10**: Story 10.1(DB 스키마+마이그레이션), 10.2(가입+승인대기), 10.3(관리자 관리 페이지 CRUD), 10.4(활동 로그 뷰), 10.5(페이지별 권한 매트릭스 UI) |
+| 데이터베이스 | `users.admin_grade` ENUM 컬럼 추가('master'/'operator'/'sub_operator'/'pending'/NULL — non-admin은 NULL) + partial UNIQUE `uq_admin_grade_master` + `users.admin_blocked_until` + `users.admin_block_reason` + 신규 테이블 `admin_page_permissions(id, admin_user_id FK users.id, page_route VARCHAR(64), allowed BOOL, granted_by_admin_id FK users.id, granted_at TIMESTAMPTZ)` + UNIQUE(admin_user_id, page_route) |
+| 백엔드 | `api/src/services/admin_account_service.py`(신규 — 등급 검증·승인·차단·삭제·권한 매트릭스) · `api/src/routers/admin/accounts.py`(신규 — 관리자 관리 CRUD) · `api/src/routers/admin/permissions.py`(신규 — 페이지 권한 매트릭스) · `api/src/deps/auth.py`(`get_current_admin` 확장 → 등급·페이지 권한 검증 추가) · `api/src/routers/admin/auth.py`(signup 엔드포인트 추가 + pending 거절) · `api/src/services/admin_board_service.py`(`BTMDESIGN_EMAIL` 상수 deprecation 마킹) |
+| 프론트엔드 | `web/src/features/admin-accounts/`(신규 슬라이스 — AdminListTable, GradeChangeDialog, AdminPermissionMatrix, AdminLogsTimeline, AdminSignupForm) · `web/src/app/admin/signup/page.tsx`(신규 라우트) · `web/src/app/admin/admins/{page,permissions,logs}/page.tsx`(신규 라우트) · 관리자 사이드바에 "관리자 관리" 1차 항목 추가 |
+| 알림톡 템플릿 | `api/src/integrations/messaging/templates.py`에 추가 — `admin.account.signup_request`(가입 신청 → 마스터·운영 관리자에게), `admin.account.approved`(승인 완료 → 신규 관리자에게), `admin.account.blocked`(차단 → 대상 관리자에게), `admin.account.deleted`(삭제 → 대상 관리자에게). `docs/ALIMTALK_TEMPLATES.md` SSOT 동기화 |
+| 약관·내부 문서 | `docs/legal/terms.md`는 외부 사용자 약관이므로 영향 없음. `docs/SECURITY.md`에 관리자 RBAC 절 추가(역할 정의·권한 행렬·이양 절차) |
+| 코드 하드코딩 제거 | `BTMDESIGN_EMAIL` 상수 → `admin_grade='master'` DB 조회로 대체. Story 10.1 마이그레이션 직후 Story 10.3 진입 전 일괄 deprecation |
+| 변경 관리 절차 | 기능명세서 §9 변경 관리 절차에 등재 — 본 ADR이 그 등재 매개체 |
+
+### 날짜·승인자
+
+2026-05-26 · Hyung woo(개발사) ↔ 클라이언트 합의 · ADR 등재일 2026-05-26
+
+---
+
 ## 검증 이력
 
 | 날짜 | 검증자 | 결과 | 조치 |
@@ -346,3 +446,6 @@ SSOT 측 정의(F-207 + 협의서 #B-03 + PRD FR19 초판):
 | 2026-05-12 | claude-opus-4-7 (편차 #5 추가) | OK — 편차 #5(환불 정책 부분환불 전환) 6개 H3 섹션 엄수 등재. PRD FR17/FR19/FR29/FR55 본문 동시 갱신. 메타 헤더 Story 번호 확장(`3.3·3.4·3.6·4.4·9.3` 추가). README 인덱스 표 정렬은 후속 작업으로 분리(`docs/adr/README.md` 별도 patch 필요). | README 인덱스 표 정렬 TBD |
 | 2026-05-13 | claude-opus-4-7 (편차 #5 Phase 4 cleanup) | OK — 편차 #5 v1.0 자가 환불 잔재(폼·관리자 승인 큐·`manual_refund_queue` 참조 코드) dead code 제거 완료. **Step 1**(백엔드, commit `970de94`): ORM `manual_refund_queue.py`·`routers/admin/refunds.py`·`services/admin_refund_service.py`·`schemas/admin/refunds.py`·테스트 일괄 삭제. main 라우터 mount/finance ORM lookup/admin support count 호출도 해제. **Step 2**(프론트, commit `4112da1`): `RefundRequestPopup`·`useRequestRefund`·`billing.requestRefund`·admin-support 환불 큐 패널(`RefundsTabPanel`/`RefundReviewDrawer`/`RefundQueueTable`/`RefundActionConfirmDialog`/`SupportTabsNav`/`api/refunds.ts`)·admin-finance refund 큐 링크·`PaymentEventDetail.manual_refund_queue_*` 필드 삭제. vitest 35/35 PASS. **Step 3**(문서): `_bmad-output/planning-artifacts/epics.md`(Story 3.6·4.4·9.3 v1.0 ACs를 OBSOLETE 마킹), `_bmad-output/implementation-artifacts/3-6-refund-request.md`(Phase 4 Patch-T2·T8 status `[x]` flip + Step 1~4 진행 노트), `docs/RUNBOOK_INCIDENT.md` 시나리오 ① 결제 장애 조치 단계(`manual_refund_queue INSERT` → v1.1 운영 환불 동선 / Story 9.1 RefundDialog). **Step 4 잔여**: Patch-T1(0017 drop 마이그) — 코드 의존성 0이므로 단독 안전. 메모리 `project_refund_policy` 9.3 → 9.1 stale 참조 1건 정정 동반. | Patch-T1(0017 drop 마이그) — Step 4로 별도 PR |
 | 2026-05-14 | claude-opus-4-7 (편차 #5 후속 — `payment_events.refund_kind` 컬럼 승격) | OK — 편차 #5 환불 정책 v1.1의 분류 메타를 JSONB 인라인에서 전용 ENUM 컬럼으로 승격. 마이그 `0035_payment_events_refund_kind`: `refund_kind_enum`('manual_full'/'manual_partial'/'cooling_off') + `payment_events.refund_kind` NULL 허용 컬럼 + 부분 인덱스 `idx_payment_events_refund_kind WHERE refund_kind IS NOT NULL` + 기존 행 백필(JSONB→컬럼). ORM `payment_event.PaymentEvent.refund_kind` 매핑 추가. 서비스 수정 4지점: `admin_payment_service.create_refund` refund_success/refund_denied INSERT 2지점 + `billing_service._execute_cooling_off_refund` refund_success/refund_denied INSERT 2지점 — JSONB 인라인 `raw_response_json.refund_kind`는 한 사이클 호환 유지 후 후속 클린업 마이그에서 제거 검토. 테스트 보강 6 케이스(unit `test_admin_payment_service_v1_1` 4 + `test_billing_service_3_6_v1_1` 2). dev DB \dt 26 tables / alembic_version=0035_payment_events_refund_kind / admin login 200 / scoped 72 PASS(unit 29 + integration 43). 코드 리뷰 티어: **라이트** — 컬럼 추가만으로 surface 좁고 NULL 허용 + 백필 안전(enum 외 값 SKIP) + 신규 보안 surface 0 + 금전 이동 0(분류 메타만) + 권한 변경 0. | JSONB 인라인 `raw_response_json.refund_kind` 클린업 마이그 — 후속 |
+| 2026-05-26 | claude-opus-4-7 (편차 #6 등재 — 다중 관리자 RBAC) | OK — 편차 #6(다중 관리자 + 4등급 RBAC) 6개 H3 섹션 엄수 등재. ADR 헤더 v1.1→v1.2 / Story 번호 확장(10.1·10.2·10.3·10.4·10.5 추가). PRD 본문 §10 Admin Account & RBAC 섹션 신설(FR58~FR63 6개 신규). PRD 헤더 FR 카운트 57→63. README 인덱스 표 정렬 + sprint-status.yaml backlog 등록 + epics.md Epic 10 추가는 후속 분리 작업. **본 ADR 등재 시점 코드 변경 0** — DB 마이그·라우터·UI는 Story 10.1~10.5 진입 시 순차 구현. | epics.md Epic 10 / sprint-status.yaml Epic 10 backlog / README 인덱스 표 정렬 — 후속 |
+| 2026-05-27 | claude-opus-4-7 (편차 #6 Story 10.3 진입 — BTMDESIGN_EMAIL 하드코딩 일괄 제거) | OK — Story 10.3(관리자 관리 페이지 CRUD + 등급 제약)에서 마스터 식별을 `users.admin_grade='master'` DB 컬럼 기준으로 일괄 교체. **변경 지점 4**: ① `services/admin_board_service.is_btmdesign(user)` 내부 판정을 이메일 비교 → `user.admin_grade=='master'` 로 변경(함수 시그니처는 호출 측 호환을 위해 유지) · ② `routers/admin/auth._grade_label_for(email)` 함수 폐기 → `services/admin_account_service.grade_label_for_user(user)` 신규 + 3개 호출 지점(`admin_login`/`admin_me`/`admin_get_profile`/`admin_update_profile`) 교체 · ③ `integrations/messaging/admin_recipient.resolve_admin_target` 마스터 조회를 `email==BTMDESIGN_EMAIL` → `admin_grade=='master' AND withdrawn_at IS NULL` 로 변경 · ④ `BTMDESIGN_EMAIL` 상수는 `admin_board_service` 에 deprecated alias 로 1 사이클 유지(후속 클린업 마이그에서 제거 검토). 신규 라우터 `routers/admin/accounts.py` + 신규 서비스 `services/admin_account_service.py` + Celery `expire_blocks` 에 admin 변형 핸들러 통합. **알림톡 4종(admin.account.{approved,blocked,unblocked,deleted})은 같은 날 일시 추가됐다가 즉시 제거** — 운영자가 `/admin/admins` 페이지에서 대상자 휴대폰을 직접 보고 별도 채널로 안내, 알림톡 surface 추가 보류. 자동 만료 알림 발송도 없음. | `BTMDESIGN_EMAIL` 상수 완전 삭제 — 후속 클린업 마이그(Story 10.5 이후) |
+| 2026-05-27 | claude-opus-4-7 (편차 #6 Story 10.4 dev-story — 활동 로그 SSOT 편차 2건 발견) | OK — Story 10.4(/admin/admins/logs 활동 로그) dev-story 진행 중 epics.md §10.4 와 실제 코드 간 SSOT 편차 2건 식별·조정. **편차 A**: epics.md §10.4 "신규 인덱스 1개 추가 권장 — `idx_audit_logs_actor_created`" 명시 → 실제로는 `0005_audit_logs.py:48-52` 에 동일 정의(`actor_user_id`, `created_at DESC`)가 **이미 존재**. 본 Story 신규 인덱스 추가 0건(중복 생성 시 alembic 에러). **편차 B**: epics.md §10.4 "시스템 자동 액션은 `actor_user_id IS NULL` 로 기록" 가정 → 실제로는 `audit_logs.actor_user_id` NOT NULL + FK ON DELETE RESTRICT 제약(0005). 시스템 액션(Celery `expire_blocks`)도 `_resolve_system_actor_id` 가 결정한 **첫 admin user id** 로 INSERT 됨(`workers/anomaly_tasks.py:44`). 본 Story 의 `actor_id=system` 옵션은 action 코드 패턴(`user.block_auto_expired` / `admin.account.unblocked`) + actor_user_id 가 첫 admin id 인 조합으로 식별 — 정확성 한계 있음(첫 admin 이 수동 unblock 한 로그도 "시스템" 으로 분류될 수 있음). **신규 코드 / 마이그 0건 — 순수 READ 페이지**: `services/admin_logs_service.py` 신규(list_logs/get_log_diff/export_logs_xlsx + _redact_diff 15종 키 화이트리스트 + _assert_log_visible_to 가드) · `schemas/admin/log.py` 신규(3 응답) · `routers/admin/accounts.py` 3 endpoint append(GET /logs · GET /logs/{id}/diff · GET /logs/export.xlsx). 프론트 `web/src/features/admin-logs/` 신규 슬라이스(api.ts + action-groups.ts) + `web/src/app/admin/admins/logs/` 신규 페이지(page.tsx + LogRow.tsx + page.module.css) + AdminSidebar children 신설("관리자 목록" + "활동 로그"). 권한 분기: master 전체 + actor_id=system 옵션 / operator 본인+활성 sub_operator 만 / 다른 actor 403 ADMIN_LOG_FORBIDDEN_ACTOR. 테스트 32 PASS(unit redact 9 + visibility 12 + integration 11). 코드 리뷰 티어: **라이트** — DDL 0 / 신규 INSERT 0 / 신규 인덱스 0 / RAG·금전 영향 0 / 권한 분기 1 헬퍼 응집 / READ 전용. | `audit_logs.actor_kind ENUM('user','admin','system')` 컬럼 신설 — 별도 백로그(Story 10.5 done 이후 협의) |

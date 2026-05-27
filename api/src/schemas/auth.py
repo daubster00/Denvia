@@ -33,7 +33,7 @@ class SessionUserResponse(BaseModel):
 
 class SmsSendRequest(BaseModel):
     phone: str
-    purpose: Literal["signup", "find_id", "find_password", "phone_change"]
+    purpose: Literal["signup", "find_id", "find_password", "phone_change", "admin_signup"]
 
     @field_validator("phone")
     @classmethod
@@ -54,7 +54,7 @@ class SmsSendResponse(BaseModel):
 class SmsVerifyRequest(BaseModel):
     phone: str
     code: str
-    purpose: Literal["signup", "find_id", "find_password", "phone_change"]
+    purpose: Literal["signup", "find_id", "find_password", "phone_change", "admin_signup"]
 
     @field_validator("phone")
     @classmethod
@@ -199,6 +199,17 @@ class FindPasswordRequest(BaseModel):
         if not re.match(r"^010\d{8}$", cleaned):
             raise ValueError("올바른 휴대폰 번호를 입력하세요.")
         return cleaned
+
+
+class FindPasswordResponse(BaseModel):
+    """비밀번호 찾기 응답.
+
+    일반 가입자·불일치는 linked_providers=[] (계정 열거 방지 유지).
+    소셜 전용 계정만 연결된 provider 리스트를 반환해 프론트가 안내 + 소셜 로그인 버튼을 노출.
+    """
+
+    ok: bool = True
+    linked_providers: list[Literal["kakao", "google", "naver"]] = []
 
 
 class FindIdRequest(BaseModel):

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.middleware.audit_actions import (
     AUDIT_RAG_KNOWLEDGE_DELETE,
     AUDIT_RAG_KNOWLEDGE_EDIT,
@@ -30,7 +30,11 @@ from api.src.schemas.admin.rag import (
 from api.src.services import rag_admin_service
 from api.src.utils.jwt import JWTDecodeError, SessionExpired, decode_session_jwt
 
-router = APIRouter(prefix="/admin/rag", tags=["admin-rag"])
+router = APIRouter(
+    prefix="/admin/rag",
+    tags=["admin-rag"],
+    dependencies=[Depends(require_admin_page("/admin/rag"))],
+)
 
 
 def _admin_user_id_key(request: Request) -> str:

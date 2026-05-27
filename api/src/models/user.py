@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, Boolean, Date, Integer, Numeric, SmallInteger, String, Text
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -63,6 +64,25 @@ class User(Base):
     # 단일 세션(later wins) — 로그인 시점에 nonce를 발급하고 JWT의 sid 클레임과 매칭한다.
     # 새 로그인이 일어나면 값이 갱신돼 이전 쿠키의 sid는 자동으로 mismatch → 401.
     current_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Story 10.1 — 다중 관리자 + 4등급 RBAC (ADR-0001 편차 #6)
+    # role=='admin'인 행만 의미를 가진다. role=='user'는 NULL.
+    # 값: 'master' | 'operator' | 'sub_operator' | 'pending'
+    # master는 partial UNIQUE 인덱스(WHERE admin_grade='master' AND withdrawn_at IS NULL)로 단일성 강제.
+    # PG enum 타입은 0054 마이그에서 생성되므로 create_type=False (ORM이 다시 만들지 않음).
+    admin_grade: Mapped[str | None] = mapped_column(
+        PG_ENUM(
+            "master",
+            "operator",
+            "sub_operator",
+            "pending",
+            name="admin_grade_enum",
+            create_type=False,
+        ),
+        nullable=True,
+    )
+    admin_blocked_until: Mapped[datetime | None] = mapped_column(nullable=True)
+    admin_block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    admin_signup_at: Mapped[datetime | None] = mapped_column(nullable=True)
     withdrawn_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
     updated_at: Mapped[datetime] = mapped_column(nullable=False)

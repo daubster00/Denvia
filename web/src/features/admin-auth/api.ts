@@ -78,11 +78,17 @@ async function adminApiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+export type AdminGrade = "master" | "operator" | "sub_operator" | "pending";
+
 export interface AdminSessionUser {
   user_id: number;
   email: string;
   role: string; // 항상 "admin"
   is_master: boolean;
+  // Story 10.5 — RBAC. 백엔드 백필 누락 시 null 가능.
+  admin_grade: AdminGrade | null;
+  // 매트릭스 1차 라우트 중 접근 허용된 목록. master/NULL → 전체.
+  allowed_pages: string[];
 }
 
 export interface AdminProfile {
@@ -141,6 +147,31 @@ export async function changeAdminPassword(
   payload: AdminPasswordChangePayload,
 ): Promise<void> {
   await adminApiFetch<{ ok: boolean }>("/api/v1/admin/auth/password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ── Story 10.2: 관리자 가입 (2026-05-27 휴대폰 OTP 인증 단계 제거) ──────────────
+
+export interface AdminSignupPayload {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+}
+
+export interface AdminSignupResponse {
+  user_id: number;
+  email: string;
+  admin_grade: "pending";
+  message: string;
+}
+
+export async function adminSignup(
+  payload: AdminSignupPayload,
+): Promise<AdminSignupResponse> {
+  return adminApiFetch<AdminSignupResponse>("/api/v1/admin/auth/signup", {
     method: "POST",
     body: JSON.stringify(payload),
   });

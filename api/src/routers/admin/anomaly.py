@@ -19,7 +19,7 @@ from redis.asyncio import Redis as AsyncRedis
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_rate_limit
 from api.src.middleware.audit_actions import AUDIT_ANOMALY_REVIEW
 from api.src.middleware.rate_limit import limiter
@@ -32,7 +32,11 @@ from api.src.schemas.admin.anomaly import (
     AnomalyMarkReviewedResponse,
     AnomalyMemoUpdateRequest,
 )
-from api.src.services import anomaly_service
+from api.src.schemas.admin.watch import (
+    WatchToggleResponse,
+    WatchedAccountListResponse,
+)
+from api.src.services import anomaly_service, anomaly_watch_service
 from api.src.utils.jwt import (
     JWTDecodeError,
     SessionExpired,
@@ -41,7 +45,11 @@ from api.src.utils.jwt import (
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/anomaly", tags=["admin-anomaly"])
+router = APIRouter(
+    prefix="/admin/anomaly",
+    tags=["admin-anomaly"],
+    dependencies=[Depends(require_admin_page("/admin/anomaly"))],
+)
 
 
 def _admin_user_id_key(request: Request) -> str:
@@ -119,6 +127,75 @@ async def list_anomalies(
         total=result["total"],
     )
     return AnomalyListResponse(**result)
+
+
+@router.get("/watched", response_model=WatchedAccountListResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def list_watched_accounts(
+    request: Request,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> WatchedAccountListResponse:
+    """주의 계정 리스트 — 별 모양 버튼으로 등록된 계정. 최근 등록 순.
+
+    /{anomaly_id} 동적 경로보다 먼저 등록돼야 라우팅이 정상 동작한다.
+    """
+    result = await anomaly_watch_service.list_watched(
+        db, page=page, per_page=per_page
+    )
+    logger.info(
+        "admin.anomaly.watched.list",
+        actor_user_id=admin.id,
+        page=page,
+        per_page=per_page,
+        total=result["total"],
+    )
+    return WatchedAccountListResponse(**result)
+
+
+@router.post("/{anomaly_id}/watch", response_model=WatchToggleResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def add_watch(
+    request: Request,
+    anomaly_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> WatchToggleResponse:
+    """이상 이벤트의 target_user 를 주의 계정으로 등록 (별 활성화)."""
+    result = await anomaly_watch_service.add_watch_from_anomaly(
+        db, anomaly_id=anomaly_id, actor_admin_id=admin.id
+    )
+    await db.commit()
+    request.state.audit_skip = True
+    logger.info(
+        "admin.anomaly.watch.added",
+        actor_user_id=admin.id,
+        anomaly_id=anomaly_id,
+        target_user_id=result["user_id"],
+    )
+    return WatchToggleResponse(**result)
+
+
+@router.delete("/users/{user_id}/watch", response_model=WatchToggleResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def remove_watch(
+    request: Request,
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> WatchToggleResponse:
+    """주의 계정 해제 — 멱등."""
+    result = await anomaly_watch_service.remove_watch(db, user_id=user_id)
+    await db.commit()
+    request.state.audit_skip = True
+    logger.info(
+        "admin.anomaly.watch.removed",
+        actor_user_id=admin.id,
+        target_user_id=user_id,
+    )
+    return WatchToggleResponse(**result)
 
 
 @router.get("/{anomaly_id}", response_model=AnomalyDetailResponse)

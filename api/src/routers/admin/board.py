@@ -23,7 +23,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.board import (
@@ -39,7 +39,11 @@ from api.src.schemas.admin.board import (
 )
 from api.src.services import admin_board_service
 
-router = APIRouter(prefix="/admin/board", tags=["admin-board"])
+router = APIRouter(
+    prefix="/admin/board",
+    tags=["admin-board"],
+    dependencies=[Depends(require_admin_page("/admin/board"))],
+)
 
 
 # ── 메타 ──────────────────────────────────────────────────────────────────────

@@ -108,6 +108,51 @@
   }
 }
 
+/* 접근 권한 없음 (Story 10.5) */
+.forbiddenWrap {
+  display: flex;
+  justify-content: center;
+  padding: 80px 24px;
+}
+
+.forbiddenCard {
+  max-width: 480px;
+  width: 100%;
+  background: var(--admin-color-surface);
+  border: 1px solid var(--admin-color-border);
+  border-radius: var(--admin-radius-lg);
+  padding: 36px 32px;
+  text-align: center;
+}
+
+.forbiddenTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 12px;
+}
+
+.forbiddenBody {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.forbiddenAction {
+  display: inline-block;
+  background: #111827;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.forbiddenAction:hover {
+  opacity: 0.88;
+}
+
 /* 대시보드 페이지 */
 .dashboardPage {
   padding: var(--admin-space-page-y) var(--admin-space-page-x);

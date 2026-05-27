@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { adminLogin, adminFetchMe } from "@/features/admin-auth/api";
@@ -55,7 +56,14 @@ export default function AdminLoginPage() {
       router.replace("/admin");
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        if (err.code === "AUTH_TEMPORARILY_LOCKED" || err.code === "RATE_LIMITED") {
+        if (err.code === "ADMIN_PENDING_APPROVAL") {
+          setServerError(
+            "관리자 승인 대기 중입니다. 운영자 승인 후 이용 가능합니다.",
+          );
+        } else if (
+          err.code === "AUTH_TEMPORARILY_LOCKED" ||
+          err.code === "RATE_LIMITED"
+        ) {
           setServerError("잠시 후 다시 시도해주세요.");
         } else {
           setServerError("이메일 또는 비밀번호가 일치하지 않습니다.");
@@ -144,6 +152,12 @@ export default function AdminLoginPage() {
         </form>
 
         <p className={styles.footnote}>세션 1시간 후 자동 만료됩니다.</p>
+
+        <div className={styles.signupRow}>
+          <Link href="/admin/signup" className={styles.signupLink}>
+            관리자 가입
+          </Link>
+        </div>
       </div>
     </main>
   );

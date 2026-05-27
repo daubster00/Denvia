@@ -1,14 +1,15 @@
 """Story 6.2 — 이상탐지 자동 처리 Celery 태스크 모듈.
 
-본 모듈은 Story 6.2에서 expire_blocks 1개 함수만 보유한다.
-Story 6.5(이상탐지 자동 생성)에서 같은 모듈에 함수가 추가될 예정 — 모듈 골격을 본 스토리에서 마련.
+본 모듈은 Story 6.2에서 expire_blocks 1개 함수로 시작했고,
+Story 10.3(2026-05-27)에서 동일 핸들러에 관리자 차단 자동 만료 분기가 추가됐다.
 
 `expire_blocks`:
-- 매시간 정각 0분에 Celery Beat가 트리거 (celery_app.py).
-- subscription_status='blocked' AND blocked_until <= now() 인 사용자를 free로 reset.
-- 영구 차단(blocked_until IS NULL)은 자동 해제 대상에서 제외.
-- 각 expire 사용자에 대해 audit_logs 'user.block_auto_expired' INSERT.
-- actor_user_id는 첫 번째 admin user의 id 사용 (FK ON DELETE RESTRICT 정합).
+- 매시간 30분에 Celery Beat가 트리거 (celery_app.py).
+- 사용자 분기 — subscription_status='blocked' AND blocked_until <= now() 인 사용자를 free/pro로 복원.
+- 관리자 분기 — role='admin' AND admin_blocked_until <= now() 인 관리자의 차단을 해제.
+- 영구 차단(*blocked_until IS NULL*)은 자동 해제 대상에서 제외.
+- 사용자 분기는 'user.block_auto_expired' / 관리자 분기는 'admin.account.unblocked' audit_logs INSERT.
+- actor_user_id는 첫 번째 admin user의 id 사용 (FK ON DELETE RESTRICT 정합 — NULL 불가).
 """
 
 from __future__ import annotations
@@ -21,9 +22,13 @@ import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from api.src.middleware.audit_actions import AUDIT_USER_BLOCK_AUTO_EXPIRED
+from api.src.middleware.audit_actions import (
+    AUDIT_ADMIN_ACCOUNT_UNBLOCKED,
+    AUDIT_USER_BLOCK_AUTO_EXPIRED,
+)
 from api.src.models.audit_log import AuditLog
 from api.src.models.user import User
+from api.src.services import admin_account_service
 from api.src.settings import settings
 from api.src.workers.celery_app import celery_app
 
@@ -81,7 +86,18 @@ async def _expire_blocks_async() -> dict[str, Any]:
 
             if not target_rows:
                 logger.info("anomaly.expire_blocks.empty")
-                return {"expired_count": 0}
+                # 사용자 분기는 비어있어도 관리자 차단 자동 만료는 별도 처리.
+                actor_id_only = await _resolve_system_actor_id(session)
+                admin_result = (
+                    await _expire_admin_blocks(actor_id_only)
+                    if actor_id_only is not None
+                    else {"expired_count": 0, "expired_ids": []}
+                )
+                return {
+                    "expired_count": 0,
+                    "admin_expired_count": admin_result["expired_count"],
+                    "admin_expired_ids": admin_result["expired_ids"],
+                }
 
             target_ids = [row.id for row in target_rows]
 
@@ -138,11 +154,55 @@ async def _expire_blocks_async() -> dict[str, Any]:
 
             await session.commit()
 
+            # 5) 관리자 차단 자동 만료 (Story 10.3) — 분리 트랜잭션으로 처리해
+            #    사용자 분기 commit 후 admin 분기가 실패해도 사용자 복원이 롤백되지 않게 한다.
+            admin_result = await _expire_admin_blocks(actor_id)
+
             logger.info(
                 "anomaly.expire_blocks.done",
                 expired_count=len(target_ids),
                 actor_user_id=actor_id,
+                admin_expired_count=admin_result["expired_count"],
             )
-            return {"expired_count": len(target_ids), "actor_user_id": actor_id}
+            return {
+                "expired_count": len(target_ids),
+                "actor_user_id": actor_id,
+                "admin_expired_count": admin_result["expired_count"],
+                "admin_expired_ids": admin_result["expired_ids"],
+            }
+    finally:
+        await engine.dispose()
+
+
+async def _expire_admin_blocks(actor_id: int) -> dict[str, Any]:
+    """Story 10.3 — 관리자 admin_blocked_until 자동 만료 해제 + 알림톡 enqueue + 감사 기록.
+
+    별도 엔진/세션을 사용해 사용자 분기와 격리한다.
+    """
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            result = await admin_account_service.expire_admin_blocks(
+                session, system_actor_id=actor_id
+            )
+            for admin_id in result.get("expired_ids", []):
+                session.add(
+                    AuditLog(
+                        actor_user_id=actor_id,
+                        action=AUDIT_ADMIN_ACCOUNT_UNBLOCKED,
+                        target_type="user",
+                        target_id=admin_id,
+                        diff_json={
+                            "before": {"admin_blocked": True},
+                            "after": {"admin_blocked": False, "source": "auto_expire"},
+                        },
+                        ip=None,
+                        ua=None,
+                        trace_id=None,
+                    )
+                )
+            await session.commit()
+            return result
     finally:
         await engine.dispose()

@@ -27,7 +27,7 @@ from fastapi import (
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.middleware.audit_actions import (
     AUDIT_SYNONYM_EDIT,
     AUDIT_SYNONYM_EXPORT,
@@ -52,7 +52,11 @@ from api.src.utils.jwt import (
 
 logger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/admin/rag", tags=["admin-rag"])
+router = APIRouter(
+    prefix="/admin/rag",
+    tags=["admin-rag"],
+    dependencies=[Depends(require_admin_page("/admin/rag"))],
+)
 
 
 def _admin_user_id_key(request: Request) -> str:

@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Res
 from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.src.deps.auth import require_admin
+from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_ADMIN_DM_DELETE,
@@ -80,6 +80,10 @@ from api.src.schemas.admin.runtime_config import (
 from api.src.services import notice_service, popup_service, runtime_config_service
 
 router = APIRouter(prefix="/admin", tags=["admin-content"])
+# NOTE: content.py 는 prefix가 `/admin`이고 `/admin/runtime-config*` 같이 여러 사이드바 페이지
+# (콘텐츠·설정·대시보드)가 공유하는 엔드포인트를 다수 포함한다. 라우터-레벨에서 한 페이지로
+# 묶으면 일부 등급에서 정상 사용이 막힌다. 본 라우터의 페이지 단위 차단은 프론트 사이드바/
+# URL 가드(admin/layout.tsx)에서 수행한다 — 백엔드는 require_admin 단일 가드 유지.
 
 
 @router.get("/popups", response_model=PopupListResponse)

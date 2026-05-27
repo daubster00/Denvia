@@ -6,6 +6,10 @@ import type {
   AnomalyListResponse,
 } from "@/features/admin-anomaly/api/anomaly";
 import { formatAnomalyType } from "@/features/admin-users/labels";
+import {
+  useAddWatch,
+  useRemoveWatch,
+} from "@/features/admin-anomaly/hooks/useWatchToggle";
 import { AnomalyStatusBadge } from "./AnomalyStatusBadge";
 import styles from "./AnomalyTable.module.css";
 
@@ -62,6 +66,19 @@ export function AnomalyTable({
   onShowDetail,
   onRetry,
 }: Props) {
+  const addWatch = useAddWatch();
+  const removeWatch = useRemoveWatch();
+  const watchPending = addWatch.isPending || removeWatch.isPending;
+
+  function handleToggleWatch(item: AnomalyEventItem) {
+    if (item.target_user_id === null) return;
+    if (item.is_watched) {
+      removeWatch.mutate({ userId: item.target_user_id });
+    } else {
+      addWatch.mutate({ anomalyId: item.id });
+    }
+  }
+
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = useMemo(
@@ -109,6 +126,7 @@ export function AnomalyTable({
             <th scope="col">IP</th>
             <th scope="col">상태</th>
             <th scope="col">상세</th>
+            <th scope="col" aria-label="주의 계정">주의</th>
           </tr>
         </thead>
         <tbody>
@@ -163,6 +181,32 @@ export function AnomalyTable({
                     data-testid={`anomaly-detail-${item.id}`}
                   >
                     상세보기
+                  </button>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className={
+                      item.is_watched
+                        ? `${styles.starButton} ${styles.starIcon} ${styles.starActive}`
+                        : `${styles.starButton} ${styles.starIcon}`
+                    }
+                    aria-pressed={item.is_watched}
+                    aria-label={
+                      item.is_watched ? "주의 계정 해제" : "주의 계정 등록"
+                    }
+                    title={
+                      item.target_user_id === null
+                        ? "대상 사용자 미식별 — 등록 불가"
+                        : item.is_watched
+                          ? "주의 계정 해제"
+                          : "주의 계정 등록"
+                    }
+                    onClick={() => handleToggleWatch(item)}
+                    disabled={item.target_user_id === null || watchPending}
+                    data-testid={`anomaly-watch-${item.id}`}
+                  >
+                    {item.target_user_id === null ? "☆" : "★"}
                   </button>
                 </td>
               </tr>
