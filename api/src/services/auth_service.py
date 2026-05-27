@@ -211,6 +211,14 @@ async def _record_sms_abuse_anomaly(
         db.add(event)
         try:
             await db.flush()
+            # 관리자 알림톡 enqueue — 같은 트랜잭션에서 notification_queue INSERT.
+            await anomaly_service.schedule_admin_anomaly_alimtalk(
+                db=db,
+                anomaly_id=event.id,
+                anomaly_type="sms_abuse",
+                target_user_id=existing_user_id,
+                ip=ip,
+            )
             # 이후 send_sms_otp_flow 가 HTTPException(429) 으로 빠지므로 라우터 commit 이
             # 실행되지 않는다. 이상탐지 row 가 유실되지 않도록 여기서 명시 commit.
             await db.commit()
@@ -624,6 +632,14 @@ async def login_user(
                     )
                     db.add(event)
                     try:
+                        await db.flush()
+                        await anomaly_service.schedule_admin_anomaly_alimtalk(
+                            db=db,
+                            anomaly_id=event.id,
+                            anomaly_type="login_brute_force",
+                            target_user_id=user.id,
+                            ip=ip,
+                        )
                         await db.commit()
                     except Exception:
                         await db.rollback()
@@ -672,6 +688,14 @@ async def login_user(
                 )
                 db.add(event)
                 try:
+                    await db.flush()
+                    await anomaly_service.schedule_admin_anomaly_alimtalk(
+                        db=db,
+                        anomaly_id=event.id,
+                        anomaly_type="login_brute_force",
+                        target_user_id=user.id if user else None,
+                        ip=ip,
+                    )
                     await db.commit()
                 except Exception:
                     await db.rollback()
@@ -720,6 +744,14 @@ async def login_user(
                 )
                 db.add(event)
                 try:
+                    await db.flush()
+                    await anomaly_service.schedule_admin_anomaly_alimtalk(
+                        db=db,
+                        anomaly_id=event.id,
+                        anomaly_type="login_brute_force",
+                        target_user_id=user.id if user else None,
+                        ip=ip,
+                    )
                     await db.commit()
                 except Exception:
                     await db.rollback()
@@ -851,6 +883,13 @@ async def _check_recovery_abuse(
             db.add(event)
             try:
                 await db.flush()
+                await anomaly_service.schedule_admin_anomaly_alimtalk(
+                    db=db,
+                    anomaly_id=event.id,
+                    anomaly_type="recovery_abuse",
+                    target_user_id=None,
+                    ip=ip,
+                )
             except Exception:
                 await db.rollback()
 
@@ -863,10 +902,13 @@ async def request_password_reset(
     redis_url: str,
     db: AsyncSession,
     messaging: MessagingProvider,
-) -> None:
+) -> list[str]:
     """비밀번호 찾기 처리 — SMS 임시 비밀번호 발송.
 
-    계정 열거 방지: 일치/불일치/소셜 전용 모두 동일 200 응답.
+    반환값:
+        소셜 전용 계정인 경우 연결된 provider 목록(예: ``["kakao"]``).
+        그 외(일반 가입·불일치·오류) 모두 빈 리스트 — 계정 열거 방지 유지.
+
     타이밍 균일화: 불일치/소셜 분기에서도 dummy argon2 1회 수행.
     """
     # 이상탐지 카운터 (응답 변경 없음)
@@ -914,18 +956,28 @@ async def request_password_reset(
             phone=f"****{phone[-4:]}",
             matched=True,
         )
+        return []
     elif matched and user.password_hash is None:
         # 소셜 전용 계정 — dummy argon2 타이밍 균일화
         verify_password("dummy", _DUMMY_HASH)
+        # 연결된 provider 목록 조회 — 프론트가 안내 + 해당 소셜 로그인 버튼을 노출하게 한다.
+        providers_row = await db.execute(
+            select(OAuthIdentity.provider)
+            .where(OAuthIdentity.user_id == user.id)
+            .order_by(OAuthIdentity.id.asc())
+        )
+        linked = [p for p in providers_row.scalars().all() if p in {"kakao", "google", "naver"}]
         logger.info(
             "auth.password_reset.skipped_social",
             phone=f"****{phone[-4:]}",
+            providers=linked,
         )
         logger.info(
             "auth.password_reset.requested",
             phone=f"****{phone[-4:]}",
             matched=False,
         )
+        return linked
     else:
         # 불일치 — dummy argon2 타이밍 균일화
         verify_password("dummy", _DUMMY_HASH)
@@ -934,6 +986,7 @@ async def request_password_reset(
             phone=f"****{phone[-4:]}",
             matched=False,
         )
+        return []
 
 
 async def lookup_id(

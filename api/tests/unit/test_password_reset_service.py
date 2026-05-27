@@ -48,11 +48,23 @@ def _make_user(email: str, phone: str, password: str | None = "password123") -> 
     return user
 
 
-def _mock_db_with_user(user) -> AsyncMock:
+def _mock_db_with_user(user, providers: list[str] | None = None) -> AsyncMock:
+    """DB mock — 첫 execute는 User 조회, 두 번째는 OAuthIdentity.provider 목록.
+
+    providers=None: 단일 User 조회만 일어나는 일반 가입자 케이스.
+    providers=[...]: 소셜 전용 계정 케이스(서비스가 provider 목록을 추가 조회함).
+    """
     db = AsyncMock(spec=AsyncSession)
-    result_mock = MagicMock()
-    result_mock.scalar_one_or_none.return_value = user
-    db.execute = AsyncMock(return_value=result_mock)
+    user_result = MagicMock()
+    user_result.scalar_one_or_none.return_value = user
+    if providers is None:
+        db.execute = AsyncMock(return_value=user_result)
+    else:
+        provider_result = MagicMock()
+        scalars_mock = MagicMock()
+        scalars_mock.all.return_value = providers
+        provider_result.scalars.return_value = scalars_mock
+        db.execute = AsyncMock(side_effect=[user_result, provider_result])
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.rollback = AsyncMock()
@@ -134,7 +146,7 @@ async def test_매칭_이메일가입자_임시비밀번호_검증가능(fake_re
 
 async def test_매칭_소셜전용_sms_미발송(fake_redis_rl, messaging):
     user = _make_user("social@denvia.com", "01099998888", password=None)
-    db = _mock_db_with_user(user)
+    db = _mock_db_with_user(user, providers=["kakao"])
 
     # SMS가 발송되지 않음 확인 (messaging.send_sms 호출 없음)
     sms_sent: list = []
@@ -146,7 +158,7 @@ async def test_매칭_소셜전용_sms_미발송(fake_redis_rl, messaging):
         async def send_sms_otp(self, phone: str, otp: str) -> None:
             pass
 
-    await request_password_reset(
+    linked = await request_password_reset(
         email="social@denvia.com",
         phone="01099998888",
         ip=None,
@@ -157,6 +169,25 @@ async def test_매칭_소셜전용_sms_미발송(fake_redis_rl, messaging):
     )
     assert len(sms_sent) == 0
     assert user.must_reset_password is False
+    # 연결된 provider 목록이 응답에 담겨 반환됨 — 프론트가 안내 + 소셜 버튼 노출에 사용.
+    assert linked == ["kakao"]
+
+
+async def test_매칭_소셜전용_linked_providers_반환(fake_redis_rl, messaging):
+    """OAuthIdentity 다중 연결 시 모든 provider가 응답에 포함된다."""
+    user = _make_user("social@denvia.com", "01099998888", password=None)
+    db = _mock_db_with_user(user, providers=["kakao", "naver"])
+
+    linked = await request_password_reset(
+        email="social@denvia.com",
+        phone="01099998888",
+        ip=None,
+        ua=None,
+        redis_url="redis://fake",
+        db=db,
+        messaging=messaging,
+    )
+    assert linked == ["kakao", "naver"]
 
 
 # ── 불일치 ────────────────────────────────────────────────────────────────────

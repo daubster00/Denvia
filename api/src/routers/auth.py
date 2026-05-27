@@ -27,6 +27,7 @@ from api.src.schemas.auth import (
     FindIdRequest,
     FindIdResponse,
     FindPasswordRequest,
+    FindPasswordResponse,
     LoginRequest,
     LoginResponse,
     OAuthCompleteRequest,
@@ -230,17 +231,22 @@ async def login(
 
 # ── 비밀번호 찾기 / 아이디 찾기 ──────────────────────────────────────────────
 
-@router.post("/find-password", status_code=200)
+@router.post("/find-password", response_model=FindPasswordResponse, status_code=200)
 async def find_password(
     body: FindPasswordRequest,
     request: Request,
     db: AsyncSession = Depends(get_session),
-) -> dict:
-    """비밀번호 찾기 — SMS 임시 비밀번호 발송 (계정 열거 방지: 항상 200)."""
+) -> FindPasswordResponse:
+    """비밀번호 찾기 — SMS 임시 비밀번호 발송.
+
+    일반 가입자·미일치·오류는 모두 ``linked_providers=[]`` (계정 열거 방지).
+    소셜 전용 계정만 ``linked_providers``에 연결된 provider 목록을 담아 반환 — 프론트가
+    "○○로 가입하신 계정입니다" 안내와 함께 소셜 로그인 버튼을 노출한다.
+    """
     ip = request.client.host if request.client else None
     ua = request.headers.get("user-agent")
 
-    await request_password_reset(
+    linked = await request_password_reset(
         email=body.email,
         phone=body.phone,
         ip=ip,
@@ -250,7 +256,7 @@ async def find_password(
         messaging=_get_messaging(),
     )
     await db.commit()
-    return {"ok": True}
+    return FindPasswordResponse(ok=True, linked_providers=linked)
 
 
 @router.post("/find-id", response_model=FindIdResponse)

@@ -80,12 +80,18 @@ export async function logout() {
   return apiFetch<void>("/api/v1/auth/logout", { method: "POST" });
 }
 
-/** 비밀번호 찾기 — SMS 임시 비밀번호 발송 */
+/** 비밀번호 찾기 — SMS 임시 비밀번호 발송.
+ *
+ * 소셜 전용 계정인 경우 SMS 대신 `linked_providers`에 연결된 provider 목록이 담겨 온다.
+ * 그 외(일반 가입·미일치·오류)는 모두 `linked_providers: []` — 계정 열거 방지 유지.
+ */
+export type FindPasswordProvider = "kakao" | "google" | "naver";
+
 export async function requestPasswordReset(payload: { email: string; phone: string }) {
-  return apiFetch<{ ok: boolean }>("/api/v1/auth/find-password", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return apiFetch<{ ok: boolean; linked_providers: FindPasswordProvider[] }>(
+    "/api/v1/auth/find-password",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
 }
 
 /** 아이디(이메일) 찾기 — phone_verification_token으로 마스킹된 이메일 반환 */

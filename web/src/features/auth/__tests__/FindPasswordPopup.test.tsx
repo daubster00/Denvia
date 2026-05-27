@@ -22,7 +22,7 @@ describe("FindPasswordPopup", () => {
 
   it("submit 시 requestPasswordReset이 호출된다", async () => {
     const { requestPasswordReset } = await import("@/features/auth/api");
-    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true });
+    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true, linked_providers: [] });
 
     render(<FindPasswordPopup onBack={mockOnBack} />);
 
@@ -44,7 +44,7 @@ describe("FindPasswordPopup", () => {
 
   it("성공 후 SMS 확인 안내 메시지를 표시한다", async () => {
     const { requestPasswordReset } = await import("@/features/auth/api");
-    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true });
+    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true, linked_providers: [] });
 
     render(<FindPasswordPopup onBack={mockOnBack} />);
 
@@ -80,9 +80,34 @@ describe("FindPasswordPopup", () => {
     });
   });
 
+  it("소셜 전용 계정이면 안내 + 소셜 로그인 버튼을 노출한다", async () => {
+    const { requestPasswordReset } = await import("@/features/auth/api");
+    vi.mocked(requestPasswordReset).mockResolvedValue({
+      ok: true,
+      linked_providers: ["kakao"],
+    });
+
+    render(<FindPasswordPopup onBack={mockOnBack} />);
+
+    fireEvent.change(screen.getByLabelText(/이메일/), {
+      target: { value: "social@denvia.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("010-0000-0000"), {
+      target: { value: "010-9999-8888" },
+    });
+    fireEvent.click(screen.getByText("임시 비밀번호 받기"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/카카오\(으\)로 가입하신 계정입니다/)).toBeTruthy();
+      expect(screen.getByLabelText("카카오로 로그인")).toBeTruthy();
+    });
+    // 기본 SMS 안내는 노출되지 않음
+    expect(screen.queryByText(/SMS를 확인해주세요/)).toBeNull();
+  });
+
   it("성공 화면에서 onBack 버튼이 있다", async () => {
     const { requestPasswordReset } = await import("@/features/auth/api");
-    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true });
+    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true, linked_providers: [] });
 
     render(<FindPasswordPopup onBack={mockOnBack} />);
 

@@ -12,6 +12,7 @@ import pytest
 
 from api.src.middleware.audit_actions import AUDIT_USER_BLOCK_AUTO_EXPIRED
 from api.src.models.audit_log import AuditLog
+from api.src.services import admin_account_service
 from api.src.workers import anomaly_tasks
 
 
@@ -81,11 +82,21 @@ class TestExpireBlocks:
             # 최대 2개 UPDATE (pro / free) — 사용되지 않는 항목은 무시
             side.append(MagicMock())
             side.append(MagicMock())
+        else:
+            # Story 10.3 — 빈 target 경로에서도 admin 분기 진입 전에
+            # _resolve_system_actor_id(session) 가 호출된다. (admin 분기는 patch 로 stub)
+            side.append(select_actor_result)
         session.execute.side_effect = side
 
         engine = MagicMock()
         engine.dispose = AsyncMock()
 
+        # Story 10.3 — _expire_blocks_async 가 _expire_admin_blocks 도 호출하므로
+        # admin 분기를 통째로 patch 해 사용자 분기 mock 흐름에 간섭하지 않게 한다.
+        # 별도 unit test(test_expire_admin_blocks_*) 가 admin 분기를 단독 검증.
+        admin_branch_stub = AsyncMock(
+            return_value={"expired_count": 0, "expired_ids": []}
+        )
         with (
             patch.object(
                 anomaly_tasks,
@@ -96,6 +107,16 @@ class TestExpireBlocks:
                 anomaly_tasks,
                 "async_sessionmaker",
                 return_value=_async_session_factory_returning(session),
+            ),
+            patch.object(
+                anomaly_tasks,
+                "_expire_admin_blocks",
+                new=admin_branch_stub,
+            ),
+            patch.object(
+                admin_account_service,
+                "expire_admin_blocks",
+                new=AsyncMock(return_value={"expired_count": 0, "expired_ids": []}),
             ),
         ):
             result = await anomaly_tasks._expire_blocks_async()
