@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import require_admin, require_admin_page
@@ -57,6 +58,41 @@ def _parse_status_in(value: str | None) -> set[str] | None:
     return parts
 
 
+async def _resolve_user_filter(
+    db: AsyncSession, value: str | None
+) -> tuple[int | None, bool]:
+    """필터 입력값을 (user_id, found) 튜플로 해석한다.
+
+    - None/공백 → (None, True): 필터 미적용.
+    - 전부 숫자 → 그대로 int 캐스팅. 존재 여부는 별도 확인하지 않는다(기존 동작 호환).
+    - 그 외 → user role 계정의 email 정확 일치로 user_id 조회. 없으면 (None, False).
+
+    found=False가 반환되면 호출자는 빈 결과를 돌려주어야 한다.
+    """
+    if value is None:
+        return None, True
+    v = value.strip()
+    if not v:
+        return None, True
+    if v.isdigit():
+        try:
+            uid = int(v)
+        except ValueError:
+            return None, False
+        if uid < 1:
+            return None, False
+        return uid, True
+    if len(v) > 255:
+        return None, False
+    row = await db.execute(
+        select(User.id).where(User.email == v, User.role == "user").limit(1)
+    )
+    uid = row.scalar_one_or_none()
+    if uid is None:
+        return None, False
+    return int(uid), True
+
+
 def _resolve_window(from_: date | None, to: date | None) -> tuple[date, date]:
     today = datetime.now(KST).date()
     t = to or today
@@ -75,7 +111,7 @@ async def list_payment_events(
     from_: date | None = Query(None, alias="from"),
     to: date | None = Query(None),
     status_in: str | None = Query(None),
-    user_id: int | None = Query(None, ge=1),
+    user_id: str | None = Query(None, max_length=255),
     provider_error_code: str | None = Query(None, min_length=1, max_length=50),
     page: int = Query(1, ge=1),
     per_page: int = Query(50),
@@ -92,13 +128,38 @@ async def list_payment_events(
         )
     f, t = _resolve_window(from_, to)
     status_set = _parse_status_in(status_in)
+    resolved_user_id, user_found = await _resolve_user_filter(db, user_id)
+
+    if not user_found:
+        response.headers["Cache-Control"] = "no-store"
+        logger.info(
+            "admin.finance.payments.viewed",
+            actor_user_id=actor.id,
+            from_=f.isoformat(),
+            to=t.isoformat(),
+            status_in=sorted(status_set) if status_set else None,
+            user_id=user_id,
+            user_id_resolved=None,
+            provider_error_code=provider_error_code,
+            page=page,
+            per_page=per_page,
+            total=0,
+            user_lookup_miss=True,
+        )
+        return PaymentEventListResponse(
+            items=[],
+            page=page,
+            per_page=per_page,
+            total=0,
+            error_code_summary=None,
+        )
 
     items, total, error_summary = await finance_service.list_payment_events(
         db,
         f=f,
         t=t,
         status_in=status_set,
-        user_id=user_id,
+        user_id=resolved_user_id,
         error_code=provider_error_code,
         page=page,
         per_page=per_page,
@@ -112,6 +173,7 @@ async def list_payment_events(
         to=t.isoformat(),
         status_in=sorted(status_set) if status_set else None,
         user_id=user_id,
+        user_id_resolved=resolved_user_id,
         provider_error_code=provider_error_code,
         page=page,
         per_page=per_page,
@@ -131,7 +193,7 @@ async def export_payment_events(
     from_: date | None = Query(None, alias="from"),
     to: date | None = Query(None),
     status_in: str | None = Query(None),
-    user_id: int | None = Query(None, ge=1),
+    user_id: str | None = Query(None, max_length=255),
     provider_error_code: str | None = Query(None, min_length=1, max_length=50),
     actor: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
@@ -140,15 +202,27 @@ async def export_payment_events(
 
     f, t = _resolve_window(from_, to)
     status_set = _parse_status_in(status_in)
+    resolved_user_id, user_found = await _resolve_user_filter(db, user_id)
 
-    rows, truncated, summary = await finance_service.export_payment_events(
-        db,
-        f=f,
-        t=t,
-        status_in=status_set,
-        user_id=user_id,
-        error_code=provider_error_code,
-    )
+    if not user_found:
+        rows: list[list] = []
+        truncated = False
+        summary: dict = {
+            "from": f.isoformat(),
+            "to": t.isoformat(),
+            "user_id": user_id,
+            "row_count": 0,
+            "note": "해당 사용자 ID/이메일을 찾을 수 없습니다.",
+        }
+    else:
+        rows, truncated, summary = await finance_service.export_payment_events(
+            db,
+            f=f,
+            t=t,
+            status_in=status_set,
+            user_id=resolved_user_id,
+            error_code=provider_error_code,
+        )
 
     wb = openpyxl.Workbook()
     ws_sum = wb.active

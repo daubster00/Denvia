@@ -52,7 +52,7 @@ describe("FinanceFilterBar", () => {
     render(
       <FinanceFilterBar
         {...baseValues}
-        userId={42}
+        userId="42"
         onChange={onChange}
       />,
     );
@@ -61,6 +61,17 @@ describe("FinanceFilterBar", () => {
     expect(onChange).toHaveBeenCalledWith({
       ...baseValues,
       userId: undefined,
+    });
+  });
+
+  it("사용자 ID 입력 — 이메일도 onChange로 그대로 전달", () => {
+    const onChange = vi.fn();
+    render(<FinanceFilterBar {...baseValues} onChange={onChange} />);
+    const input = screen.getByLabelText("사용자 ID") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "user@example.com" } });
+    expect(onChange).toHaveBeenCalledWith({
+      ...baseValues,
+      userId: "user@example.com",
     });
   });
 

@@ -26,7 +26,8 @@ export interface FinanceFilterValues {
   to: string;
   statusIn: PaymentStatus[];
   errorCode: string;
-  userId: number | undefined;
+  /** 내부 user_id(숫자) 또는 사용자 계정 ID(이메일). 빈 문자열/undefined면 필터 미적용. */
+  userId: string | undefined;
 }
 
 interface FilterBarProps extends FinanceFilterValues {
@@ -129,15 +130,16 @@ export function FinanceFilterBar({
         </label>
         <input
           id={userIdInputId}
-          type="number"
-          min={1}
+          type="text"
+          inputMode="email"
+          autoComplete="off"
           value={userId ?? ""}
           onChange={(e) => {
-            const v = e.target.value.trim();
-            update({ userId: v ? Number(v) : undefined });
+            const v = e.target.value;
+            update({ userId: v.trim() ? v : undefined });
           }}
           className={styles.input}
-          placeholder="예: 42"
+          placeholder="계정 ID(이메일) 또는 내부 번호"
         />
       </div>
     </section>

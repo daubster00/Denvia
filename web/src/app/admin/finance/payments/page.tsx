@@ -39,7 +39,7 @@ export default function PaymentsTimelinePage() {
       to: filters.to || undefined,
       status_in: filters.statusIn.length ? filters.statusIn.join(",") : undefined,
       provider_error_code: filters.errorCode || undefined,
-      user_id: filters.userId,
+      user_id: filters.userId?.trim() ? filters.userId.trim() : undefined,
       page,
       per_page: perPage,
     }),

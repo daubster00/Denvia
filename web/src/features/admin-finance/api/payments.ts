@@ -56,7 +56,8 @@ export interface FetchPaymentEventsParams {
   from?: string;
   to?: string;
   status_in?: string;
-  user_id?: number;
+  /** 내부 user_id(숫자) 또는 사용자 계정 ID(이메일). 백엔드가 둘 다 해석한다. */
+  user_id?: string;
   provider_error_code?: string;
   page?: number;
   per_page?: number;
@@ -67,8 +68,8 @@ function buildQuery(p: FetchPaymentEventsParams): URLSearchParams {
   if (p.from) q.set("from", p.from);
   if (p.to) q.set("to", p.to);
   if (p.status_in) q.set("status_in", p.status_in);
-  if (p.user_id !== undefined && p.user_id !== null) {
-    q.set("user_id", String(p.user_id));
+  if (p.user_id !== undefined && p.user_id !== null && p.user_id !== "") {
+    q.set("user_id", p.user_id);
   }
   if (p.provider_error_code) q.set("provider_error_code", p.provider_error_code);
   if (p.page) q.set("page", String(p.page));
