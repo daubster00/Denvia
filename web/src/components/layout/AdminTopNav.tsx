@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { adminLogout } from "@/features/admin-auth/api";
 import { LogoLink } from "@/components/brand/LogoLink";
+import { AdminWarmupToggle } from "./AdminWarmupToggle";
 import styles from "./AdminTopNav.module.css";
 
 export function AdminTopNav() {
@@ -31,6 +32,7 @@ export function AdminTopNav() {
       <LogoLink href="/admin" ariaLabel="관리자 대시보드" />
 
       <div className={styles.right}>
+        <AdminWarmupToggle isMaster={admin?.is_master ?? false} />
         {admin && (
           <Link
             href="/admin/account"

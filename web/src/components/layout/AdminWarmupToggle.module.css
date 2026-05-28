@@ -1,0 +1,92 @@
+/* 상단바 우측 — AI 워밍업 토글 영역 */
+
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+}
+
+.info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.badgeOn {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.meta {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease,
+    color 120ms ease;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.buttonStart {
+  background-color: #7c3aed;
+  color: #ffffff;
+  border-color: #7c3aed;
+}
+
+.buttonStart:hover:not(:disabled) {
+  background-color: #6d28d9;
+  border-color: #6d28d9;
+}
+
+.buttonStop {
+  background-color: #ffffff;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.buttonStop:hover:not(:disabled) {
+  background-color: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.error {
+  font-size: 12px;
+  color: #b91c1c;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

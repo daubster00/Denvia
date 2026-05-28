@@ -39,6 +39,7 @@ from api.src.routers.admin import payments as admin_payments
 from api.src.routers.admin import killswitch as admin_killswitch
 from api.src.routers.admin import seo as admin_seo
 from api.src.routers.admin import board as admin_board
+from api.src.routers.admin import openai_warmup as admin_openai_warmup
 from api.src.routers import billing as billing_router
 from api.src.routers import support as support_router
 from api.src.settings import settings
@@ -99,6 +100,14 @@ async def lifespan(app: FastAPI):
         _log.exception("lifespan.rag_preload.failed")
 
     yield
+
+    # OpenAI 워밍업 루프 — 부팅 시점에는 띄우지 않고(마스터가 토글), 종료 시점에만 정리.
+    try:
+        from api.src.services import openai_warmup_service
+
+        await openai_warmup_service.stop()
+    except Exception:
+        _log.exception("lifespan.openai_warmup.stop_failed")
 
 
 app = FastAPI(title="Denvia API", version="0.1.0", lifespan=lifespan)
@@ -210,6 +219,7 @@ app.include_router(admin_payments.router, prefix="/api/v1")
 app.include_router(admin_killswitch.router, prefix="/api/v1")
 app.include_router(admin_seo.router, prefix="/api/v1")
 app.include_router(admin_board.router, prefix="/api/v1")
+app.include_router(admin_openai_warmup.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")
 app.include_router(support_router.router)
 
