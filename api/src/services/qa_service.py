@@ -137,13 +137,47 @@ _ECHO_ANSWER = "[placeholder] 스트리밍은 Story 2.2에서 구현됩니다"
 
 @dataclass(frozen=True)
 class PreflightResult:
-    """preflight 결과 — 스트림이 done 이벤트 + 팝업 신호에 사용."""
+    """preflight 결과 — 스트림이 done 이벤트 + 팝업 신호 + 체감 지연 catch-up 에 사용."""
 
     throttled: bool          # 이번 호출 시점에 anomaly throttle 적용 중인지
     throttle_just_applied: bool  # 이번 호출에서 새로 throttle 이 적용되었는지 (팝업 트리거)
     # throttle_just_applied=True 일 때 어떤 탐지가 trigger 했는지 — 프론트 팝업 문구 분기에 사용.
     # 값: "rapid_followup_questions" | "repeated_question" | None
     throttle_anomaly_type: str | None = None
+    # 체감 지연 정책 — stream() 첫 토큰 emit 직전까지 도달해야 할 perf_counter 절대 시각.
+    # 관리자 설정 "딜레이"는 "사용자가 질문 보낸 시점 → 첫 토큰 도착 시점"의 총 경과로 해석한다.
+    # AI 생성에 걸린 시간이 이미 deadline 을 넘었다면 catch-up 생략, 부족하면 잔여만큼만 sleep.
+    # None ⇒ catch-up 불필요 (admin 우회 또는 delay=0).
+    deadline_perf: float | None = None
+    delay_seconds: float = 0.0     # 적용된 총 딜레이(초). 진단 로그용.
+    delay_source: str = ""         # "user_override"|"runtime"|"default"|"anomaly_throttle"|"paid_skip"|"runtime_disabled"
+
+
+async def catch_up_to_deadline(pr: PreflightResult | None, *, user_id: int | None = None) -> None:
+    """첫 토큰 emit 직전 호출. deadline 까지 남은 시간만큼만 sleep (없으면 즉시 반환).
+
+    이 함수가 "AI 생성 시간 = 관리자 딜레이" 인 경우를 깔끔히 0초로 떨어지게 만든다.
+    """
+    if pr is None or pr.deadline_perf is None:
+        return
+    remaining = pr.deadline_perf - time.perf_counter()
+    if remaining <= 0:
+        logger.info(
+            "qa.perceived_delay.skipped",
+            user_id=user_id,
+            delay_seconds=pr.delay_seconds,
+            source=pr.delay_source,
+            overrun_ms=int(-remaining * 1000),
+        )
+        return
+    logger.info(
+        "qa.perceived_delay.catchup",
+        user_id=user_id,
+        delay_seconds=pr.delay_seconds,
+        source=pr.delay_source,
+        catchup_ms=int(remaining * 1000),
+    )
+    await asyncio.sleep(remaining)
 
 
 class QAService:
@@ -153,15 +187,16 @@ class QAService:
         user: User,
         redis_quota: Redis,
         redis_runtime: Redis,
-        db: AsyncSession,
+        db: AsyncSession | None = None,
         question_text: str | None = None,
         ip: str | None = None,
+        t_received: float | None = None,
     ) -> PreflightResult:
-        """Quota INCR + 의도적 지연. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
+        """Quota INCR + 체감 지연 deadline 계산. EventSourceResponse 반환 전에 호출 (HTTPException 429 가능).
 
         admin 사용자: quota·delay 모두 우회 (개발/지원 트래픽).
         pro 사용자: delay 미적용, 내부 안전 상한(pro_internal_cap)만 검증.
-        free 사용자: quota INCR → 한도 검증 → sleep.
+        free 사용자: quota INCR → 한도 검증 → deadline 계산만 (실제 sleep 은 stream() 이 첫 토큰 직전에 수행).
 
         rapid_followup_questions 탐지(편차 +1) — 답변 완료 후 3초 이내 후속
         질문 연속 3회. 임계 도달 시 users.anomaly_throttled_at 채워 다음 질의부터
@@ -169,55 +204,67 @@ class QAService:
 
         repeated_question 탐지 — 동일 텍스트(trim 일치) 연속 3회. 임계 도달 시
         rapid_followup 과 동일 조치(즉시 throttle + 자동 actioned).
+
+        t_received: 라우터가 요청 진입 시점에 캡쳐한 perf_counter. None 이면 이 함수 진입 시점을 기준으로 한다.
+            "사용자가 질문을 보낸 시점부터 첫 토큰 도착까지" 가 관리자 딜레이값이 되도록 catch-up deadline 의 기준점.
         """
         if user.subscription_status == "admin":
             return PreflightResult(
                 throttled=False,
                 throttle_just_applied=False,
                 throttle_anomaly_type=None,
+                deadline_perf=None,
+                delay_seconds=0.0,
+                delay_source="paid_skip",
             )
 
         t0 = time.perf_counter()
+        # 체감 지연 기준점: 라우터가 캡쳐한 시각이 있으면 그것, 없으면 preflight 진입 시점.
+        # 라우터 → preflight 사이의 quota/anomaly 처리 시간도 "사용자 체감 지연" 에 포함되어야 정확.
+        t_anchor = t_received if t_received is not None else t0
 
-        # rapid_followup_questions 탐지 (답변 직후 3초 이내 연속 3회)
-        rapid_just_applied = await anomaly_service.check_rapid_followup_questions(
-            user_id=user.id,
-            subscription_status=user.subscription_status,
-            redis_quota=redis_quota,
-            db=db,
-            ip=ip,
-        )
-
-        # repeated_question 탐지 (동일 텍스트 연속 3회) — question_text 제공 시에만.
-        repeated_just_applied = False
-        if question_text is not None:
-            repeated_just_applied = await anomaly_service.check_repeated_question(
+        throttle_just_applied = False
+        throttle_anomaly_type: str | None = None
+        # db 가 주어진 경우에만 anomaly 탐지/플래그 갱신 수행 — 단위 테스트(fakeredis 만 사용) 호환.
+        if db is not None:
+            # rapid_followup_questions 탐지 (답변 직후 3초 이내 연속 3회)
+            rapid_just_applied = await anomaly_service.check_rapid_followup_questions(
                 user_id=user.id,
                 subscription_status=user.subscription_status,
-                question_text=question_text,
                 redis_quota=redis_quota,
                 db=db,
                 ip=ip,
             )
 
-        # 두 hook 중 하나라도 새로 throttle 을 걸었으면 팝업 트리거.
-        # rapid_followup 이 먼저 평가되므로 동시 trigger 가능성은 낮지만, 둘 다 True 면
-        # rapid 를 우선한다 — 답변 직후 3초 패턴이 더 명확한 신호.
-        throttle_just_applied = rapid_just_applied or repeated_just_applied
-        throttle_anomaly_type: str | None = None
-        if rapid_just_applied:
-            throttle_anomaly_type = "rapid_followup_questions"
-        elif repeated_just_applied:
-            throttle_anomaly_type = "repeated_question"
+            # repeated_question 탐지 (동일 텍스트 연속 3회) — question_text 제공 시에만.
+            repeated_just_applied = False
+            if question_text is not None:
+                repeated_just_applied = await anomaly_service.check_repeated_question(
+                    user_id=user.id,
+                    subscription_status=user.subscription_status,
+                    question_text=question_text,
+                    redis_quota=redis_quota,
+                    db=db,
+                    ip=ip,
+                )
 
-        if throttle_just_applied:
-            # 메모리상 user 객체에도 반영 — 아래 throttle 분기에서 즉시 사용.
-            user.anomaly_throttled_at = datetime.now(tz=timezone.utc)
+            # 두 hook 중 하나라도 새로 throttle 을 걸었으면 팝업 트리거.
+            # rapid_followup 이 먼저 평가되므로 동시 trigger 가능성은 낮지만, 둘 다 True 면
+            # rapid 를 우선한다 — 답변 직후 3초 패턴이 더 명확한 신호.
+            throttle_just_applied = rapid_just_applied or repeated_just_applied
+            if rapid_just_applied:
+                throttle_anomaly_type = "rapid_followup_questions"
+            elif repeated_just_applied:
+                throttle_anomaly_type = "repeated_question"
 
-        try:
-            await db.commit()
-        except Exception:
-            await db.rollback()
+            if throttle_just_applied:
+                # 메모리상 user 객체에도 반영 — 아래 throttle 분기에서 즉시 사용.
+                user.anomaly_throttled_at = datetime.now(tz=timezone.utc)
+
+            try:
+                await db.commit()
+            except Exception:
+                await db.rollback()
         t_anomaly_ms = int((time.perf_counter() - t0) * 1000)
 
         key = _today_key_kst(user.id)
@@ -343,16 +390,20 @@ class QAService:
                 delay = throttle_delay
                 dsrc = "anomaly_throttle"
 
-        t_before_sleep_ms = int((time.perf_counter() - t0) * 1000)
-        if delay > 0:
-            delay_float = float(delay)
+        t_preflight_done_ms = int((time.perf_counter() - t0) * 1000)
+        delay_float = float(delay)
+        # 체감 지연 deadline: 사용자 질문 접수 시각(t_anchor) + 관리자 딜레이.
+        # stream() 이 첫 토큰 emit 직전에 catch_up_to_deadline() 으로 도달 보장.
+        # delay 가 0 이면 catch-up 불필요 → None.
+        deadline_perf = (t_anchor + delay_float) if delay_float > 0 else None
+        if delay_float > 0:
             logger.info(
-                "qa.free_delay.applied",
+                "qa.perceived_delay.scheduled",
                 user_id=user.id,
                 delay_seconds=delay_float,
                 source=dsrc,
+                preflight_elapsed_ms=int((time.perf_counter() - t_anchor) * 1000),
             )
-            await asyncio.sleep(delay_float)
 
         # 진단용 elapsed breakdown (TTFT 추적). PII 없음.
         logger.info(
@@ -361,9 +412,9 @@ class QAService:
             subscription_status=user.subscription_status,
             anomaly_ms=t_anomaly_ms,
             quota_ms=t_quota_ms,
-            pre_sleep_ms=t_before_sleep_ms,
+            preflight_done_ms=t_preflight_done_ms,
             total_ms=int((time.perf_counter() - t0) * 1000),
-            free_delay_seconds=float(delay) if delay > 0 else 0.0,
+            free_delay_seconds=delay_float,
             throttled=throttle_active,
         )
 
@@ -371,6 +422,9 @@ class QAService:
             throttled=throttle_active,
             throttle_just_applied=throttle_just_applied,
             throttle_anomaly_type=throttle_anomaly_type,
+            deadline_perf=deadline_perf,
+            delay_seconds=delay_float,
+            delay_source=dsrc,
         )
 
     async def echo(
@@ -478,6 +532,8 @@ class QAService:
 
             if use_rule:
                 # 룰 응답 경로: rule_matched → token 1회 → done
+                # 체감 지연 보장 — 첫 사용자 가시 이벤트(rule_matched) 직전에 deadline 까지 대기.
+                await catch_up_to_deadline(preflight_result, user_id=user.id)
                 yield {"event": "rule_matched", "data": json.dumps({"procedure_count": len(procedures)})}
                 logger.info(
                     "qa.stream.first_token_ms",
@@ -502,6 +558,8 @@ class QAService:
 
                 async for token in query_runner.stream_rag_answer(normalized, _on_complete):
                     if not first_token_logged:
+                        # 체감 지연 보장 — 사용자가 보게 될 첫 토큰 emit 직전에 deadline 까지 대기.
+                        await catch_up_to_deadline(preflight_result, user_id=user.id)
                         logger.info(
                             "qa.stream.first_token_ms",
                             qa_log_id=qa_log_id,

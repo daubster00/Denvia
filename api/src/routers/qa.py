@@ -1,5 +1,6 @@
 """QA 라우터 — POST /api/v1/qa/echo (Story 2.1) + POST /api/v1/qa/stream (Story 2.2/2.3) + POST /api/v1/qa/feedback (Story 2.4)."""
 
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -70,6 +71,9 @@ async def qa_stream(
             },
         )
 
+    # 체감 지연 기준점 — 요청 진입 시점을 잡아 preflight 로 넘긴다.
+    # "사용자 질문 보낸 시점 → 첫 토큰 도착" 총 경과가 관리자 딜레이값이 되도록 stream() 이 catch-up.
+    t_received = time.perf_counter()
     ip = request.client.host if request.client else None
     preflight = await _qa_service.preflight(
         user=user,
@@ -78,6 +82,7 @@ async def qa_stream(
         db=db,
         question_text=body.question_text,
         ip=ip,
+        t_received=t_received,
     )
     return EventSourceResponse(
         _qa_service.stream(
