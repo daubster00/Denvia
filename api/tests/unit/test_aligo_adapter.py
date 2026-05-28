@@ -190,7 +190,8 @@ class TestSendAlimtalk:
         assert form["tpl_code"] == "TX_001"
         assert form["senderkey"] == "SENDERKEY-001"
         assert form["receiver_1"] == "01012345678"
-        assert form["subject_1"] == "Denvia 첫 구독 결제 완료"
+        # 강조표기 미사용(기본형) 템플릿이므로 subject_1을 보내면 안 된다.
+        assert "subject_1" not in form
         assert "Pro 구독이 시작되었습니다" in form["message_1"]
         assert "결제 금액: 9,900원" in form["message_1"]
         assert "다음 결제일: 2026년 7월 15일" in form["message_1"]

@@ -89,6 +89,10 @@ class AligoMessagingAdapter:
         rendered_body = render_sms_body(template, variables)
         tpl_code = self._lookup_tpl_code(template_code)
 
+        # NOTE(2026-05-28): `subject_1`(강조표기 헤더)을 보내지 않는다.
+        # 알리고 콘솔에 등록된 모든 템플릿은 "기본형" — 강조표기 미사용. 기본형
+        # 템플릿에 subject_1을 채워 보내면 카카오 비즈채널 검증이 "메시지가
+        # 템플릿과 일치하지않음"으로 반려한다(UH_9849 미수신 원인).
         form: dict[str, str] = {
             "apikey": settings.aligo_api_key,
             "userid": settings.aligo_user_id,
@@ -96,7 +100,6 @@ class AligoMessagingAdapter:
             "tpl_code": tpl_code,
             "sender": settings.aligo_sender,
             "receiver_1": _normalize_phone(recipient_phone),
-            "subject_1": template.title,
             "message_1": rendered_body,
             "testmode_yn": "Y" if settings.aligo_test_mode else "N",
         }
