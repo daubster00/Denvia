@@ -81,6 +81,22 @@ async def lifespan(app: FastAPI):
         await seed_admin()
     except Exception:
         _log.exception("lifespan.seed_admin.failed")
+
+    # RAG 인덱스 사전 로드 — 첫 사용자 질문에서 발생하던 수 초 지연 제거.
+    # 실패해도 부팅은 진행(인덱스 없는 CI/일부 환경 대비) → 첫 질문 시 lazy init으로 자연 복구.
+    try:
+        import time as _time
+        from api.src.rag_integration import query_runner
+
+        _t0 = _time.perf_counter()
+        await query_runner.ensure_initialized()
+        _log.info(
+            "lifespan.rag_preload.completed",
+            elapsed_ms=int((_time.perf_counter() - _t0) * 1000),
+        )
+    except Exception:
+        _log.exception("lifespan.rag_preload.failed")
+
     yield
 
 

@@ -1,7 +1,8 @@
 """Story 10.2 — 관리자 가입 신청(/admin/signup) 서비스 + master/operator 알림톡 enqueue.
 
 2026-05-27 변경: 휴대폰 OTP 인증 단계 제거. 이름/이메일/연락처/비밀번호만으로 가입.
-이메일·연락처 중복은 활성 관리자 + 활성 일반 사용자 양쪽에서 검사한다.
+2026-05-28 변경: user/admin 멤버 완전 분리 — 이메일·연락처 중복은 활성 관리자(role='admin')
+진영 내에서만 검사한다. 같은 이메일/휴대폰이 일반 사용자 계정에 존재해도 관리자 가입을 허용.
 """
 
 from __future__ import annotations
@@ -38,14 +39,15 @@ async def signup_admin_pending(
     """role='admin' + admin_grade='pending' 으로 INSERT.
 
     Raises:
-        HTTPException 409 ACCOUNT_EMAIL_DUPLICATE — 활성 사용자(관리자/일반) 이메일 중복
-        HTTPException 409 ACCOUNT_PHONE_DUPLICATE — 활성 사용자(관리자/일반) 연락처 중복
+        HTTPException 409 ACCOUNT_EMAIL_DUPLICATE — 활성 관리자 이메일 중복
+        HTTPException 409 ACCOUNT_PHONE_DUPLICATE — 활성 관리자 연락처 중복
     """
-    # 1) 이메일 중복 검사 — 활성 사용자 전체(관리자/일반 동일하게 거절)
+    # 1) 이메일 중복 검사 — 활성 관리자 진영만(일반 사용자와 같은 이메일은 허용)
     existing_email = (
         await db.execute(
             select(User).where(
                 User.email == email,
+                User.role == "admin",
                 User.withdrawn_at.is_(None),
             )
         )
@@ -59,11 +61,12 @@ async def signup_admin_pending(
             },
         )
 
-    # 2) 연락처 중복 검사 — 활성 사용자 전체
+    # 2) 연락처 중복 검사 — 활성 관리자 진영만
     existing_phone = (
         await db.execute(
             select(User).where(
                 User.phone == phone,
+                User.role == "admin",
                 User.withdrawn_at.is_(None),
             )
         )

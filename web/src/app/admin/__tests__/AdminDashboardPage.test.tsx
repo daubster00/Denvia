@@ -93,7 +93,7 @@ describe("AdminDashboardPage", () => {
       from: "2025-05-01",
       to: "2026-04-30",
       buckets: [
-        { bucket_start: "2026-04-01", cumulative: 5, active: 4, withdrawn: 1 },
+        { bucket_start: "2026-04-01", cumulative: 5, active: 4, withdrawn: 1, new_signups: 2 },
       ],
     });
     (fetchSubscribers as ReturnType<typeof vi.fn>).mockResolvedValue({

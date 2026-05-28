@@ -185,6 +185,9 @@ async def login(
         ua=ua,
         redis_url=settings.redis_url,
         db=db,
+        # user/admin 멤버 완전 분리 — 관리자 계정이 일반 로그인 페이지로 들어오면
+        # 비밀번호 일치 여부와 무관하게 동일 401 발사(계정 열거 방지).
+        expected_role="user",
     )
     await db.commit()
 

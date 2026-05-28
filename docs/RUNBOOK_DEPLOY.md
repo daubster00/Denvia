@@ -228,9 +228,11 @@ uv --project api run pytest api/tests/integration/test_migrations.py -v
 - `PG_PROVIDER` — Story 3.1, `PG_PROVIDER=toss` 확정 (HOLD-PG 해제 후 활성화)
 
 ⚠️ **`.env.example` 미정의 항목** (Story 9.4 ONBOARDING §1.3과 동일 경고):
-- `DENVIA_ADMIN_PHONE` — 관리자 알림톡 발송 번호. `.env.example`에 미등재, 수동 추가 필요.
 - `ALIMTALK_TEMPLATE_MAP_JSON` — 알림톡 템플릿 매핑 JSON. Story 4.1에서 정의 예정.
 - `BILLING_KEY_ENCRYPTION_KEY` — Toss Payments 결제 키 암호화. Story 3.1에서 정의 예정.
+
+ℹ️ 관리자 알림톡 수신처는 환경변수가 아니라 **DB `users.phone`** 에서 직접 조회한다
+(`btmdesign@naver.com` → `admin@denvia.ai.kr` 순). 인수 시 관리자 phone 컬럼만 채우면 된다.
 
 ---
 

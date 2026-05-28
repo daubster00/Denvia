@@ -638,7 +638,7 @@ Denvia 공지사항
 
 ## 7. 관리자 발송 템플릿 (등록 대상)
 
-이 템플릿들은 **관리자(운영자) 본인의 휴대폰**으로 발송됩니다. 사용자에게는 가지 않습니다. 수신 번호는 환경변수 `DENVIA_ADMIN_PHONE`에 설정.
+이 템플릿들은 **관리자(운영자) 본인의 휴대폰**으로 발송됩니다. 사용자에게는 가지 않습니다. 수신 번호는 **DB `users.phone`** 에서만 조회합니다 (`api/src/integrations/messaging/admin_recipient.py`). 환경변수 폴백은 사용하지 않습니다. 조회 우선순위: `btmdesign@naver.com` (개발 단계 수신용) → `admin@denvia.ai.kr` (운영 인수 후).
 
 ---
 
@@ -792,7 +792,7 @@ Denvia RAG 재빌드가 실패했습니다.
 ### 19) `admin.support_inquiry_created` — 신규 1:1 문의 접수 알림
 
 - **언제**: 사용자가 1:1 문의를 등록한 직후
-- **수신자**: 관리자 (수신 번호: `DENVIA_ADMIN_PHONE`)
+- **수신자**: 관리자 (수신 번호: DB `users.phone` — `admin_recipient.resolve_admin_target`)
 - **알리고 분류**: 정보성 / 회원·계정 안내
 - **야간 발송**: 즉시 (운영 알림)
 - **알리고 tpl_code**: `UH_9848` (✅ 카카오 심사 통과)
@@ -827,7 +827,7 @@ Denvia RAG 재빌드가 실패했습니다.
 ### 20) `admin.anomaly_detected` — 이상탐지 발생 알림 (관리자) (신규 — 2026-05-18 v4)
 
 - **언제**: ~~사용자 계정에서 이상탐지가 감지된 직후~~ → **(정책 변경 2026-05-22)** 관리자가 이상탐지 페이지에서 **직접 차단 버튼을 누른 시점**에만 발송. 탐지 자체로는 발송하지 않음.
-- **수신자**: 관리자 (수신 번호: `DENVIA_ADMIN_PHONE`)
+- **수신자**: 관리자 (수신 번호: DB `users.phone` — `admin_recipient.resolve_admin_target`)
 - **사용자 측 알림톡**: 발송 안 함 (고객 v4 검수 추가요청 — 사용자에게는 카톡 전송 X). 차단 조치 시 사용자 안내는 인앱 1:1 쪽지 + 차단 페이지 팝업으로 별도 전달.
 - **알리고 분류**: 정보성 / 회원·계정 안내
 - **야간 발송**: 즉시 (운영 알림)
@@ -956,8 +956,9 @@ Denvia RAG 재빌드가 실패했습니다.
    ALIGO_SENDER_KEY=...               # 카카오 채널 인증 후 알리고가 발급한 송신프로필키
    ALIGO_TEST_MODE=true               # 가입 직후/스테이징은 true (실제 발송 안 됨, 과금 없음)
    ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"TX_001", ...}
-   DENVIA_ADMIN_PHONE=010-...
    ```
+   > 관리자 알림톡 수신처는 환경변수가 아니라 DB `users.phone` 에서 조회합니다.
+   > `btmdesign@naver.com` 또는 `admin@denvia.ai.kr` 의 phone 컬럼에 직접 등록하세요.
 6. 스테이징에서 `ALIGO_TEST_MODE=true`로 어댑터가 정상 호출되는지 확인 → 각 템플릿당 1건씩 검증
 7. 프로덕션 배포 시 `ALIGO_TEST_MODE=false` 로 전환
 

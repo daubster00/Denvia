@@ -3,7 +3,8 @@
 대상: `api.src.services.admin_payment_service.create_refund` (T9, T11).
 
 테스트 범위:
-1. 정상 흐름 — 전액 단발 / 부분 1회 / 부분 2회 누적(잔액 0 도달) / partial 시 subscription 미전이.
+1. 정상 흐름 — 전액 단발 / 부분 1회 / 부분 2회 누적(잔액 0 도달).
+   2026-05-28 정책 — partial/full 무관 모든 환불에서 subscription canceled + user free.
 2. 409 분기 — PAYMENT_NOT_REFUNDABLE / NO_REFUNDABLE_BALANCE / CANCEL_AMOUNT_EXCEEDS_BALANCE.
 3. 502 분기 — transport 장애(PG_REFUND_UNAVAILABLE + rollback) / PG 4xx(PG_REFUND_FAILED +
    refund_denied 이벤트 보존 + commit).
@@ -202,13 +203,19 @@ async def test_create_refund_full_single_shot_transitions_payment_and_subscripti
 
 
 @pytest.mark.asyncio
-async def test_create_refund_partial_first_keeps_payment_and_subscription():
-    """sequence=1 + 부분 → status='success' 유지, subscription 미전이, refund_kind='manual_partial'."""
+async def test_create_refund_partial_first_cancels_subscription_keeps_payment_success():
+    """sequence=1 + 부분 → payment.status='success' 유지(잔액 남음), subscription canceled +
+    user free 즉시 전이, refund_kind='manual_partial'.
+
+    2026-05-28 정책 — 환불은 부분이어도 서비스 종료 의사로 간주.
+    """
     payment = _make_payment(amount_krw=19800)
+    sub = _make_subscription()
     db = FakeDB()
     db.queue_scalar(payment)
     db.queue_row(0, 0)
-    # 부분이라 Subscription/User execute는 호출되지 않음
+    db.queue_scalar(sub)               # partial이어도 subscription select 호출
+    db.queue_noop()                    # user update
 
     payload = RefundCreateRequest(
         cancel_amount=5000, reason_category="duplicate_payment"
@@ -222,10 +229,13 @@ async def test_create_refund_partial_first_keeps_payment_and_subscription():
 
     assert result.refund_sequence == 1
     assert result.cancel_amount == 5000
-    # payment 변경 없음 — partial은 success 유지
+    # 잔액 남아있으니 payment는 success 유지(추가 환불 여지 보존)
     assert payment.status == "success"
-    # subscription select가 호출되지 않았음을 큐 잔량으로 확인
-    assert db._execute_queue == []  # 모두 소비됨 (전액 분기였다면 2개 더 남았어야)
+    # 새 정책 — 구독은 즉시 종료
+    assert sub.status == "canceled"
+    assert sub.next_charge_at is None
+    assert sub.cancel_reason == "manual_admin_refund"
+    assert db._execute_queue == []  # subscription/user 큐까지 모두 소비됨
     events = [e for e in db.added_of(PaymentEvent) if e.event_type == "refund_success"]
     assert events[0].refund_kind == "manual_partial"
     assert events[0].raw_response_json["refund_kind"] == "manual_partial"
@@ -406,9 +416,12 @@ async def test_create_refund_pg_4xx_inserts_refund_denied_event_and_raises_502()
 async def test_create_refund_idempotency_key_pattern_uses_sequence():
     """멱등 키는 `refund:{payment_id}:manual:{sequence}` 패턴이며 sequence가 증가한다."""
     payment = _make_payment(payment_id=777, amount_krw=19800)
+    sub = _make_subscription()
     db = FakeDB()
     db.queue_scalar(payment)
     db.queue_row(5000, 1)              # 이미 1차 진행, 다음 sequence=2
+    db.queue_scalar(sub)               # 부분이어도 subscription 종료 (2026-05-28 정책)
+    db.queue_noop()                    # user update
 
     payload = RefundCreateRequest(cancel_amount=3000, reason_category="other")
     with patch.object(admin_payment_service, "get_pg_provider", return_value=_make_pg()):

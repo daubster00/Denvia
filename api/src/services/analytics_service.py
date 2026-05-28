@@ -48,6 +48,7 @@ class SignupsBucket:
     cumulative: int
     active: int
     withdrawn: int
+    new_signups: int = 0
 
 
 def _default_window(unit: Unit) -> tuple[date, date]:
@@ -175,6 +176,7 @@ async def get_signups_buckets(
         nxt = _next_bucket(start, unit)
         bucket_end_exclusive = nxt  # bucket includes [start, nxt)
 
+        cum_before = cum_signups_running
         for d, n in daily_signups.items():
             if start <= d < bucket_end_exclusive:
                 cum_signups_running += n
@@ -190,12 +192,14 @@ async def get_signups_buckets(
         cumulative = cum_signups_running
         withdrawn = cum_withdrawals_running
         active = max(cumulative - withdrawn - blocked_for_bucket, 0)
+        new_signups = cumulative - cum_before
 
         buckets.append(SignupsBucket(
             bucket_start=start,
             cumulative=cumulative,
             active=active,
             withdrawn=withdrawn,
+            new_signups=new_signups,
         ))
 
     return buckets, from_, to

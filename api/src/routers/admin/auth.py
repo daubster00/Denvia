@@ -356,9 +356,9 @@ async def admin_signup(
 ) -> AdminSignupResponse:
     """관리자 가입 신청 — admin_grade='pending' INSERT + 세션 쿠키 미발급 + master/operator 알림톡 enqueue.
 
-    검증 순서:
-    1. 이메일 중복 — 활성 사용자(관리자/일반) 전체
-    2. 연락처 중복 — 활성 사용자(관리자/일반) 전체
+    검증 순서 (user/admin 멤버 완전 분리 — admin 진영 내 중복만 검사):
+    1. 이메일 중복 — 활성 관리자(role='admin')
+    2. 연락처 중복 — 활성 관리자(role='admin')
     """
     user = await signup_admin_pending(
         name=body.name,

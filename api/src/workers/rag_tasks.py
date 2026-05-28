@@ -49,24 +49,27 @@ async def _send_rebuild_notification(
     template_code: str,
     variables: dict[str, str],
 ) -> None:
-    """4.1 NotificationService 어댑터로 트리거 관리자에게 알림톡 발송."""
+    """4.1 NotificationService 어댑터로 관리자(고정 2계정)에게 알림톡 발송.
+
+    수신자는 트리거 관리자가 아니라 admin_recipient.resolve_admin_target 으로
+    DB users.phone 을 본다 (btmdesign 우선, admin@denvia.ai.kr 차순위).
+    예산·이상탐지·문의 알림과 동일 정책.
+    """
+    from api.src.integrations.messaging.admin_recipient import resolve_admin_target
     from api.src.integrations.messaging.notification_service import get_notification_service
     from api.src.models.base import async_session_factory
-    from api.src.models.rebuild_job import RebuildJob
-    from api.src.models.user import User
 
     async with async_session_factory() as db:
-        job = await db.get(RebuildJob, job_id)
-        admin = await db.get(User, job.triggered_by_admin_id) if job else None
+        admin, admin_phone = await resolve_admin_target(db)
 
-    if not admin or not getattr(admin, "phone", None):
+    if admin is None or not admin_phone:
         logger.info("rag.rebuild.notification_skipped", job_id=job_id, reason="admin_phone_missing")
         return
 
     service = get_notification_service()
     await service.send(
         user_id=admin.id,
-        phone=admin.phone,
+        phone=admin_phone,
         template_code=template_code,
         variables=variables,
         idempotency_key=f"rag_rebuild:{job_id}:{template_code}",

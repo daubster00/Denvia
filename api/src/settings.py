@@ -30,9 +30,8 @@ class Settings(BaseSettings):
     denvia_jwt_algorithm: str = "HS256"
 
     # 관리자 초기 계정
-    denvia_admin_email: str = "admin@denvia.local"
+    denvia_admin_email: str = "admin@denvia.ai.kr"
     denvia_admin_initial_password: str = "change_me_in_production"
-    denvia_admin_phone: str | None = None  # 5.2: 예산 경고 알림톡 발송 대상
 
     # 예산 통제 (Story 5.2)
     denvia_initial_monthly_budget_usd: Decimal = Decimal("100.00")

@@ -57,7 +57,7 @@ describe("SignupsPage", () => {
       from: "2026-05-12",
       to: "2026-05-18",
       buckets: [
-        { bucket_start: "2026-05-18", cumulative: 50, active: 40, withdrawn: 10 },
+        { bucket_start: "2026-05-18", cumulative: 50, active: 40, withdrawn: 10, new_signups: 5 },
       ],
     });
 

@@ -78,21 +78,22 @@ async def seed_admin() -> None:
     admin_password = os.environ.get(
         "DENVIA_ADMIN_INITIAL_PASSWORD", settings.denvia_admin_initial_password
     )
-    admin_phone = os.environ.get("DENVIA_ADMIN_PHONE", settings.denvia_admin_phone)
 
     engine = create_async_engine(settings.database_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with session_factory() as session:
-        # 기본 관리자
+        # 기본 관리자 — phone 은 DB 에서 수동 등록 (관리자 알림톡 수신은
+        # api/src/integrations/messaging/admin_recipient.py 가 DB users.phone 만 본다).
         await _insert_admin_if_missing(
             session,
             email=admin_email,
             password=admin_password,
-            phone=admin_phone,
+            phone=None,
         )
         # btmdesign 마스터 계정 — 수정요청 게시판 상태 변경 권한 보유
-        # (api/src/services/admin_board_service.py: BTMDESIGN_EMAIL 과 동기)
+        # (api/src/services/admin_board_service.py: BTMDESIGN_EMAIL 과 동기).
+        # phone 은 시드 직후 DB 에서 수동 등록 — 개발 단계 알림톡 수신 1순위.
         await _insert_admin_if_missing(
             session,
             email="btmdesign@naver.com",

@@ -13,7 +13,8 @@ import styles from "./SignupsTrendChart.module.css";
 const SERIES: ChartSeries[] = [
   { key: "cumulative", label: "누적", tone: "brand" },
   { key: "active", label: "활성", tone: "success" },
-  { key: "withdrawn", label: "탈퇴", tone: "warning" },
+  { key: "new_signups", label: "신규", tone: "warning" },
+  { key: "withdrawn", label: "탈퇴", tone: "error" },
 ];
 
 interface Props {
@@ -28,6 +29,7 @@ export function SignupsTrendChart({ data }: Props) {
         cumulative: b.cumulative,
         active: b.active,
         withdrawn: b.withdrawn,
+        new_signups: b.new_signups,
       })),
     [data.buckets, data.unit],
   );
@@ -36,11 +38,15 @@ export function SignupsTrendChart({ data }: Props) {
   const isEmpty =
     data.buckets.length === 0 ||
     data.buckets.every(
-      (b) => b.cumulative === 0 && b.active === 0 && b.withdrawn === 0,
+      (b) =>
+        b.cumulative === 0 &&
+        b.active === 0 &&
+        b.withdrawn === 0 &&
+        b.new_signups === 0,
     );
 
   const ariaLabel = last
-    ? `가입자 추세 — 누적 ${last.cumulative}, 활성 ${last.active}, 탈퇴 ${last.withdrawn}`
+    ? `가입자 추세 — 누적 ${last.cumulative}, 활성 ${last.active}, 신규 ${last.new_signups}, 탈퇴 ${last.withdrawn}`
     : "가입자 추세 — 데이터 없음";
 
   return (
@@ -66,6 +72,7 @@ export function SignupsTrendChart({ data }: Props) {
       <div className={styles.kpiRow}>
         <KPICard label="현재 누적 가입자" value={fmt(last?.cumulative)} />
         <KPICard label="현재 활성" value={fmt(last?.active)} />
+        <KPICard label="최근 버킷 신규" value={fmt(last?.new_signups)} />
         <KPICard label="누적 탈퇴" value={fmt(last?.withdrawn)} />
       </div>
     </section>

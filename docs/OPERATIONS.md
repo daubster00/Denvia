@@ -65,7 +65,7 @@
 
 ### 1.2 알림톡 수신 로그 확인(관리자 휴대폰)
 
-- 관리자 등록 휴대폰(환경변수 `DENVIA_ADMIN_PHONE` — **TBD**: 현 시점 `.env.example`에 미정의, Story 9.2 또는 인수 시점에 추가 예정)으로 수신된 알림톡 확인.
+- 관리자 등록 휴대폰(DB `users.phone` — `admin_recipient.resolve_admin_target` 가 조회. `btmdesign@naver.com` 우선, `admin@denvia.ai.kr` 차순위. 환경변수 폴백 없음)으로 수신된 알림톡 확인.
 - 정상 수신 카테고리:
   - `system.*` (예: `admin.budget_warning_80`) — 항상 수신
   - `billing.*` (예: `billing.retry_failed_*`) — 결제 실패 발생 시

@@ -189,6 +189,7 @@ class SignupsBucketResponse(BaseModel):
     cumulative: int
     active: int
     withdrawn: int
+    new_signups: int
 
 
 class SignupsResponse(BaseModel):
@@ -248,6 +249,7 @@ async def signups(
                 cumulative=b.cumulative,
                 active=b.active,
                 withdrawn=b.withdrawn,
+                new_signups=b.new_signups,
             )
             for b in buckets
         ],

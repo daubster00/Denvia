@@ -31,15 +31,13 @@
 
 ```bash
 # 위치: 프로젝트 루트의 .env (.env.example 참조)
-DENVIA_ADMIN_EMAIL=admin@denvia.local
+DENVIA_ADMIN_EMAIL=admin@denvia.ai.kr
 DENVIA_ADMIN_INITIAL_PASSWORD=change_me_in_production
-# ⚠️ DENVIA_ADMIN_PHONE은 현 시점 .env.example·api/src/settings.py 모두 미정의
-#    Story 9.2 또는 인수 시점에 다음을 함께 수행:
-#    1) .env에 직접 추가: DENVIA_ADMIN_PHONE=01012345678
-#    2) api/src/settings.py에 필드 추가: denvia_admin_phone: str | None = None
-#    3) Story 5.2/9.2 워커가 이 값을 읽어 80/95/100% 알림톡 수신처로 사용
-#    위 절차 완료 전에는 예산 경고 알림톡이 무주소로 발송 실패 → 운영자 인지 불가
-DENVIA_ADMIN_PHONE=01012345678
+# ℹ️ 관리자 알림톡 수신 번호는 환경변수가 아니라 DB users.phone 에서 본다.
+#    `admin_recipient.resolve_admin_target` — btmdesign@naver.com 우선,
+#    admin@denvia.ai.kr 차순위. 시드 후 DB 에서 phone 컬럼을 직접 채워야 한다.
+#    개발 단계에서는 btmdesign 계정 phone 만 채워두면 모든 관리자 알림톡이
+#    개발자 휴대폰으로 수신된다.
 ```
 
 ### 1.1 관리자 시드 스크립트 실행
@@ -333,7 +331,7 @@ docker compose -f infra/docker-compose.yml logs api | grep "messaging.stub.send_
 - [ ] TXT 지식 1건 추가 → 재빌드 → 사용자 질의 반영 확인
 - [ ] 공지 1건 작성 → stub 로그에서 발송 시도 확인
 - [ ] 일일 KPI 대시보드 항목 위치 식별 (§OPERATIONS §1.1)
-- [ ] 알림톡 수신 채널 정상 등록 확인 (§OPERATIONS §1.2 + DENVIA_ADMIN_PHONE 추가 절차)
+- [ ] 알림톡 수신 채널 정상 등록 확인 (§OPERATIONS §1.2 + DB `users.phone` 등록 절차)
 
 심화 운영(예산 통제·비상 정지·이상 대응)은 다음 문서를 추가 학습한다:
 

@@ -9,16 +9,18 @@ v1.0 자가 환불 폼(Story 9.3 — `manual_refund_queue` 승인 큐 기반, Ph
 대비되는 v1.1 운영 환불 흐름의 특징:
 1. 큐 row가 없다 — payment_id로 직접 진입.
 2. 다회 부분환불을 지원한다 — `refunds` 테이블에 시계열 row INSERT, `refund_sequence`로 순번 보존.
-3. 환불 완료 후 잔액(payment.amount_krw − SUM(cancel_amount))이 **0이 될 때만**
-   `payment.status='refunded'` + subscription cancel을 수행한다. 부분환불 후에는 결제는
-   여전히 `success` 상태로 남고 구독은 유효하다.
+3. 잔액(payment.amount_krw − SUM(cancel_amount))이 0이 될 때만 `payment.status='refunded'`로
+   마감한다. **subscription cancel + user.subscription_status='free'는 부분/전액 무관
+   모든 환불에서 즉시 수행**한다 (2026-05-28 정책 — 환불=서비스 종료 의사,
+   장애 보상은 별도 구독 일수 연장 경로 사용).
 4. 멱등 키 패턴: `refund:{payment_id}:manual:{refund_sequence}` — 동일 결제 다회 환불
    누적을 지원하기 위해 sequence를 키에 포함한다.
 
-9 테이블 전이(전액 환불 시): refunds INSERT → payment_events INSERT → payment UPDATE
-→ subscription UPDATE → user UPDATE → inbox_messages INSERT → audit_logs (미들웨어가 INSERT)
-→ notification_queue (fire-and-forget) → admin events (fire-and-forget Redis publish).
-부분환불 시 subscription/user는 건드리지 않는다.
+9 테이블 전이(모든 환불): refunds INSERT → payment_events INSERT → payment UPDATE(잔액 0일 때만
+'refunded') → subscription UPDATE(canceled) → user UPDATE(free) → inbox_messages INSERT →
+audit_logs (미들웨어가 INSERT) → notification_queue (fire-and-forget) → admin events
+(fire-and-forget Redis publish). 부분/전액 무관 환불 즉시 구독 종료
+(2026-05-28 정책 — 장애 보상은 별도 구독 일수 연장 경로 사용).
 
 설계 노트:
 - payment를 `SELECT ... FOR UPDATE`로 잠그면 동일 결제의 동시 환불 요청은 직렬화된다.
@@ -97,8 +99,9 @@ async def create_refund(
        - transport 장애: rollback + 502 PG_REFUND_UNAVAILABLE
        - 4xx 거절: refund_denied 이벤트 INSERT + commit + 502 PG_REFUND_FAILED
     4. 성공 시 refunds INSERT + payment_events refund_success INSERT.
-    5. 잔액이 0이 되면 payment.status='refunded' + subscription cancel +
-       user.subscription_status='free'. 부분환불이면 결제·구독 모두 그대로.
+    5. **모든 환불에서** subscription cancel + user.subscription_status='free' 즉시 적용.
+       잔액이 0이 될 때만 payment.status='refunded'로 마감. 부분환불 후에도 구독은 종료
+       (2026-05-28 정책 — 환불=서비스 종료 의사, 장애 보상은 구독 일수 연장 경로 사용).
     6. inbox_messages INSERT + audit_diff/state 설정 → commit.
     7. 라우터가 본 함수 반환 후 background_tasks로 알림톡·Redis publish를 발행한다 — 본 함수는
        `request.state`에 후처리 페이로드만 박아둔다.
@@ -260,26 +263,32 @@ async def create_refund(
     new_total = refunded_total + payload.cancel_amount
     is_fully_refunded = new_total >= payment.amount_krw
 
+    # 잔액이 0이 되면 payment를 'refunded'로 마감(회계상 잔액 0 표시).
+    # 부분환불이 누적되지 않은 시점에는 payment.status='success'를 유지해 추가 환불 여지를 남긴다.
     if is_fully_refunded:
         payment.status = "refunded"
-        if payment.subscription_id is not None:
-            sub_row = (
-                await db.execute(
-                    select(Subscription)
-                    .where(Subscription.id == payment.subscription_id)
-                    .with_for_update()
-                )
-            ).scalar_one_or_none()
-            if sub_row is not None and sub_row.status != "canceled":
-                sub_row.status = "canceled"
-                sub_row.next_charge_at = None
-                sub_row.canceled_at = now
-                sub_row.cancel_reason = "manual_admin_refund"
-        await db.execute(
-            sa_update(User)
-            .where(User.id == payment.user_id)
-            .values(subscription_status="free")
-        )
+
+    # 2026-05-28 정책 — 환불은 부분/전액 무관 즉시 구독 종료.
+    # 환불은 사용자의 서비스 종료 의사로 본다. 시스템 장애 보상은 환불이 아니라
+    # 별도 "구독 일수 연장" 경로(추후 구현)를 사용한다.
+    if payment.subscription_id is not None:
+        sub_row = (
+            await db.execute(
+                select(Subscription)
+                .where(Subscription.id == payment.subscription_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if sub_row is not None and sub_row.status != "canceled":
+            sub_row.status = "canceled"
+            sub_row.next_charge_at = None
+            sub_row.canceled_at = now
+            sub_row.cancel_reason = "manual_admin_refund"
+    await db.execute(
+        sa_update(User)
+        .where(User.id == payment.user_id)
+        .values(subscription_status="free")
+    )
 
     inbox_title = _INBOX_TITLE_FULL if is_full_single_shot else _INBOX_TITLE_PARTIAL
     inbox_body = _render_inbox_body(
@@ -413,29 +422,35 @@ def _render_inbox_body(
     is_full_single_shot: bool,
     processed_at_kst: datetime,
 ) -> str:
-    """쪽지함 본문 HTML 렌더 — sanitize 전 raw."""
+    """쪽지함 본문 HTML 렌더 — sanitize 전 raw.
+
+    2026-05-28 정책 — 부분/전액 무관 모든 환불에서 구독이 함께 종료되므로
+    세 케이스 모두 "구독 종료" 안내 문장을 포함한다.
+    """
     date_label = processed_at_kst.strftime("%Y년 %m월 %d일")
+    common_footer = (
+        f"<p>처리일: {date_label}</p>"
+        f"<p>영업일 3~4일 내 결제 카드로 입금됩니다.</p>"
+        f"<p>환불 처리와 함께 구독이 종료되었습니다.</p>"
+    )
     if is_full_single_shot:
         return (
             f"<p>요청하신 환불이 <strong>완료</strong>되었습니다.</p>"
             f"<p>환불 금액: {cancel_amount:,}원 (전액)</p>"
-            f"<p>처리일: {date_label}</p>"
-            f"<p>영업일 3~4일 내 결제 카드로 입금됩니다.</p>"
+            f"{common_footer}"
         )
     if is_fully_refunded:
         return (
             f"<p>이번 회차 부분 환불이 <strong>완료</strong>되었습니다.</p>"
             f"<p>이번 환불 금액: {cancel_amount:,}원</p>"
             f"<p>누적 환불 금액: {refunded_total_after:,}원 / {original_amount:,}원 (전액 환불 완료)</p>"
-            f"<p>처리일: {date_label}</p>"
-            f"<p>영업일 3~4일 내 결제 카드로 입금됩니다.</p>"
+            f"{common_footer}"
         )
     return (
         f"<p>요청하신 <strong>부분 환불</strong>이 완료되었습니다.</p>"
         f"<p>이번 환불 금액: {cancel_amount:,}원</p>"
         f"<p>누적 환불 금액: {refunded_total_after:,}원 / {original_amount:,}원</p>"
-        f"<p>처리일: {date_label}</p>"
-        f"<p>영업일 3~4일 내 결제 카드로 입금됩니다.</p>"
+        f"{common_footer}"
     )
 
 

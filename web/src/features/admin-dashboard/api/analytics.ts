@@ -63,6 +63,7 @@ export interface SignupsBucket {
   cumulative: number;
   active: number;
   withdrawn: number;
+  new_signups: number;
 }
 
 export interface SignupsResponse {

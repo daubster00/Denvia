@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import queue
 import time
 from collections.abc import AsyncIterator
@@ -16,6 +17,10 @@ from api.src.settings import REDIS_DB_RUNTIME_CONFIG, settings
 logger = structlog.get_logger(__name__)
 
 _initialized = False
+# 마지막으로 메모리에 로드한 인덱스의 실제 경로(symlink 해석 후).
+# 재빌드가 끝나면 atomic_swap이 current symlink의 target을 index_a↔index_b로 바꾼다.
+# ensure_initialized()가 매 호출 시 현재 realpath와 비교 → 다르면 자동 리로드.
+_loaded_index_realpath: str | None = None
 
 # 관리자 감사용 retrieved_docs 1건당 page_content 최대 길이.
 # 너무 길면 JSONB 컬럼 사이즈와 관리자 UI 응답이 비대해진다.
@@ -44,20 +49,82 @@ def _serialize_source_documents(docs) -> list[dict]:
 
 
 async def ensure_initialized() -> None:
-    """FAISS 인덱스와 동의어 사전을 초기화한다 (idempotent, 첫 호출에만 실행)."""
-    global _initialized
-    if _initialized:
-        return
+    """FAISS 인덱스와 동의어 사전을 메모리에 로드한다.
+
+    동작:
+      1. 미초기화 → 첫 로드.
+      2. 이미 초기화됐고 디스크 symlink target이 동일 → no-op.
+      3. 이미 초기화됐는데 symlink target이 바뀜(= 관리자 재빌드 + atomic_swap 완료)
+         → vendor 전역 변수 비우고 새 인덱스로 리로드.
+
+    main.py lifespan에서 부팅 시 1회 미리 호출 → 첫 사용자 질문 지연 제거.
+    qa_service.stream에서도 호출 → 매 요청마다 swap 감지 + 자동 리로드 트리거.
+    """
+    global _initialized, _loaded_index_realpath
     faiss_path = settings.faiss_current_path
+    try:
+        current_realpath = os.path.realpath(faiss_path)
+    except OSError:
+        current_realpath = faiss_path
+
+    if _initialized and _loaded_index_realpath == current_realpath:
+        return
+
+    if _initialized and _loaded_index_realpath != current_realpath:
+        logger.info(
+            "rag.query_runner.reload_detected",
+            old_path=_loaded_index_realpath,
+            new_path=current_realpath,
+        )
+        await asyncio.to_thread(_reset_vendor_globals)
+        _initialized = False
+
+    t0 = time.perf_counter()
     await asyncio.to_thread(_do_init, faiss_path)
     _initialized = True
-    logger.info("rag.query_runner.initialized")
+    _loaded_index_realpath = current_realpath
+    logger.info(
+        "rag.query_runner.initialized",
+        path=current_realpath,
+        elapsed_ms=int((time.perf_counter() - t0) * 1000),
+    )
 
 
 def _do_init(faiss_path: str) -> None:
     from rag.run_qa import init_rag  # type: ignore[import-untyped]
 
     init_rag(faiss_path=faiss_path)
+
+
+def _reset_vendor_globals() -> None:
+    """vendor/rag/run_qa.py의 lazy-init 전역 변수를 비워 다음 init_rag 호출 시
+    FAISS 인덱스·동의어 사전을 디스크에서 새로 읽도록 한다.
+
+    재빌드 후 atomic_swap으로 디스크 symlink가 바뀌었을 때, 메모리에 들고 있던
+    이전 vectorstore/retriever 객체가 stale해지는 것을 막는 유일한 경로.
+    vendor 코드는 손대지 않고(ADR-0002), 모듈 전역만 외부에서 초기화한다.
+    """
+    try:
+        import rag.run_qa as _vendor  # type: ignore[import-untyped]
+
+        _vendor._embeddings = None
+        _vendor._vectorstore = None
+        _vendor._retriever = None
+        _vendor._syn_dict = None
+    except Exception as exc:
+        logger.warning("rag.query_runner.vendor_reset_failed", error=str(exc))
+
+
+def reset() -> None:
+    """캐시 상태를 외부에서 명시적으로 무효화한다 (테스트·관리자 핫리로드용).
+
+    다음 ensure_initialized() 호출이 디스크에서 인덱스를 새로 읽는다.
+    """
+    global _initialized, _loaded_index_realpath
+    _reset_vendor_globals()
+    _initialized = False
+    _loaded_index_realpath = None
+    logger.info("rag.query_runner.reset")
 
 
 async def run_rule_answer(question_text: str) -> str | None:

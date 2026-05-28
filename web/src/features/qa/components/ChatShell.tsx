@@ -63,8 +63,11 @@ export function ChatShell({
   }, [messages, isHero]);
 
   const isPro = quotaData?.subscription_status === "pro";
+  const isAdmin = quotaData?.subscription_status === "admin";
   const delayNoticeText = quotaData?.free_delay_notice_text?.trim() ?? "";
-  const delayNotice = delayNoticeText ? (
+  // 무료 플랜 전용 안내 — pro/admin 은 지연 자체가 없으므로 노출하지 않는다.
+  // 백엔드(`/me/quota`)에서도 빈 문자열로 강제하지만, 클라이언트에서도 한 번 더 차단.
+  const delayNotice = delayNoticeText && !isPro && !isAdmin ? (
     <p role="note" className={styles.delayNotice}>
       {delayNoticeText}
     </p>

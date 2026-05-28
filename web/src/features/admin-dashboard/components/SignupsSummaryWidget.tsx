@@ -21,6 +21,7 @@ export const SIGNUPS_SUMMARY_KEY = [
 const SERIES: ChartSeries[] = [
   { key: "cumulative", label: "누적", tone: "brand" },
   { key: "active", label: "활성", tone: "success" },
+  { key: "new_signups", label: "신규", tone: "warning" },
 ];
 
 export function SignupsSummaryWidget() {
@@ -53,18 +54,14 @@ function SignupsBody({ data }: { data: SignupsResponse }) {
         bucket_start: formatBucket(b.bucket_start),
         cumulative: b.cumulative,
         active: b.active,
+        new_signups: b.new_signups,
       })),
     [data.buckets],
   );
 
   const last = data.buckets[data.buckets.length - 1];
-  const prev =
-    data.buckets.length > 1
-      ? data.buckets[data.buckets.length - 2]
-      : undefined;
-  const delta = prev ? last.cumulative - prev.cumulative : null;
 
-  const ariaLabel = `최근 ${data.buckets.length}개 구간 가입자 추세 — 현재 누적 ${last.cumulative}명`;
+  const ariaLabel = `최근 ${data.buckets.length}개 구간 가입자 추세 — 현재 누적 ${last.cumulative}명, 최근 신규 ${last.new_signups}명`;
 
   return (
     <div className={styles.body}>
@@ -84,9 +81,9 @@ function SignupsBody({ data }: { data: SignupsResponse }) {
           </dd>
         </div>
         <div className={styles.figureItem}>
-          <dt className={styles.figureLabel}>최근 변화</dt>
-          <dd className={`${styles.figureValue} ${deltaToneClass(delta, styles)}`}>
-            {formatDelta(delta)}
+          <dt className={styles.figureLabel}>최근 신규</dt>
+          <dd className={`${styles.figureValue} ${newToneClass(last.new_signups, styles)}`}>
+            {formatNew(last.new_signups)}
           </dd>
         </div>
         <div className={styles.figureItem}>
@@ -103,17 +100,11 @@ function formatBucket(iso: string): string {
   return `${y}-${m}`;
 }
 
-function formatDelta(delta: number | null): string {
-  if (delta === null) return "—";
-  if (delta > 0) return `+${delta.toLocaleString()}명`;
-  if (delta < 0) return `${delta.toLocaleString()}명`;
-  return "변동 없음";
+function formatNew(n: number): string {
+  if (n > 0) return `+${n.toLocaleString()}명`;
+  return "0명";
 }
 
-function deltaToneClass(
-  delta: number | null,
-  s: Record<string, string>,
-): string {
-  if (delta === null || delta === 0) return "";
-  return delta > 0 ? s.deltaUp : s.deltaDown;
+function newToneClass(n: number, s: Record<string, string>): string {
+  return n > 0 ? s.deltaUp : "";
 }

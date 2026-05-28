@@ -456,9 +456,14 @@ async def signup_user(
         # 토큰 즉시 소진
         await r.delete(token_key)
 
-    # 이메일 중복 검사
+    # 이메일 중복 검사 — user 진영(role='user')만 본다. 관리자(role='admin')와
+    # 동일 이메일이 공존해도 허용 — user/admin 멤버는 완전히 별개로 운영한다.
     existing_email = await db.execute(
-        select(User).where(User.email == email, User.withdrawn_at.is_(None))
+        select(User).where(
+            User.email == email,
+            User.role == "user",
+            User.withdrawn_at.is_(None),
+        )
     )
     if existing_email.scalar_one_or_none():
         raise HTTPException(
@@ -466,9 +471,13 @@ async def signup_user(
             detail={"code": "ACCOUNT_EMAIL_DUPLICATE", "message": "이미 존재하는 정보입니다. 로그인해주세요."},
         )
 
-    # 휴대폰 중복 검사
+    # 휴대폰 중복 검사 — 동일하게 user 진영만
     existing_phone = await db.execute(
-        select(User).where(User.phone == phone, User.withdrawn_at.is_(None))
+        select(User).where(
+            User.phone == phone,
+            User.role == "user",
+            User.withdrawn_at.is_(None),
+        )
     )
     if existing_phone.scalar_one_or_none():
         raise HTTPException(
@@ -523,6 +532,7 @@ async def login_user(
     db: AsyncSession,
     *,
     rotate_session: bool = True,
+    expected_role: str | None = None,
 ) -> User:
     """이메일 로그인 처리.
 
@@ -533,6 +543,12 @@ async def login_user(
             같은 브라우저에 일반 사이트 로그인 쿠키(denvia_session)가 남아 있는 상태에서
             관리자 로그인이 user nonce 를 갈아엎으면 사용자의 일반 쿠키가 즉시 SUPERSEDED 되어
             루트 SessionBootstrap 의 /api/v1/me 호출이 401 로 튕기는 회귀가 발생한다.
+        expected_role: None 이면 role 무관 통과(기존 동작). 값이 지정되면 비밀번호 검증 통과 후
+            ``user.role`` 이 일치하지 않으면 ``AUTH_INVALID_CREDENTIALS`` 401 로 거절한다.
+            user/admin 멤버 분리 정책 — 유저 페이지 로그인은 ``expected_role="user"`` 를 넣어
+            관리자 계정이 일반 ``denvia_session`` 쿠키를 받지 못하도록 막는다. fail counter·세션
+            nonce·login_events 는 mismatch 시 일체 건드리지 않아 admin 계정의 잠금/단일세션을
+            user 페이지 입력으로 흔들 수 없게 한다.
 
     Returns:
         인증된 User 객체
@@ -785,6 +801,26 @@ async def login_user(
             },
         )
 
+    # 비밀번호는 맞았지만 진입점이 기대한 role 과 다르면 동일한 401 메시지로 거절한다
+    # (user 페이지 로그인에 admin 계정이 들어오는 케이스 등). fail counter·세션 nonce·
+    # last_login_at·login_events 모두 손대지 않아 — admin 계정 잠금/단일세션을 user 페이지
+    # 공격 surface 로 흔들 수 없게 한다.
+    if expected_role is not None and user.role != expected_role:
+        logger.info(
+            "auth.login.role_mismatch",
+            user_id=user.id,
+            expected=expected_role,
+            actual=user.role,
+            ip=ip,
+        )
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "AUTH_INVALID_CREDENTIALS",
+                "message": "이메일 또는 비밀번호가 일치하지 않습니다.",
+            },
+        )
+
     # 비밀번호는 맞았지만 관리자에 의해 차단된 계정이면 세션을 발급하지 않는다.
     # role=='admin' 은 차단 대상이 아니다 — 관리자 콘솔 진입을 막지 않도록 분기.
     # (admin 라우터는 별도 쿠키이지만, login_user 자체는 일반/관리자 공용이라 여기서 안전망.)
@@ -914,11 +950,12 @@ async def request_password_reset(
     # 이상탐지 카운터 (응답 변경 없음)
     await _check_recovery_abuse(phone, "find-password", ip, ua, redis_url, db)
 
-    # DB 조회
+    # DB 조회 — user 진영만(관리자 계정은 user 페이지의 비밀번호 찾기 대상이 아님)
     result = await db.execute(
         select(User).where(
             User.email == email,
             User.phone == phone,
+            User.role == "user",
             User.withdrawn_at.is_(None),
         )
     )
@@ -1015,9 +1052,11 @@ async def lookup_id(
     # 이상탐지 카운터 (응답 변경 없음)
     await _check_recovery_abuse(phone, "find-id", ip, ua, redis_url, db)
 
+    # user 진영만 — 관리자 휴대폰으로 user 이메일이 노출되면 안 된다.
     result = await db.execute(
         select(User).where(
             User.phone == phone,
+            User.role == "user",
             User.withdrawn_at.is_(None),
         )
     )
@@ -1182,12 +1221,14 @@ async def oauth_callback(
     # 분기 1: oauth_identity JOIN users with withdrawn_at IS NULL — AC-13 정합
     # (withdrawn user의 stale oauth_identity 레코드가 있어도 여기서 fall-through 되어
     #  아래 INSERT 시 UNIQUE(provider, provider_sub) 충돌을 일으키는 버그 방어)
+    # user/admin 멤버 완전 분리 — OAuth 로그인은 user 진영만 매칭 대상으로 본다.
     oi_row = await db.execute(
         select(OAuthIdentity, User)
         .join(User, User.id == OAuthIdentity.user_id)
         .where(
             OAuthIdentity.provider == provider_name,
             OAuthIdentity.provider_sub == provider_sub,
+            User.role == "user",
             User.withdrawn_at.is_(None),
         )
     )
@@ -1203,8 +1244,13 @@ async def oauth_callback(
         return {"action": "login_completed", "user_id": matched_user.id, "next_path": next_path}
 
     # 분기 2: 이메일 매칭 — 자체 가입자(password_hash NOT NULL + oauth 미연동)?
+    # user 진영만 검사. 관리자 이메일과 같은 소셜 계정으로도 자유롭게 가입 가능.
     email_row = await db.execute(
-        select(User).where(User.email == email, User.withdrawn_at.is_(None))
+        select(User).where(
+            User.email == email,
+            User.role == "user",
+            User.withdrawn_at.is_(None),
+        )
     )
     email_user = email_row.scalar_one_or_none()
     if email_user is not None:
@@ -1258,9 +1304,13 @@ async def oauth_callback(
 
     # 분기 3·4: 신규 + provider phone 제공
     if phone:
-        # 휴대폰 중복 검사
+        # 휴대폰 중복 검사 — user 진영만(관리자 휴대폰과 같아도 OAuth 가입 허용)
         phone_row = await db.execute(
-            select(User).where(User.phone == phone, User.withdrawn_at.is_(None))
+            select(User).where(
+                User.phone == phone,
+                User.role == "user",
+                User.withdrawn_at.is_(None),
+            )
         )
         if phone_row.scalar_one_or_none() is not None:
             logger.info(
@@ -1556,9 +1606,13 @@ async def oauth_complete_phone_supplement(
             detail={"code": "OAUTH_PROVIDER_UNAVAILABLE", "message": "소셜 로그인이 일시 지연됩니다."},
         )
 
-    # 이메일 재검사 (OAuth 콜백 이후 race)
+    # 이메일 재검사 (OAuth 콜백 이후 race) — user 진영만
     email_row = await db.execute(
-        select(User).where(User.email == email, User.withdrawn_at.is_(None))
+        select(User).where(
+            User.email == email,
+            User.role == "user",
+            User.withdrawn_at.is_(None),
+        )
     )
     email_user = email_row.scalar_one_or_none()
     if email_user is not None and email_user.password_hash is not None:
@@ -1570,9 +1624,13 @@ async def oauth_complete_phone_supplement(
             },
         )
 
-    # 휴대폰 중복 검사
+    # 휴대폰 중복 검사 — user 진영만
     phone_row = await db.execute(
-        select(User).where(User.phone == phone, User.withdrawn_at.is_(None))
+        select(User).where(
+            User.phone == phone,
+            User.role == "user",
+            User.withdrawn_at.is_(None),
+        )
     )
     if phone_row.scalar_one_or_none() is not None:
         raise HTTPException(

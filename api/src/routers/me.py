@@ -79,15 +79,11 @@ async def get_my_quota(
     admin은 preflight에서 quota/delay를 우회하므로(qa_service.preflight),
     /me/quota 응답도 동일한 정책으로 일관되게 unlimited 형태로 반환한다.
     """
-    # 지연 안내문구 — 글로벌 토글 ON일 때만 비어있지 않은 문자열을 반환 (지연 OFF면 "").
+    # 지연 안내문구 — 글로벌 토글 ON & 무료 플랜일 때만 비어있지 않은 문자열을 반환.
+    # Pro/admin 은 지연 자체가 없으므로 안내도 빈 문자열로 강제(필드명 `free_delay_*` 의도와 일치).
     # 프론트는 빈 문자열이면 안내 영역 자체를 렌더하지 않는다.
     delay_enabled_global = await _resolve_bool(
         redis_runtime, "runtime:free_delay_enabled", default=True
-    )
-    notice_text = (
-        await runtime_config_service.get_free_delay_notice_text(redis_runtime)
-        if delay_enabled_global
-        else ""
     )
 
     if current_user.subscription_status == "admin":
@@ -100,7 +96,7 @@ async def get_my_quota(
             show_upgrade_prompt=False,
             show_subscribe_button=False,
             delay_seconds=0.0,
-            free_delay_notice_text=notice_text,
+            free_delay_notice_text="",
         )
 
     raw = await redis_quota.get(_today_key_kst(current_user.id))
@@ -117,6 +113,15 @@ async def get_my_quota(
         False
         if is_pro
         else await _resolve_bool(redis_runtime, "runtime:show_subscribe_button", default=True)
+    )
+    notice_text = (
+        ""
+        if is_pro
+        else (
+            await runtime_config_service.get_free_delay_notice_text(redis_runtime)
+            if delay_enabled_global
+            else ""
+        )
     )
     return QuotaResponse(
         subscription_status=current_user.subscription_status,
@@ -934,10 +939,12 @@ async def patch_me_profile(
                     "message": "휴대폰 인증이 필요합니다.",
                 },
             )
-        # 활성 다른 계정과 휴대폰 중복 — signup_user 패턴과 동일
+        # 활성 다른 계정과 휴대폰 중복 — signup_user 패턴과 동일.
+        # user/admin 멤버 완전 분리 — user 진영만 비교(관리자 휴대폰과 동일해도 허용).
         existing = await db.execute(
             select(User).where(
                 User.phone == body.phone,
+                User.role == "user",
                 User.withdrawn_at.is_(None),
                 User.id != current_user.id,
             )
