@@ -49,10 +49,10 @@ async def _send_rebuild_notification(
     template_code: str,
     variables: dict[str, str],
 ) -> None:
-    """4.1 NotificationService 어댑터로 관리자(고정 2계정)에게 알림톡 발송.
+    """4.1 NotificationService 어댑터로 운영 관리자에게 알림톡 발송.
 
     수신자는 트리거 관리자가 아니라 admin_recipient.resolve_admin_target 으로
-    DB users.phone 을 본다 (btmdesign 우선, admin@denvia.ai.kr 차순위).
+    DB users.phone 을 본다 (admin@denvia.ai.kr 단일).
     예산·이상탐지·문의 알림과 동일 정책.
     """
     from api.src.integrations.messaging.admin_recipient import resolve_admin_target

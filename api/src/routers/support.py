@@ -156,7 +156,7 @@ async def _notify_admin_inquiry_created(
     """fire-and-forget 알림톡 — admin.support_inquiry_created (UH_9848).
 
     수신자: admin_recipient.resolve_admin_target (DB users.phone 만 본다 —
-    btmdesign@naver.com 우선, admin@denvia.ai.kr 차순위). 둘 다 phone 비어 있으면 silent skip.
+    admin@denvia.ai.kr 단일). phone 비어 있으면 silent skip.
     멱등 키: `support_inquiry:{inquiry_id}:admin_alert` — 동일 inquiry에 중복 발송 차단.
     """
     try:
