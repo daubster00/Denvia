@@ -54,6 +54,7 @@ def _set_aligo_env(monkeypatch):
             {
                 "billing.first_charge_success": "TX_001",
                 "notice.generic": "TX_010",
+                "admin.anomaly_detected": "TX_049",
             }
         ),
     )
@@ -283,3 +284,43 @@ class TestSendAlimtalk:
                 template_code="bogus.template",
                 variables={},
             )
+
+    @pytest.mark.asyncio
+    async def test_button_1_attached_when_template_has_buttons(self):
+        """등록 버튼이 있는 템플릿(UH_9849)은 발송 form에 button_1이 포함되어야 한다."""
+        handler = _make_handler(
+            [(200, {"code": 0, "message": "success", "info": {"mid": "BIZ-9849"}})]
+        )
+        adapter = AligoMessagingAdapter(transport=httpx.MockTransport(handler))
+
+        await adapter.send_alimtalk(
+            recipient_phone="01012345678",
+            template_code="admin.anomaly_detected",
+            variables={
+                "anomaly_type": "비밀번호 3회 오류",
+                "user_identifier": "test@example.com",
+            },
+        )
+
+        form = _form(handler.calls[0])
+        assert "button_1" in form, "button_1 form 필드가 누락됐다 (카카오 검증 거부 원인)"
+        payload = json.loads(form["button_1"])
+        assert payload["button"][0]["name"] == "확인하기"
+        assert payload["button"][0]["linkType"] == "WL"
+        assert payload["button"][0]["linkMo"].startswith("https://denvia.ai.kr/")
+
+    @pytest.mark.asyncio
+    async def test_button_1_absent_when_template_has_no_buttons(self):
+        """버튼이 없는 템플릿은 button_1 필드를 보내지 않는다 (불필요 노이즈 방지)."""
+        handler = _make_handler(
+            [(200, {"code": 0, "message": "success"})]
+        )
+        adapter = AligoMessagingAdapter(transport=httpx.MockTransport(handler))
+
+        await adapter.send_alimtalk(
+            recipient_phone="01012345678",
+            template_code="billing.first_charge_success",  # buttons=[] 기본값
+            variables={"amount_krw": "9,900", "next_charge_at": "2026-06-07"},
+        )
+
+        assert "button_1" not in _form(handler.calls[0])

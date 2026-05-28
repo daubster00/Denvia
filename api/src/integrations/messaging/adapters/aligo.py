@@ -24,7 +24,11 @@ import httpx
 import structlog
 
 from api.src.integrations.messaging.port import AlimtalkResult
-from api.src.integrations.messaging.templates import get_template, render_sms_body
+from api.src.integrations.messaging.templates import (
+    TemplateButton,
+    get_template,
+    render_sms_body,
+)
 from api.src.settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -46,6 +50,24 @@ def _mask_phone(phone: str) -> str:
 
 def _normalize_phone(phone: str) -> str:
     return phone.replace("-", "").replace(" ", "")
+
+
+def _serialize_buttons(buttons: list[TemplateButton]) -> str:
+    """알리고 button_1 form 필드용 JSON 직렬화."""
+    payload = {
+        "button": [
+            {
+                "name": btn.name,
+                "linkType": btn.link_type,
+                "linkMo": btn.link_mo,
+                "linkPc": btn.link_pc,
+                "linkIos": btn.link_ios,
+                "linkAnd": btn.link_and,
+            }
+            for btn in buttons
+        ]
+    }
+    return json.dumps(payload, ensure_ascii=False)
 
 
 class AligoMessagingAdapter:
@@ -103,6 +125,12 @@ class AligoMessagingAdapter:
             "message_1": rendered_body,
             "testmode_yn": "Y" if settings.aligo_test_mode else "N",
         }
+
+        # 등록된 버튼이 있으면 발송 form에 button_1로 직렬화해 함께 보낸다.
+        # 카카오 비즈채널 검증은 등록 버튼이 발송 시 누락되면
+        # "메시지가 템플릿과 일치하지 않음"으로 반려한다(UH_9849 A/B 검증 완료, 2026-05-28).
+        if template.buttons:
+            form["button_1"] = _serialize_buttons(template.buttons)
 
         async with self._client() as client:
             response = await client.post(

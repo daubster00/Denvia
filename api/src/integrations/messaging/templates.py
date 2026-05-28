@@ -7,8 +7,31 @@
 알리고 등록명·tpl_code 매핑은 docs/ALIMTALK_TEMPLATES.md §5 참조.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+
+
+# 알리고 알림톡 버튼 link_type 코드 (알리고 공식 명세 그대로):
+#   WL = 웹링크 / AL = 앱링크 / BK = 봇키워드 / MD = 메시지전달
+#   DS = 배송조회 / BC = 상담톡 전환 / AC = 채널 추가
+ALIGO_BUTTON_LINK_TYPES = frozenset({"WL", "AL", "BK", "MD", "DS", "BC", "AC"})
+
+
+@dataclass(frozen=True)
+class TemplateButton:
+    """알림톡 등록 버튼 — 발송 form의 button_X JSON으로 직렬화된다.
+
+    카카오 비즈채널 검증은 등록된 버튼이 발송 시점에 함께 전달되지 않으면
+    "메시지가 템플릿과 일치하지 않음"으로 반려한다. 본 카탈로그가 SSOT인
+    이상, 알리고 콘솔에 등록된 버튼 정의를 여기에 동기화해 두어야 한다.
+    """
+
+    name: str
+    link_type: str            # WL / AL / BK / MD / DS / BC / AC
+    link_mo: str = ""         # 모바일 URL (WL/AL)
+    link_pc: str = ""         # PC URL (WL)
+    link_ios: str = ""        # iOS 앱링크 (AL)
+    link_and: str = ""        # Android 앱링크 (AL)
 
 
 class TemplateCategory(str, Enum):
@@ -40,6 +63,7 @@ class TemplateDefinition:
     body: str
     variables: list[str]
     category: TemplateCategory
+    buttons: list[TemplateButton] = field(default_factory=list)
 
 
 # TEMPLATE_CATALOG: template_code → TemplateDefinition
@@ -329,6 +353,17 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         # user_identifier: 대상 계정 식별자 (email 또는 user_id)
         variables=["anomaly_type", "user_identifier"],
         category=TemplateCategory.SYSTEM,
+        # 2026-05-28 — 알리고 콘솔(UH_9849) 등록 버튼 동기화.
+        # 발송 form에 button_1을 함께 보내지 않으면 카카오 검증이
+        # "메시지가 템플릿과 일치하지 않음"으로 반려한다(검증 완료).
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin/anomaly",
+                link_pc="https://denvia.ai.kr/admin/anomaly",
+            ),
+        ],
     ),
 }
 
