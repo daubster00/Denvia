@@ -12,6 +12,7 @@ from api.src.integrations.messaging.templates import (
 
 # 스토리 AC-2 최소 세트 — 2026-05-18 고객 검수 v4 반영:
 # `billing.auto_renew_success`(1-2) / `billing.retry_success`(1-3)는 고객 삭제 요청으로 폐기.
+# 2026-05-28 — `notice.generic` 발송 폐기. NOTICE 카테고리 fixture로만 잔존(SSOT 필수 목록 제외).
 REQUIRED_TEMPLATE_CODES = [
     "billing.first_charge_success",
     "billing.retry_failed_1",
@@ -21,18 +22,19 @@ REQUIRED_TEMPLATE_CODES = [
     "subscription.cancel_requested",
     "subscription.canceled_finalized",
     "subscription.resumed",
-    "notice.generic",
 ]
 
-# 폐기 처리된 템플릿 코드 (회귀 가드)
+# 폐기 처리된 템플릿 코드 (회귀 가드 — 카탈로그에 다시 들어오면 안 됨)
 # - billing.refund_denied: 2026-05-12 ADR-0001 편차 #5 ("거부" 개념 폐기)
 # - billing.auto_renew_success / billing.retry_success: 2026-05-18 고객 검수 v4
 # - subscription.extended_due_to_killswitch: 2026-05-18 클라이언트 검수서 미포함
+# - admin.account.signup_request: 2026-05-28 발송 폐기 — master/operator는 /admin/admins에서 직접 확인
 DEPRECATED_TEMPLATE_CODES = [
     "billing.refund_denied",
     "billing.auto_renew_success",
     "billing.retry_success",
     "subscription.extended_due_to_killswitch",
+    "admin.account.signup_request",
 ]
 
 

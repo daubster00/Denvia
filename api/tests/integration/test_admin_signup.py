@@ -43,18 +43,11 @@ class TestAdminSignupEndpoint:
         async def _fake_signup(**kwargs):
             return applicant
 
-        async def _fake_enqueue(**kwargs):
-            return 2
-
-        with (
-            patch(
-                "api.src.routers.admin.auth.signup_admin_pending",
-                new=AsyncMock(side_effect=_fake_signup),
-            ),
-            patch(
-                "api.src.routers.admin.auth.enqueue_admin_signup_request_alert",
-                new=AsyncMock(side_effect=_fake_enqueue),
-            ),
+        # 2026-05-28 — 신규 관리자 가입 알림톡(admin.account.signup_request) 발송 폐기.
+        # master/operator는 /admin/admins 페이지에서 pending 항목을 직접 확인한다.
+        with patch(
+            "api.src.routers.admin.auth.signup_admin_pending",
+            new=AsyncMock(side_effect=_fake_signup),
         ):
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"

@@ -32,10 +32,7 @@ from api.src.services.admin_account_service import grade_label_for_user as _grad
 from api.src.services.admin_grade_permission_service import (
     get_allowed_pages_for_admin,
 )
-from api.src.services.admin_signup_service import (
-    enqueue_admin_signup_request_alert,
-    signup_admin_pending,
-)
+from api.src.services.admin_signup_service import signup_admin_pending
 from api.src.services.auth_service import login_user
 from api.src.settings import settings
 from api.src.utils.argon2 import hash_password, verify_password
@@ -354,11 +351,14 @@ async def admin_signup(
     request: Request,
     db: AsyncSession = Depends(get_session),
 ) -> AdminSignupResponse:
-    """관리자 가입 신청 — admin_grade='pending' INSERT + 세션 쿠키 미발급 + master/operator 알림톡 enqueue.
+    """관리자 가입 신청 — admin_grade='pending' INSERT + 세션 쿠키 미발급.
 
     검증 순서 (user/admin 멤버 완전 분리 — admin 진영 내 중복만 검사):
     1. 이메일 중복 — 활성 관리자(role='admin')
     2. 연락처 중복 — 활성 관리자(role='admin')
+
+    NOTE(2026-05-28): 신규 관리자 가입 알림톡(`admin.account.signup_request`)
+    발송 폐기. master/operator는 /admin/admins 페이지에서 pending 항목을 직접 확인한다.
     """
     user = await signup_admin_pending(
         name=body.name,
@@ -367,8 +367,6 @@ async def admin_signup(
         phone=body.phone,
         db=db,
     )
-    # signup_admin_pending 이 flush 까지만 — commit 은 enqueue 와 함께 일관성 있게 처리.
-    await enqueue_admin_signup_request_alert(db=db, new_admin_user_id=user.id)
     await db.commit()
 
     logger.info(

@@ -87,7 +87,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 7 | `subscription.canceled_finalized` | Denvia 구독 해지 완료 | `UH_9834` | ✅ 승인 |
 | 8 | `subscription.resumed` | Denvia 구독 해지 철회 완료 | `UH_9836` | ✅ 승인 |
 | 9 | `support.reply_received` | Denvia 고객문의 답변 도착 | `UH_9837` | ✅ 승인 |
-| 10 | `notice.generic` | Denvia 공지사항 안내 | `UH_9838` | 🟡 본문 변경 → 재심사 대기 |
+| ~~10~~ | ~~`notice.generic`~~ | ~~Denvia 공지사항 안내~~ | ~~`UH_9838`~~ | **❌ 발송 폐기 — 2026-05-28**. 공지는 인앱 쪽지함(`/inbox`)으로만 노출. 카탈로그에 잔존하는 이유는 야간 차단(F-502) 테스트 fixture 용도 단 하나. |
 | 11 | `system.rag_rebuild_complete` | Denvia RAG 재빌드 완료 | `UH_9841` | ✅ 승인 (2026-05-21) |
 | 12 | `system.rag_rebuild_failed` | Denvia RAG 재빌드 실패 | `UH_9842` | ✅ 승인 (2026-05-21) |
 | 13 | `admin.budget_warning.80` | Denvia 월 예산 80% 도달 | `UH_9843` | ✅ 승인 (2026-05-21) |
@@ -96,9 +96,11 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 16 | `admin.support_inquiry_created` | Denvia 신규 1:1 문의 접수 알림 | `UH_9848` | ✅ 승인 |
 | 17 | `admin.anomaly_detected` | Denvia 이상탐지 관리자 알림 | `UH_9849` | ✅ 승인 |
 | 18 | `billing.refund_manual` | Denvia 운영 환불 처리 완료 | `UI_1758` | ✅ 승인 (2026-05-26) |
-| 19 | `admin.account.signup_request` | Denvia 신규 관리자 가입 신청 접수 | `_______________` | 🟡 신규 — 알리고 콘솔 등록·심사 대기 (Story 10.2, 2026-05-27) |
+| ~~19~~ | ~~`admin.account.signup_request`~~ | ~~Denvia 신규 관리자 가입 신청 접수~~ | ~~`_______________`~~ | **❌ 발송 폐기 — 2026-05-28**. master/operator는 `/admin/admins` 페이지에서 pending 항목을 직접 확인. 템플릿 정의·서비스 함수·콘솔 등록 모두 제거. |
 
-> **2026-05-27 신규 관리자 가입 알림톡 추가**: Story 10.2 — ADR-0001 편차 #6(다중 관리자 RBAC). `/admin/signup` 신청 시 master/operator 활성 관리자에게 발송. `tpl_code`는 알리고 콘솔 등록 후 환경변수에 추가.
+> **2026-05-28 발송 폐기 2건**: `notice.generic`(UH_9838) + `admin.account.signup_request`. 공지는 인앱 쪽지함으로만, 관리자 가입 알림은 `/admin/admins` 직접 확인으로 대체. 코드·문서·콘솔 발송 항목에서 제거. (`notice.generic`은 야간 차단 회귀 테스트 fixture 용도로만 카탈로그 잔존.)
+
+> ~~**2026-05-27 신규 관리자 가입 알림톡 추가**~~ — 2026-05-28에 발송 폐기 결정으로 위 항목으로 통합. Story 10.2 자체(가입 신청 절차)는 유지.
 
 > **2026-05-27 관리자 계정 수명주기 알림톡 4종 폐기**: Story 10.3 진행 중 일시 추가했던 `admin.account.{approved,blocked,unblocked,deleted}` 4종을 즉시 제거(같은 날). 운영자가 `/admin/admins` 페이지에서 대상자 휴대폰을 보고 직접 안내하는 것으로 충분 — 알림톡 surface 추가 보류. 본 문서·`templates.py`·알리고 콘솔 모두 미등록 상태로 유지.
 
@@ -124,7 +126,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 10 | 구독 | `subscription.canceled_finalized` | 해지 예정일 도달 → 실제로 해지된 시점 | 사용자 | ✅ 코드 반영 (v4 본문 수정 + `user_name`/`effective_at` 신규 변수 2026-05-18) |
 | 11 | 구독 | `subscription.resumed` | 해지 예약을 사용자가 다시 철회했을 때 | 사용자 | ✅ 코드 반영 (v4 본문 간결화 + `next_charge_at` 변수 제거 2026-05-18) |
 | 12 | 고객문의 | `support.reply_received` | 관리자가 고객문의에 답변을 등록했을 때 | 사용자 | ✅ 코드 반영 + Story 9.3 admin reply 발송 연결 완료 (UH_9837 승인) |
-| 13 | 공지 | `notice.generic` | 관리자가 공지 푸시 발송했을 때 | 사용자 | ✅ 코드 반영 · 🟡 본문 변경 → 카카오 재심사 대기 (2026-05-21 시점 유일한 미통과 템플릿) — 매핑 부재로 발송 시도 시 `AligoConfigError` |
+| ~~13~~ | ~~공지~~ | ~~`notice.generic`~~ | ~~관리자가 공지 푸시 발송했을 때~~ | ~~사용자~~ | **❌ 발송 폐기 — 2026-05-28**. 신규 공지는 인앱 쪽지함(`/inbox`)으로만 노출. 운영 코드에서 `template_code="notice.generic"` enqueue 호출 0건(`grep` 검증). 카탈로그·콘솔 등록 잔존은 야간 차단(F-502) 회귀 테스트 fixture 단일 용도. |
 | 14 | 시스템 | `system.rag_rebuild_complete` | RAG 지식베이스 재빌드가 완료됐을 때 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9841 승인, 2026-05-21) — `workers/rag_tasks.py` `_send_rebuild_notification` |
 | 15 | 시스템 | `system.rag_rebuild_failed` | RAG 재빌드가 실패했을 때 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9842 승인, 2026-05-21) — `workers/rag_tasks.py` `_send_rebuild_notification` |
 | 16 | 시스템 | `admin.budget_warning.80` | 월 OpenAI 비용이 예산의 80% 도달 | 관리자 | ✅ 코드 반영 + 발송 연결 완료 (UH_9843 승인, 2026-05-21) — `workers/budget_tasks.py` (StubMessagingAdapter → get_adapter 교체) |
@@ -134,7 +136,7 @@ ALIMTALK_TEMPLATE_MAP_JSON={"billing.first_charge_success":"UH_9828","billing.re
 | 20 | 시스템 | `admin.anomaly_detected` | (자동 발송 폐기 — 2026-05-22) 이상탐지 발생만으로는 더 이상 발송하지 않음. 관리자가 직접 차단 버튼을 누른 시점에만 발송하는 정책으로 변경 — 차단 트리거 연결은 후속 작업 | 관리자 | 🟡 템플릿 등록(UH_9849)·`templates.py` 정의는 유지. **이상탐지 자동 발송 호출 4종 모두 제거(2026-05-22)** — `anomaly_service.schedule_admin_anomaly_alimtalk` 헬퍼 삭제. 차단 시점 발송 연결은 후속 작업 |
 | 21 | ~~구독~~ | ~~`subscription.extended_due_to_killswitch`~~ | ~~킬스위치 발동으로 구독 기간 자동 연장됐을 때~~ | ~~사용자~~ | **❌ 폐기 — 2026-05-18** — 클라이언트 v4 검수서(Google Docs 2026-05-15) 미포함. 카탈로그·호출처·docs 본문 섹션 제거. 킬스위치 시 구독 기간 연장 자체는 유지하되 사용자 안내는 인앱 공지·1:1 쪽지로 대체 |
 | 22 | 결제 | `billing.refund_manual` | 관리자가 운영 환불(전액 또는 부분)을 처리한 직후 — 2026-05-26 신규. 1:1 문의 응답과 함께 발송되어 사용자에게 환불 사실 + 금액을 알린다. | 사용자 | ✅ 코드 반영 + 발송 연결 완료 (UI_1758 승인, 2026-05-26) — `admin_payment_service.notify_refund_succeeded` |
-| 23 | 시스템 | `admin.account.signup_request` | 신규 관리자가 `/admin/signup`으로 가입 신청을 완료한 직후 — 2026-05-27 신규(Story 10.2). master/operator 활성 관리자(휴대폰 등록) 모두에게 발송되어 승인 액션을 유도한다. | 관리자(master/operator) | ✅ 코드 반영 (`admin_signup_service.enqueue_admin_signup_request_alert`) · 🟡 알리고 콘솔 등록 + 카카오 심사 대기 |
+| ~~23~~ | ~~시스템~~ | ~~`admin.account.signup_request`~~ | ~~신규 관리자가 `/admin/signup`으로 가입 신청을 완료한 직후~~ | ~~관리자(master/operator)~~ | **❌ 발송 폐기 — 2026-05-28** (Story 10.2와 같은 패턴 — 추가 직후 폐기). `routers/admin/auth.py`에서 enqueue 호출 제거, `admin_signup_service.enqueue_admin_signup_request_alert` 함수 삭제, `templates.py`에서 정의 제거. master/operator는 `/admin/admins` 페이지의 pending 목록을 직접 확인. |
 | ~~24~~ | ~~시스템~~ | ~~`admin.account.approved`~~ | ~~master/operator가 pending 관리자를 승인했을 때~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** — 운영자가 `/admin/admins` 페이지에서 대상자 휴대폰을 직접 보고 안내. 알림톡 surface 추가 보류 |
 | ~~25~~ | ~~시스템~~ | ~~`admin.account.blocked`~~ | ~~master/operator가 다른 관리자를 일시 차단했을 때~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** |
 | ~~26~~ | ~~시스템~~ | ~~`admin.account.unblocked`~~ | ~~수동 해제 또는 Celery 자동 만료~~ | ~~관리자~~ | **❌ 폐기 — 2026-05-27 (Story 10.3 같은 날 제거)** |
@@ -605,13 +607,15 @@ Pro 구독 해지가 철회되었습니다.
 
 ---
 
-### 13) `notice.generic` — 일반 공지사항
+### 13) `notice.generic` — 일반 공지사항  **❌ 발송 폐기 (2026-05-28)**
 
-- **언제**: 관리자가 공지 푸시를 활성화하고 발송 버튼을 눌렀을 때
-- **수신자**: 대상 사용자(전체 / 등급별 / 세그먼트별)
-- **알리고 분류**: 정보성 / 공지·안내
-- **야간 발송**: **차단됨 — 21~08 KST에는 발송하지 않고 다음날 08:00에 묶어서 발송**
-- **알리고 tpl_code**: `_______________`
+> **이 항목은 더 이상 알림톡으로 발송되지 않는다.** 신규 공지는 인앱 쪽지함(`/inbox`)에서만 노출한다. 운영 코드에서 `template_code="notice.generic"` enqueue 호출은 0건(검증 완료). 본 절은 본문·변수 이력 참조용으로만 남기며, 야간 차단(F-502) 회귀 테스트가 NOTICE 카테고리 fixture를 필요로 하기 때문에 카탈로그 자체는 잔존시킨다.
+
+- **언제**: ~~관리자가 공지 푸시를 활성화하고 발송 버튼을 눌렀을 때~~ → **발송 트리거 없음**
+- **수신자**: ~~대상 사용자~~ → **없음**
+- **알리고 분류**: 정보성 / 공지·안내 (콘솔 등록은 잔존하나 새 발송 없음)
+- **야간 발송**: 무의미 (발송 자체가 없음)
+- **알리고 tpl_code**: `_______________` (매핑 부재 — 발송 시도 시 `AligoConfigError`로 차단되므로 안전)
 
 **제목**
 ```
@@ -861,39 +865,16 @@ Denvia RAG 재빌드가 실패했습니다.
 
 ---
 
-### 21) `admin.account.signup_request` — 신규 관리자 가입 신청 접수 (신규 — Story 10.2, 2026-05-27)
+### ~~21) `admin.account.signup_request`~~ — 신규 관리자 가입 신청 접수  **❌ 발송 폐기 (2026-05-28)**
 
-- **언제**: 신규 관리자 후보가 `/admin/signup`으로 가입 신청을 완료(POST /api/v1/admin/auth/signup 201)한 직후
-- **수신자**: master/operator 활성 관리자 모두 (휴대폰 등록 계정 한정)
-- **사용자 측 알림톡**: 발송 안 함 (신청자 본인에게는 가입 폼 성공 토스트로 안내)
-- **알리고 분류**: 정보성 / 회원·계정 안내
-- **야간 발송**: 즉시 (운영 알림 — SYSTEM 카테고리)
-- **알리고 tpl_code**: `_______________` (등록 후 기입)
-- **구현 상태**: ✅ `admin_signup_service.enqueue_admin_signup_request_alert` — `notification_queue` enqueue. 멱등 키 `admin_signup:{user_id}:{admin_id}` — 동일 신청·동일 수신자 중복 enqueue 차단.
-
-**제목**
-```
-신규 관리자 가입 신청 접수
-```
-
-**알리고 콘솔 입력 본문**
-```
-[Denvia 관리자] 신규 관리자 가입 신청이 접수되었습니다.
-
-신청자: #{applicant_email_masked}
-시각: #{applied_at_kst}
-
-/admin/admins 페이지에서 승인해주세요.
-```
-
-**변수**
-
-| 변수 | 의미 | 예시 |
-|---|---|---|
-| `applicant_email_masked` | 신청자 이메일 마스킹 (`mask_email`) | `ab****@example.com` |
-| `applied_at_kst` | 신청 시각 KST | `2026-05-27 14:32` |
-
-> **운영 플로우** — ① 신청자가 `/admin/signup` 폼 제출 → ② master/operator 모두에게 동시 발송 → ③ 운영자가 `/admin/admins` 진입 → 승인/거절 액션. 본 템플릿은 발송 자체로 끝(승인된 신청자에게는 별도 `admin.account.approved` 발송 — Story 10.3).
+> **이 템플릿은 추가 직후 폐기됐다.** 2026-05-27 Story 10.2로 일시 도입 → 2026-05-28 운영 결정으로 발송 자체를 폐기. 신규 관리자 가입 신청이 발생해도 알림톡은 발송하지 않으며, master/operator는 `/admin/admins` 페이지의 pending 목록을 직접 확인해 승인/거절을 진행한다.
+>
+> **코드 정리 결과**:
+> - `routers/admin/auth.py` — `enqueue_admin_signup_request_alert` 호출 제거
+> - `services/admin_signup_service.py` — `enqueue_admin_signup_request_alert` 함수 + 관련 import 삭제
+> - `integrations/messaging/templates.py` — 정의 제거
+> - `test_messaging_templates.py` `DEPRECATED_TEMPLATE_CODES` — 회귀 가드 추가
+> - 알리고 콘솔 — 신규 등록 진행하지 않음. tpl_code 매핑 부재.
 >
 > 알리고 콘솔에서 **버튼** 추가 권장 — 라벨: `관리자 페이지 바로가기`, 링크: `https://denvia.kr/admin/admins`
 

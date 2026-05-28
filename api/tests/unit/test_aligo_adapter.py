@@ -53,8 +53,11 @@ def _set_aligo_env(monkeypatch):
         json.dumps(
             {
                 "billing.first_charge_success": "TX_001",
+                # notice.generic은 2026-05-28 발송 폐기. fixture로만 잔존하지만 알리고 매핑은
+                # 야간 차단 회귀 테스트 + button_1 부재 검증에서 여전히 필요(buttons=[]).
                 "notice.generic": "TX_010",
                 "admin.anomaly_detected": "TX_049",
+                "billing.refund_manual": "TX_017",
             }
         ),
     )
@@ -317,10 +320,12 @@ class TestSendAlimtalk:
         )
         adapter = AligoMessagingAdapter(transport=httpx.MockTransport(handler))
 
+        # notice.generic은 2026-05-28 발송 폐기 + 버튼 제거. 카탈로그 내 유일한 buttons=[]
+        # 템플릿이라 button_1 부재 회귀 가드로 사용. 실제 운영 발송은 일어나지 않는다.
         await adapter.send_alimtalk(
             recipient_phone="01012345678",
-            template_code="billing.first_charge_success",  # buttons=[] 기본값
-            variables={"amount_krw": "9,900", "next_charge_at": "2026-06-07"},
+            template_code="notice.generic",
+            variables={"title": "공지 제목", "body": "공지 내용"},
         )
 
         assert "button_1" not in _form(handler.calls[0])

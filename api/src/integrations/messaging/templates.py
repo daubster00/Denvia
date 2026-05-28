@@ -93,6 +93,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["amount_krw", "next_charge_at"],
         category=TemplateCategory.BILLING,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "billing.retry_failed_1": TemplateDefinition(
         title="Denvia 결제 실패 안내 1차",
@@ -106,6 +114,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=[],
         category=TemplateCategory.BILLING,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "billing.retry_failed_2": TemplateDefinition(
         title="Denvia 결제 실패 안내 2차",
@@ -123,6 +139,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=[],
         category=TemplateCategory.BILLING,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "billing.retry_failed_3": TemplateDefinition(
         title="Denvia 결제 최종 실패 안내",
@@ -137,6 +161,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         # 알리고 등록본에 support_url 변수 없음 (콘솔 웹링크 버튼으로 대체). 코드도 변수 제거.
         variables=[],
         category=TemplateCategory.BILLING,
+        buttons=[
+            TemplateButton(
+                name="문의작성",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "billing.refund_success": TemplateDefinition(
         title="Denvia 환불 처리 완료",
@@ -163,6 +195,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
             "effective_at",
         ],
         category=TemplateCategory.BILLING,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "billing.refund_manual": TemplateDefinition(
         title="Denvia 운영 환불 처리 완료",
@@ -184,6 +224,16 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         # 고정 문구만 검증하므로 코드 변수명은 영문 유지(다른 템플릿과 일관).
         variables=["amount_krw", "refund_amount_krw", "effective_at"],
         category=TemplateCategory.BILLING,
+        # UI_1758 알리고 콘솔 등록 버튼(2026-05-28 스크린샷 동기화).
+        # 운영 환불은 1:1 문의 답변에서 진행되므로 목록 페이지로 이동.
+        buttons=[
+            TemplateButton(
+                name="1:1문의 답변",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries",
+                link_pc="https://denvia.ai.kr/my/inquiries",
+            ),
+        ],
     ),
     # ── 구독 (subscription) ──────────────────────────────────────────────────
     "subscription.cancel_requested": TemplateDefinition(
@@ -197,6 +247,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "subscription.canceled_finalized": TemplateDefinition(
         title="Denvia 구독 해지 완료",
@@ -211,12 +269,28 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         # email local-part로 자동 주입(없으면 "고객").
         variables=["user_name", "effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     "subscription.resumed": TemplateDefinition(
         title="Denvia 구독 해지 철회 완료",
         body="Pro 구독 해지가 철회되었습니다.",
         variables=[],
         category=TemplateCategory.SUBSCRIPTION,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     # ── 고객문의 (support) — Story 9.3 ───────────────────────────────────────
     "support.reply_received": TemplateDefinition(
@@ -230,8 +304,23 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["inquiry_subject"],
         category=TemplateCategory.SUPPORT,
+        buttons=[
+            TemplateButton(
+                name="문의하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/my/inquiries/new",
+                link_pc="https://denvia.ai.kr/my/inquiries/new",
+            ),
+        ],
     ),
     # ── 공지 (notice) ────────────────────────────────────────────────────────
+    # 🚫 알림톡 미발송 (2026-05-28 결정) — 본 카탈로그에 잔존하는 이유는 야간 차단(F-502)
+    # 회귀 테스트(test_night_block_toggle, test_notification_service)가 NOTICE 카테고리
+    # 템플릿 1종을 fixture로 요구하기 때문이다. 운영 코드에서 `template_code="notice.generic"`
+    # 으로 enqueue/dispatch 호출은 일절 없으며(검색 0건), 알리고 콘솔 UH_9838 등록본도
+    # 더 이상 카카오 채널로 발송되지 않는다. 신규 공지는 인앱 쪽지함(`/inbox`)으로만
+    # 노출한다.
+    # 버튼은 제거(콘솔 등록 버튼 동기화 대상 아님 — 발송 자체가 없으므로).
     "notice.generic": TemplateDefinition(
         title="Denvia 공지사항 안내",
         body="{title}\n\n{body}",
@@ -244,12 +333,28 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         body="Denvia RAG 재빌드가 완료되었습니다.\n활성 청크 수: {chunk_count}",
         variables=["chunk_count"],
         category=TemplateCategory.SYSTEM,
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin/rag/data",
+                link_pc="https://denvia.ai.kr/admin/rag/data",
+            ),
+        ],
     ),
     "system.rag_rebuild_failed": TemplateDefinition(
         title="Denvia RAG 재빌드 실패",
         body="Denvia RAG 재빌드가 실패했습니다.\n오류: {error}",
         variables=["error"],
         category=TemplateCategory.SYSTEM,
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin/rag/data",
+                link_pc="https://denvia.ai.kr/admin/rag/data",
+            ),
+        ],
     ),
     # ── 관리자 예산 경고 (Story 5.2) ─────────────────────────────────────────
     # 알리고 등록본은 본문 첫 줄에 [Denvia] 제목을 중복 포함. 코드도 동일하게 작성.
@@ -270,6 +375,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["percent", "spent_krw", "limit_krw"],
         category=TemplateCategory.SYSTEM,
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin",
+                link_pc="https://denvia.ai.kr/admin",
+            ),
+        ],
     ),
     "admin.budget_warning.95": TemplateDefinition(
         title="Denvia 월 예산 95% 도달 안내",
@@ -284,6 +397,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["percent", "spent_krw", "limit_krw"],
         category=TemplateCategory.SYSTEM,
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin",
+                link_pc="https://denvia.ai.kr/admin",
+            ),
+        ],
     ),
     "admin.budget_hard_cap_reached": TemplateDefinition(
         title="Denvia 월 예산 소진 안내",
@@ -297,6 +418,14 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["limit_krw"],
         category=TemplateCategory.SYSTEM,
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin",
+                link_pc="https://denvia.ai.kr/admin",
+            ),
+        ],
     ),
     # ── 관리자 고객문의 신규 접수 (Story 9.3 후속) ───────────────────────────
     "admin.support_inquiry_created": TemplateDefinition(
@@ -313,24 +442,20 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ),
         variables=["user_name", "inquiry_subject"],
         category=TemplateCategory.SYSTEM,
+        buttons=[
+            TemplateButton(
+                name="확인하기",
+                link_type="WL",
+                link_mo="https://denvia.ai.kr/admin/cs",
+                link_pc="https://denvia.ai.kr/admin/cs",
+            ),
+        ],
     ),
-    # ── 관리자 가입 신청 알림 (Story 10.2 — 2026-05-27) ─────────────────────
-    # 신규 관리자가 /admin/signup으로 가입 신청을 완료하면 master/operator 활성 관리자
-    # 휴대폰으로 발송(notification_queue 등재 → dispatch_queued 발송). 알리고 콘솔
-    # 등록명 "Denvia 신규 관리자 가입 신청 접수" — tpl_code는 후속 운영 작업으로 매핑 추가.
-    "admin.account.signup_request": TemplateDefinition(
-        title="Denvia 신규 관리자 가입 신청 접수",
-        body=(
-            "[Denvia 관리자] 신규 관리자 가입 신청이 접수되었습니다.\n"
-            "\n"
-            "신청자: {applicant_email_masked}\n"
-            "시각: {applied_at_kst}\n"
-            "\n"
-            "/admin/admins 페이지에서 승인해주세요."
-        ),
-        variables=["applicant_email_masked", "applied_at_kst"],
-        category=TemplateCategory.SYSTEM,
-    ),
+    # ── 관리자 가입 신청 알림 — 발송 폐기 (2026-05-28) ───────────────────────
+    # `admin.account.signup_request` (Story 10.2, 2026-05-27)는 추가 직후 폐기.
+    # master/operator는 /admin/admins 페이지의 pending 목록을 직접 확인한다.
+    # 본 카탈로그·관련 서비스 함수(`enqueue_admin_signup_request_alert`)·알리고 콘솔
+    # 모두에서 제거. 신규 발송 트리거 없음.
     # ── 관리자 계정 수명주기 알림 (Story 10.3) — 발송 폐기 (2026-05-27) ───
     # admin.account.approved / blocked / unblocked / deleted 4종을 한 차례 추가했다가
     # 즉시 제거. 운영자가 /admin/admins 페이지에서 대상자 휴대폰을 직접 보고
