@@ -21,10 +21,6 @@ export default function PrivacyPage() {
         <h1 className={styles.title}>개인정보 처리방침</h1>
         <p className={styles.meta}>시행일자: 2026-04-30 (선택 수집 항목 신설 2026-05-26 시행 예정) · 버전 0.2</p>
 
-        <p className={styles.draftBanner}>
-          본 처리방침은 서비스 정식 출시 전 심사용 초안입니다. 정식 시행 시 사전 공지 후 적용됩니다.
-        </p>
-
         <p className={styles.paragraph}>
           Denvia(이하 &ldquo;회사&rdquo;)는 「개인정보 보호법」 등 관계 법령에 따라 회원의 개인정보를 보호하고,
           이와 관련한 고충을 신속하고 원활하게 처리할 수 있도록 다음과 같이 개인정보 처리방침을 수립·공개합니다.

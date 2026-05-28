@@ -21,10 +21,6 @@ export default function TermsPage() {
         <h1 className={styles.title}>이용약관</h1>
         <p className={styles.meta}>시행일자: 2026-04-30 (제4조 선택 입력 항목 신설 2026-05-26 시행 예정) · 버전 0.2</p>
 
-        <p className={styles.draftBanner}>
-          본 약관은 서비스 정식 출시 전 심사용 초안입니다. 정식 시행 시 사전 공지 후 적용됩니다.
-        </p>
-
         <p className={styles.paragraph}>
           본 약관은 Denvia(이하 &ldquo;회사&rdquo;)가 제공하는 치과 보험청구 및 데스크 행정업무 정보
           안내 AI 보조 서비스 &ldquo;Denvia&rdquo;(이하 &ldquo;서비스&rdquo;)의 이용과 관련하여
