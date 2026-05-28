@@ -1,17 +1,31 @@
 """OAuth Provider 포트 인터페이스 — Story 1.6."""
 
-from typing import Literal, Protocol, TypedDict
+from datetime import date
+from typing import Literal, NotRequired, Protocol, TypedDict
 
 
 ProviderName = Literal["kakao", "google", "naver"]
 
 
 class OAuthProfile(TypedDict):
-    """Provider가 반환하는 표준화된 프로필."""
+    """Provider가 반환하는 표준화된 프로필.
+
+    필수: provider_sub / email / phone.
+    선택(NotRequired): 네이버·카카오의 추가 동의 항목. provider가 미동의/미제공이면
+    어댑터가 키를 아예 생략하거나 None으로 둔다 — 호출자(auth_service)는 부재 시
+    DB에 NULL을 채워 넣는다(`gender`는 'male'|'female'로 정규화 완료된 상태).
+    """
 
     provider_sub: str
     email: str
     phone: str | None  # Google OIDC · 비즈검수 전 Kakao는 None
+    # 추가 동의 항목 — 운영 환경에서 콘솔 승인된 항목만 채워진다.
+    name: NotRequired[str | None]
+    gender: NotRequired[Literal["male", "female"] | None]
+    birthdate: NotRequired[date | None]
+    postcode: NotRequired[str | None]
+    address_road: NotRequired[str | None]
+    address_detail: NotRequired[str | None]
 
 
 class OAuthProvider(Protocol):

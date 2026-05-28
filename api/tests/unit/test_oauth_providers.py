@@ -282,6 +282,150 @@ class TestKakaoProvider:
         with pytest.raises(OAuthProviderInvalidResponse):
             await p.fetch_profile("AT")
 
+    def test_authorization_url_includes_extra_scopes(self):
+        """추가 동의 항목(name·gender·birthday 등) scope 노출 — 콘솔 승인 정합용."""
+        p = KakaoProvider("CID", "", "http://localhost/cb")
+        url = p.get_authorization_url("st")
+        # 공백은 + 또는 %20 어느 쪽으로 인코딩돼도 통과
+        for keyword in ("name", "gender", "birthday", "birthyear", "phone_number", "shipping_address"):
+            assert keyword in url
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_full_extras(self, monkeypatch):
+        """이름·성별·생년월일·기본 배송지(도로명)까지 모두 받아오는 정상 케이스."""
+        from datetime import date as _date
+
+        p = KakaoProvider("CID", "", "http://localhost/cb")
+
+        async def fake_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "kakao_account": {
+                        "email": "u@kakao.com",
+                        "phone_number": "+82 10-1234-5678",
+                        "name": "홍길동",
+                        "gender": "male",
+                        "birthyear": "1990",
+                        "birthday": "0315",
+                        "shipping_addresses": [
+                            {
+                                "id": 1,
+                                "is_default": True,
+                                "type": "NEW",
+                                "base_address": "서울특별시 강남구 테헤란로 123",
+                                "detail_address": "5층 501호",
+                                "zone_number": "06234",
+                            }
+                        ],
+                    },
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+        profile = await p.fetch_profile("AT")
+        assert profile["name"] == "홍길동"
+        assert profile["gender"] == "male"
+        assert profile["birthdate"] == _date(1990, 3, 15)
+        assert profile["postcode"] == "06234"
+        assert profile["address_road"] == "서울특별시 강남구 테헤란로 123"
+        assert profile["address_detail"] == "5층 501호"
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_extras_needs_agreement(self, monkeypatch):
+        """`*_needs_agreement=True` 항목은 None으로 폴백 — 비동의 사용자 보호."""
+        p = KakaoProvider("CID", "", "http://localhost/cb")
+
+        async def fake_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "kakao_account": {
+                        "email": "u@kakao.com",
+                        "name_needs_agreement": True,
+                        "name": "should_be_ignored",
+                        "gender_needs_agreement": True,
+                        "gender": "male",
+                        "birthyear_needs_agreement": True,
+                        "birthyear": "1990",
+                        "birthday": "0101",
+                        "shipping_addresses_needs_agreement": True,
+                        "shipping_addresses": [
+                            {"is_default": True, "base_address": "ignored"}
+                        ],
+                    },
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+        profile = await p.fetch_profile("AT")
+        assert profile.get("name") is None
+        assert profile.get("gender") is None
+        assert profile.get("birthdate") is None
+        assert profile.get("address_road") is None
+        assert profile.get("postcode") is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_birthdate_invalid_silent_none(self, monkeypatch):
+        """잘못된 생년월일(2월 30일 등)은 silent None — 가입 자체는 막지 않는다."""
+        p = KakaoProvider("CID", "", "http://localhost/cb")
+
+        async def fake_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "kakao_account": {
+                        "email": "u@kakao.com",
+                        "birthyear": "2024",
+                        "birthday": "0230",
+                    },
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+        profile = await p.fetch_profile("AT")
+        assert profile.get("birthdate") is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_shipping_default_picked(self, monkeypatch):
+        """is_default=True 인 항목이 우선 선택된다."""
+        p = KakaoProvider("CID", "", "http://localhost/cb")
+
+        async def fake_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "kakao_account": {
+                        "email": "u@kakao.com",
+                        "shipping_addresses": [
+                            {
+                                "is_default": False,
+                                "type": "NEW",
+                                "base_address": "sub-road",
+                                "detail_address": "B",
+                                "zone_number": "11111",
+                            },
+                            {
+                                "is_default": True,
+                                "type": "NEW",
+                                "base_address": "default-road",
+                                "detail_address": "A",
+                                "zone_number": "22222",
+                            },
+                        ],
+                    },
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+        profile = await p.fetch_profile("AT")
+        assert profile["address_road"] == "default-road"
+        assert profile["postcode"] == "22222"
+
 
 # ── Google ────────────────────────────────────────────────────────────────────
 
@@ -589,3 +733,97 @@ class TestNaverProvider:
         with pytest.raises(OAuthProviderInvalidResponse):
             await p.exchange_code("c", state="S")
         assert calls["n"] == 1
+
+    def test_authorization_url_includes_extra_scopes(self):
+        """추가 동의 항목(name·gender·birthday·birthyear·mobile) scope 노출."""
+        p = NaverProvider("NID", "NS", "http://localhost/cb")
+        url = p.get_authorization_url("st")
+        for keyword in ("name", "mobile", "gender", "birthday", "birthyear"):
+            assert keyword in url
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_full_extras(self, monkeypatch):
+        """이름·성별(M→male)·생년월일까지 함께 받아오는 정상 케이스."""
+        from datetime import date as _date
+
+        p = NaverProvider("NID", "NS", "http://localhost/cb")
+
+        async def fake_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "resultcode": "00",
+                    "message": "success",
+                    "response": {
+                        "id": "naver-xyz",
+                        "email": "u@naver.com",
+                        "mobile": "010-2222-3333",
+                        "name": "홍길동",
+                        "gender": "M",
+                        "birthyear": "1985",
+                        "birthday": "07-22",
+                    },
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+        profile = await p.fetch_profile("AT")
+        assert profile["name"] == "홍길동"
+        assert profile["gender"] == "male"
+        assert profile["birthdate"] == _date(1985, 7, 22)
+        # 네이버는 주소 미제공 — 키 자체가 없거나 None
+        assert profile.get("address_road") is None
+        assert profile.get("postcode") is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_gender_female_and_unknown(self, monkeypatch):
+        """gender 'F' → female. 그 외('U'/None)는 None."""
+        p = NaverProvider("NID", "NS", "http://localhost/cb")
+
+        async def fake_get_f(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "resultcode": "00",
+                    "response": {"id": "x", "email": "e@n.com", "gender": "F"},
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get_f)
+        profile = await p.fetch_profile("AT")
+        assert profile["gender"] == "female"
+
+        async def fake_get_u(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "resultcode": "00",
+                    "response": {"id": "x", "email": "e@n.com", "gender": "U"},
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get_u)
+        profile = await p.fetch_profile("AT")
+        assert profile.get("gender") is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_profile_partial_birthdate_yields_none(self, monkeypatch):
+        """birthyear/birthday 중 하나만 있으면 birthdate=None."""
+        p = NaverProvider("NID", "NS", "http://localhost/cb")
+
+        async def fake_get(self, url, *args, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "resultcode": "00",
+                    "response": {
+                        "id": "x",
+                        "email": "e@n.com",
+                        "birthday": "01-01",  # birthyear 없음
+                    },
+                },
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+        profile = await p.fetch_profile("AT")
+        assert profile.get("birthdate") is None

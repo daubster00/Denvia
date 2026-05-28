@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from urllib.parse import urlencode
 
 import httpx
@@ -70,12 +71,15 @@ class NaverProvider:
         # auth_type=reauthenticate: 네이버 세션이 남아있어도 매번 재인증을 강제하여
         # 공유 기기에서 다른 사용자가 본인 계정으로 로그인하거나, provider-collision
         # 알림이 무한 재노출되는 것을 방지한다.
+        # 실제 동의 항목은 네이버 개발자 콘솔에서 활성화된 항목만 응답에 포함된다.
+        # scope 파라미터는 콘솔 설정과의 정합성 표기 용도. 운영 콘솔에 이름·성별·
+        # 생년월일·생년 동의항목이 등록되어 있어야 응답에 포함된다.
         params = {
             "response_type": "code",
             "client_id": self._client_id,
             "redirect_uri": self._redirect_uri,
             "state": state,
-            "scope": "name email",
+            "scope": "name email mobile gender birthday birthyear",
             "auth_type": "reauthenticate",
         }
         self._last_state = state
@@ -174,11 +178,23 @@ class NaverProvider:
 
         phone = _normalize_kr_phone(mobile) if mobile else None
 
-        return {
+        # 추가 동의 항목 — 콘솔에서 활성화되고 사용자가 동의한 경우에만 채워진다.
+        # 어느 항목이든 파싱 실패는 silent None (필수 필드는 위에서 이미 가드).
+        name = _clean_name(response.get("name"))
+        gender = _naver_gender(response.get("gender"))
+        birthdate = _compose_birthdate(
+            response.get("birthyear"), response.get("birthday")
+        )
+
+        profile: OAuthProfile = {
             "provider_sub": str(sub),
             "email": str(email).lower().strip(),
             "phone": phone,
+            "name": name,
+            "gender": gender,
+            "birthdate": birthdate,
         }
+        return profile
 
 
 def _normalize_kr_phone(raw: str) -> str | None:
@@ -188,3 +204,36 @@ def _normalize_kr_phone(raw: str) -> str | None:
     if re.match(r"^010\d{8}$", digits):
         return digits
     return None
+
+
+def _clean_name(raw: object) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    stripped = raw.strip()
+    return stripped or None
+
+
+def _naver_gender(raw: object) -> str | None:
+    """네이버 gender: 'M'|'F'|'U' → 'male'|'female'|None."""
+    if not isinstance(raw, str):
+        return None
+    code = raw.strip().upper()
+    if code == "M":
+        return "male"
+    if code == "F":
+        return "female"
+    return None
+
+
+def _compose_birthdate(year: object, mmdd: object) -> date | None:
+    """birthyear='YYYY' + birthday='MM-DD' → date. 잘못된 값이면 None."""
+    if not isinstance(year, str) or not isinstance(mmdd, str):
+        return None
+    y = year.strip()
+    md = mmdd.strip()
+    if not re.match(r"^\d{4}$", y) or not re.match(r"^\d{2}-\d{2}$", md):
+        return None
+    try:
+        return date(int(y), int(md[:2]), int(md[3:5]))
+    except ValueError:
+        return None

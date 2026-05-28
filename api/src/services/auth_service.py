@@ -136,6 +136,77 @@ _PROVIDER_LABEL_KO: dict[str, str] = {
     "naver": "네이버",
 }
 
+# OAuth 추가 동의 항목 → User 컬럼 매핑.
+# provider가 안 주거나 동의 미승인이면 키 자체가 없거나 None — 둘 다 NULL로 취급한다.
+_OAUTH_PROFILE_USER_COLUMNS: tuple[str, ...] = (
+    "name",
+    "gender",
+    "birthdate",
+    "postcode",
+    "address_road",
+    "address_detail",
+)
+
+
+def _extract_oauth_profile_extras(profile: dict) -> dict:
+    """OAuthProfile에서 User에 저장할 추가 컬럼만 추려 dict로 반환. 미존재 키는 생략."""
+    extras: dict = {}
+    for col in _OAUTH_PROFILE_USER_COLUMNS:
+        val = profile.get(col)
+        if val is None:
+            continue
+        extras[col] = val
+    return extras
+
+
+def _serialize_pending_extras(extras: dict) -> dict:
+    """pending_token 페이로드 직렬화 — date를 ISO 문자열로 변환."""
+    out: dict = {}
+    for k, v in extras.items():
+        if isinstance(v, date):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    return out
+
+
+def _deserialize_pending_extras(raw: dict | None) -> dict:
+    """pending_token 페이로드 역직렬화 — birthdate ISO 문자열 → date. 잘못된 값은 무시."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    for col in _OAUTH_PROFILE_USER_COLUMNS:
+        val = raw.get(col)
+        if val is None:
+            continue
+        if col == "birthdate":
+            if isinstance(val, str):
+                try:
+                    out[col] = date.fromisoformat(val)
+                except ValueError:
+                    continue
+            else:
+                continue
+        else:
+            if isinstance(val, str) and val.strip():
+                out[col] = val.strip()
+    return out
+
+
+def _apply_missing_profile_fields(user: User, extras: dict) -> bool:
+    """User의 NULL 컬럼만 provider 값으로 채운다 — 본인이 마이페이지에서 직접 채운 값은
+    덮어쓰지 않는다. 변경이 있었으면 True를 반환해 호출자가 updated_at을 갱신하도록 한다.
+    """
+    changed = False
+    for col in _OAUTH_PROFILE_USER_COLUMNS:
+        if col not in extras:
+            continue
+        current = getattr(user, col, None)
+        if current in (None, ""):
+            setattr(user, col, extras[col])
+            changed = True
+    return changed
+
 
 def _otp_keys(purpose: str, phone: str) -> tuple[str, str, str]:
     return (
@@ -1217,6 +1288,8 @@ async def oauth_callback(
     provider_sub = profile["provider_sub"]
     email = profile["email"]
     phone = profile["phone"]
+    # 네이버·카카오의 추가 동의 항목(이름/성별/생년월일/주소). 없으면 빈 dict.
+    profile_extras = _extract_oauth_profile_extras(profile)
 
     # 분기 1: oauth_identity JOIN users with withdrawn_at IS NULL — AC-13 정합
     # (withdrawn user의 stale oauth_identity 레코드가 있어도 여기서 fall-through 되어
@@ -1235,6 +1308,9 @@ async def oauth_callback(
     oi_row_result = oi_row.first()
     if oi_row_result is not None:
         _, matched_user = oi_row_result
+        # 기존 소셜 회원이 마이페이지에서 직접 입력하지 않은 컬럼만 provider 값으로 보강.
+        if profile_extras and _apply_missing_profile_fields(matched_user, profile_extras):
+            matched_user.updated_at = datetime.now(tz=timezone.utc)
         logger.info(
             "auth.oauth.login_completed",
             provider=provider_name,
@@ -1264,6 +1340,8 @@ async def oauth_callback(
             return {"action": "email_collision"}
         # 소셜 전용 유저(같은 이메일, 다른 provider로 이미 가입) → oauth_identity만 추가하고 로그인
         now = datetime.now(tz=timezone.utc)
+        if profile_extras and _apply_missing_profile_fields(email_user, profile_extras):
+            email_user.updated_at = now
         link = OAuthIdentity(
             user_id=email_user.id,
             provider=provider_name,
@@ -1330,6 +1408,7 @@ async def oauth_callback(
             subscription_status="free",
             created_at=now,
             updated_at=now,
+            **profile_extras,
         )
         db.add(user)
         try:
@@ -1370,6 +1449,8 @@ async def oauth_callback(
             "provider_sub": provider_sub,
             "email": email,
             "mode": mode,
+            # SMS 보충 후 User INSERT 시 함께 저장될 추가 동의 항목.
+            "extras": _serialize_pending_extras(profile_extras),
         }
     )
     try:
@@ -1587,6 +1668,8 @@ async def oauth_complete_phone_supplement(
                     status_code=400,
                     detail={"code": "OAUTH_PENDING_INVALID", "message": "소셜 가입 세션이 만료되었습니다."},
                 )
+            # 콜백 단계에서 채집한 추가 동의 항목(이름/성별/생년월일/주소). 없거나 무효면 빈 dict.
+            extras = _deserialize_pending_extras(pending.get("extras"))
 
             # 2) phone 검증 토큰 확인 — 불일치면 토큰을 소진하지 않아 사용자가 재시도 가능
             stored_phone = await r.get(token_key)
@@ -1650,6 +1733,9 @@ async def oauth_complete_phone_supplement(
             email_user.phone = phone
         if not email_user.phone_verified:
             email_user.phone_verified = True
+        # 본인이 직접 입력한 컬럼은 보존, 빈 컬럼만 provider 값으로 채운다.
+        if extras:
+            _apply_missing_profile_fields(email_user, extras)
         email_user.updated_at = now
 
         link = OAuthIdentity(
@@ -1688,6 +1774,7 @@ async def oauth_complete_phone_supplement(
         subscription_status="free",
         created_at=now,
         updated_at=now,
+        **extras,
     )
     db.add(user)
     try:
