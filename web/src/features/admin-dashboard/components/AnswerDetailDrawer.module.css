@@ -135,3 +135,98 @@
   color: #94a3b8;
   font-style: italic;
 }
+
+.topkEmpty {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.docList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.docCard {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.docIndex {
+  font-weight: 700;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.docMetaList {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  justify-content: flex-end;
+}
+
+.docMetaItem {
+  font-size: 11px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  padding: 2px 8px;
+  border-radius: 999px;
+  word-break: break-all;
+}
+
+.docContent {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.normalizedBlock {
+  margin-top: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #ffffff;
+}
+
+.normalizedSummary {
+  font-size: 12px;
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.normalizedText {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

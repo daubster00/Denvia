@@ -232,6 +232,33 @@ export async function fetchFeedback(
   return res.json() as Promise<FeedbackResponse>;
 }
 
+export interface FeedbackRetrievedDoc {
+  page_content: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface FeedbackDetail {
+  qa_log_id: number;
+  question_text: string;
+  normalized_query: string | null;
+  retrieved_docs: FeedbackRetrievedDoc[];
+  answer_text: string | null;
+  rule_matched: boolean;
+  status: string | null;
+  created_at: string;
+}
+
+export async function fetchFeedbackDetail(
+  qaLogId: number
+): Promise<FeedbackDetail> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/feedback/${qaLogId}`,
+    { credentials: "include" }
+  );
+  if (!res.ok) throw new Error(`feedback detail fetch failed: ${res.status}`);
+  return res.json() as Promise<FeedbackDetail>;
+}
+
 export async function fetchFeedbackExport(
   params: Omit<FetchFeedbackParams, "page" | "per_page">
 ): Promise<{ blob: Blob; filename: string }> {

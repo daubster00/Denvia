@@ -469,6 +469,31 @@ async def _gather_feedback(
     return summary_data, series_data, total
 
 
+class FeedbackRetrievedDocItem(BaseModel):
+    """qa_logs.retrieved_docs JSONB 항목 — 관리자 감사용 top-k 단일 문서."""
+
+    page_content: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
+class FeedbackDetail(BaseModel):
+    """피드백 단건 상세 — Drawer '상세보기' 응답.
+
+    관리자 감사용으로만 노출되며, SSE 사용자 응답에는 등장하지 않는
+    ``normalized_query``, ``retrieved_docs``(top-k)를 포함한다.
+    비회원 피드백도 조회 가능하므로 user_id 교차 검증 없이 qa_log_id 단독으로 조회한다.
+    """
+
+    qa_log_id: int
+    question_text: str
+    normalized_query: str | None = None
+    retrieved_docs: list[FeedbackRetrievedDocItem] = Field(default_factory=list)
+    answer_text: str | None = None
+    rule_matched: bool = False
+    status: str | None = None
+    created_at: str
+
+
 @router.get("/feedback/export")
 async def feedback_export(
     unit: Literal["day", "week", "month"] = Query("month"),
@@ -534,6 +559,61 @@ async def feedback_export(
         headers["X-Truncated"] = "true"
 
     return StreamingResponse(buf, media_type=content_type, headers=headers)
+
+
+@router.get("/feedback/{qa_log_id}", response_model=FeedbackDetail)
+async def feedback_detail(
+    qa_log_id: int,
+    response: Response,
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> FeedbackDetail:
+    """피드백 단건 상세 — top-k 검색 문서 + 동의어 치환 쿼리 포함.
+
+    /feedback Drawer '상세보기'에서 호출. 비회원 피드백도 포함하므로
+    user_id 교차 검증 없이 qa_log_id 단독으로 조회한다 (admin 전용).
+    """
+    row = (
+        await db.execute(select(QALog).where(QALog.id == qa_log_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_FEEDBACK_QA_LOG_NOT_FOUND",
+                "message": "질의 기록을 찾을 수 없습니다.",
+            },
+        )
+
+    raw_docs = row.retrieved_docs or []
+    docs: list[FeedbackRetrievedDocItem] = []
+    for entry in raw_docs:
+        if not isinstance(entry, dict):
+            continue
+        docs.append(
+            FeedbackRetrievedDocItem(
+                page_content=str(entry.get("page_content", "")),
+                metadata=entry.get("metadata") or {},
+            )
+        )
+
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.analytics.feedback.detail_viewed",
+        actor_user_id=actor.id,
+        qa_log_id=qa_log_id,
+    )
+
+    return FeedbackDetail(
+        qa_log_id=row.id,
+        question_text=row.question_text or "",
+        normalized_query=row.normalized_query,
+        retrieved_docs=docs,
+        answer_text=row.answer_text,
+        rule_matched=bool(row.rule_matched),
+        status=row.status,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+    )
 
 
 # =============================================================================

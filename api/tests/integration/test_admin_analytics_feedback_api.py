@@ -365,3 +365,131 @@ class TestFeedbackExport:
                     cookies={"denvia_admin_session": token},
                 )
         assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+class TestFeedbackDetailEndpoint:
+    """GET /admin/analytics/feedback/{qa_log_id} — Drawer 상세보기 + top-k."""
+
+    def _row(
+        self,
+        *,
+        qa_log_id: int = 1001,
+        retrieved_docs=None,
+        normalized_query: str | None = "임플란트 보철물 종류",
+        rule_matched: bool = False,
+        answer_text: str | None = "임플란트 보철물은 …",
+        status: str | None = "ok",
+    ):
+        from datetime import datetime, timezone, timedelta
+
+        row = MagicMock()
+        row.id = qa_log_id
+        row.question_text = "임플란트 보철물 선택 기준은?"
+        row.normalized_query = normalized_query
+        row.retrieved_docs = retrieved_docs
+        row.answer_text = answer_text
+        row.rule_matched = rule_matched
+        row.status = status
+        kst = timezone(timedelta(hours=9))
+        row.created_at = datetime(2026, 4, 15, 10, 23, tzinfo=kst)
+        return row
+
+    async def _call(self, *, qa_log_id: int, row):
+        token = _make_admin_jwt()
+        admin = _make_admin()
+        session = MagicMock()
+        result = MagicMock()
+        result.scalar_one_or_none = MagicMock(return_value=row)
+        session.execute = AsyncMock(return_value=result)
+
+        async def gen():
+            yield session
+
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
+            app.dependency_overrides[get_session] = gen
+            try:
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.get(
+                        f"/api/v1/admin/analytics/feedback/{qa_log_id}",
+                        cookies={"denvia_admin_session": token},
+                    )
+            finally:
+                app.dependency_overrides.clear()
+        return res
+
+    async def test_detail_returns_retrieved_docs_topk(self):
+        """top-k 검색 문서 + 동의어 치환 쿼리 응답."""
+        docs = [
+            {"page_content": "크라운은 단일 치아 보철물입니다.", "metadata": {"source": "doc-a.pdf", "page": 12}},
+            {"page_content": "브릿지는 결손 치아를 지지합니다.", "metadata": {"source": "doc-b.pdf"}},
+        ]
+        row = self._row(retrieved_docs=docs)
+        res = await self._call(qa_log_id=1001, row=row)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["qa_log_id"] == 1001
+        assert data["normalized_query"] == "임플란트 보철물 종류"
+        assert len(data["retrieved_docs"]) == 2
+        assert data["retrieved_docs"][0]["page_content"].startswith("크라운")
+        assert data["retrieved_docs"][0]["metadata"]["source"] == "doc-a.pdf"
+        assert data["rule_matched"] is False
+        assert res.headers.get("cache-control") == "no-store"
+
+    async def test_detail_404_when_missing(self):
+        res = await self._call(qa_log_id=99999, row=None)
+        assert res.status_code == 404
+        assert res.json()["detail"]["code"] == "ADMIN_FEEDBACK_QA_LOG_NOT_FOUND"
+
+    async def test_detail_rule_matched_empty_docs(self):
+        """rule_matched=True 경로는 retrieved_docs=[]로 응답."""
+        row = self._row(retrieved_docs=None, rule_matched=True, normalized_query=None)
+        res = await self._call(qa_log_id=1002, row=row)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["rule_matched"] is True
+        assert data["retrieved_docs"] == []
+
+    async def test_detail_skips_non_dict_doc_entries(self):
+        """JSONB 손상 케이스: dict가 아닌 항목은 무시."""
+        docs = [
+            {"page_content": "정상 문서", "metadata": {"source": "ok.pdf"}},
+            "이건 문자열인데 잘못 저장됨",
+            123,
+        ]
+        row = self._row(retrieved_docs=docs)
+        res = await self._call(qa_log_id=1003, row=row)
+        assert res.status_code == 200
+        assert len(res.json()["retrieved_docs"]) == 1
+
+    async def test_detail_requires_admin(self):
+        token = _make_jwt(role="user")
+        regular = _make_admin()
+        regular.role = "user"
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=regular)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.get(
+                    "/api/v1/admin/analytics/feedback/1001",
+                    cookies={"denvia_admin_session": token},
+                )
+        assert res.status_code == 401
+
+    async def test_detail_does_not_shadow_export_route(self):
+        """라우트 등록 순서: /feedback/export 가 /feedback/{qa_log_id} 보다 우선해야 함."""
+        token = _make_admin_jwt()
+        admin = _make_admin()
+        gen = _stub_session()
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
+            app.dependency_overrides[get_session] = gen
+            with patch(
+                "api.src.routers.admin.analytics.get_feedback_export_rows",
+                new=AsyncMock(return_value=([], False)),
+            ):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.get(
+                        "/api/v1/admin/analytics/feedback/export",
+                        cookies={"denvia_admin_session": token},
+                    )
+            app.dependency_overrides.clear()
+        assert res.status_code == 200
+        assert "spreadsheetml" in res.headers.get("content-type", "")
