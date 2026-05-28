@@ -8,8 +8,7 @@
  * - 토글: 즉시 PATCH /api/v1/admin/grade-permissions
  *
  * 접근 권한:
- * - 조회: master / operator
- * - 수정: master 만 (operator 가 토글 시 403)
+ * - 조회 / 수정: master / operator 둘 다 (2026-05-28 SSOT — 운영자가 본인 매트릭스도 직접 조정).
  */
 
 import { useMemo, useState } from "react";
@@ -43,8 +42,8 @@ interface Toast {
 }
 
 export default function AdminGradePermissionsPage() {
-  const admin = useAdminSessionStore((s) => s.admin);
-  const actorIsMaster = !!admin?.is_master;
+  // 2026-05-28 SSOT — master / operator 둘 다 토글 수정 가능. is_master 분기 제거.
+  useAdminSessionStore((s) => s.admin);
   const queryClient = useQueryClient();
 
   const [toast, setToast] = useState<Toast | null>(null);
@@ -113,10 +112,6 @@ export default function AdminGradePermissionsPage() {
   }
 
   function handleToggle(row: GradePermissionRow, nextAllowed: boolean) {
-    if (!actorIsMaster) {
-      showToast("권한 변경은 마스터만 가능합니다.", true);
-      return;
-    }
     const key = `${row.admin_grade}|${row.page_route}`;
     setPendingCells((prev) => new Set(prev).add(key));
     // 낙관적 업데이트
@@ -163,7 +158,6 @@ export default function AdminGradePermissionsPage() {
         <span className={styles.noticeDot} aria-hidden="true" />
         <span>
           토글을 끄면 해당 등급의 관리자는 그 페이지의 메뉴가 사이드바에서 보이지 않고, 직접 URL 로 접근해도 거절됩니다.
-          {!actorIsMaster ? " 현재 등급에서는 매트릭스를 조회만 할 수 있습니다." : ""}
         </span>
       </div>
 
@@ -218,7 +212,7 @@ export default function AdminGradePermissionsPage() {
                           <input
                             type="checkbox"
                             checked={allowed}
-                            disabled={!actorIsMaster || isPending}
+                            disabled={isPending}
                             onChange={(e) =>
                               row && handleToggle(row, e.target.checked)
                             }

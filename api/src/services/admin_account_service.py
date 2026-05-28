@@ -8,12 +8,11 @@
 - delete_admin        → DELETE /api/v1/admin/accounts/{id}
 - update_admin_grade  → PATCH  /api/v1/admin/accounts/{id}
 
-핵심 가드 (FR60·FR63 / Story 10.3 AC-3·AC-4):
+핵심 가드 (2026-05-28 SSOT 갱신 — master 는 개발자 전용이라 운영 가드에서 분리):
 1) 자기 자신 액션 금지         → 403 ADMIN_SELF_ACTION_FORBIDDEN
 2) master 행 변경 금지(누구든) → 403 ADMIN_MASTER_PROTECTED
-3) operator는 master/operator 행 변경 금지 → 403 ADMIN_FORBIDDEN_HIERARCHY
-4) operator는 'master'/'operator' 등급 부여 금지 → 422 ADMIN_GRADE_NOT_ALLOWED
-5) 'master' 등급은 누구도 신규 부여 불가     → 422 ADMIN_MASTER_UNIQUE_VIOLATION
+3) 'master' 등급은 누구도 신규 부여 불가 → 422 ADMIN_MASTER_UNIQUE_VIOLATION
+   (operator 끼리는 서로 등급 변경/차단/삭제 가능 — master 가 운영에 개입 안 함)
 
 알림톡 발송 없음 (2026-05-27 폐기) — 대상자에게는 운영자가 직접 통보.
 audit_logs INSERT 는 라우터의 request.state.audit_* 를 AuditMiddleware 가 응답 직후 처리.
@@ -105,29 +104,22 @@ def _guard_master_target(target: User) -> None:
 
 
 def _guard_operator_hierarchy(actor: User, target: User) -> None:
-    """operator 가 master/operator 를 건드리는 것 차단.
+    """master 행 보호는 _guard_master_target 가 담당. operator 끼리는 서로 관리 가능.
 
-    master 는 모든 등급(자기 자신 제외 + master 본인 행 보호는 _guard_master_target 가 담당) 처리 가능.
+    2026-05-28 SSOT 갱신 — master 는 개발자 전용 계정으로 운영 관여 안 함.
+    실제 운영 주체는 operator. operator 가 다른 operator 의 등급/차단/삭제를
+    수행할 수 있어야 휴가·이양·업무 분담이 가능 (master 가 안 끼게).
     """
-    actor_grade = getattr(actor, "admin_grade", None)
-    if actor_grade == "operator":
-        target_grade = getattr(target, "admin_grade", None)
-        if target_grade in ("master", "operator"):
-            raise HTTPException(
-                403,
-                detail={
-                    "code": "ADMIN_FORBIDDEN_HIERARCHY",
-                    "message": "자기 등급보다 높거나 같은 관리자는 관리할 수 없습니다.",
-                },
-            )
+    # 본 가드는 master 행 보호와 자기 자신 보호만 남기고, operator hierarchy 는 없음.
+    # (호출 측에서 _guard_self_action / _guard_master_target 가 별도로 처리)
+    return
 
 
 def _guard_grade_assignment(actor: User, target_grade: str) -> None:
-    """등급 변경/승인 시 actor 가 부여 가능한 등급인지 검증.
+    """등급 변경/승인 시 부여 가능한 등급인지 검증.
 
     - master 부여는 누구도 불가 (FR63 — partial UNIQUE 가 DB 차원에서도 막지만 메시지 친화적으로 먼저 거부).
-    - operator 부여는 master 만 가능.
-    - sub_operator 부여는 master/operator 모두 가능.
+    - operator / sub_operator / pending 부여는 master / operator 모두 가능 (2026-05-28 SSOT 갱신).
     """
     if target_grade == "master":
         raise HTTPException(
@@ -135,15 +127,6 @@ def _guard_grade_assignment(actor: User, target_grade: str) -> None:
             detail={
                 "code": "ADMIN_MASTER_UNIQUE_VIOLATION",
                 "message": "마스터 등급은 새로 부여할 수 없습니다.",
-            },
-        )
-    actor_grade = getattr(actor, "admin_grade", None)
-    if actor_grade == "operator" and target_grade == "operator":
-        raise HTTPException(
-            422,
-            detail={
-                "code": "ADMIN_GRADE_NOT_ALLOWED",
-                "message": "이 등급은 부여 권한이 없습니다.",
             },
         )
     if target_grade not in ("operator", "sub_operator", "pending"):

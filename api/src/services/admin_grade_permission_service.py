@@ -4,9 +4,8 @@
 - 행: ADMIN_PAGE_ROUTES (9개 1차 라우트)
 - 열: configurable 등급 = ('operator', 'sub_operator')  — master 는 항상 전체 ON 으로 매트릭스 제외
 
-권한 가드 (라우터 측 require_admin_grade('master') 와 중복 방어):
-- 조회: master / operator 가능 (operator 는 자기 등급이 무엇을 가졌는지 확인 가능)
-- 수정: master 만 가능
+권한 가드 (라우터 측 require_admin_grade('master','operator') 와 중복 방어):
+- 조회 / 수정: master / operator 둘 다 가능 (2026-05-28 SSOT — 운영자가 본인 등급 매트릭스도 직접 조정).
 - master 등급 row 자체는 본 테이블에 존재하지 않음 — INSERT/UPDATE 시 422.
 
 업데이트는 단일 셀(UPSERT) 단위. 일괄 변경이 필요하면 프론트가 여러 번 호출.

@@ -2,7 +2,7 @@
 
 검증 항목:
 - GET: master/operator 모두 200, sub_operator 403
-- PATCH: master 만 200, operator 도 403
+- PATCH: master/operator 모두 200 (2026-05-28 SSOT — operator 도 매트릭스 수정 가능), sub_operator 403
 - PATCH 알 수 없는 page_route → 422 ADMIN_PAGE_ROUTE_UNKNOWN
 - PATCH master 등급 부여 시도 → 422 ADMIN_GRADE_NOT_CONFIGURABLE
 """
@@ -153,7 +153,8 @@ async def test_PATCH_master_200(client):
 
 
 @pytest.mark.asyncio
-async def test_PATCH_operator_403(client):
+async def test_PATCH_operator_200(client):
+    """operator 도 매트릭스 토글 수정 가능 (2026-05-28 SSOT)."""
     ac, _t = client
     token = _make_admin_jwt(2)
     admin = _make_admin(2, "operator")
@@ -169,7 +170,11 @@ async def test_PATCH_operator_403(client):
                 },
             )
     app.dependency_overrides.clear()
-    assert res.status_code == 403
+    assert res.status_code == 200
+    body = res.json()
+    assert body["admin_grade"] == "sub_operator"
+    assert body["page_route"] == "/admin/users"
+    assert body["allowed"] is True
 
 
 @pytest.mark.asyncio

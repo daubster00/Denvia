@@ -80,17 +80,15 @@ function _gradeChipClass(grade: AdminGrade): string {
 /**
  * actor 가 target 에 대해 변경 액션을 수행할 수 있는지 판정.
  * 백엔드 가드(_guard_*) 와 동일한 규칙 — UI 사전 차단.
+ *
+ * 2026-05-28 SSOT 갱신: master 는 개발자 전용이라 목록에서 이미 제외(list_admins
+ * 가 `User.admin_grade != 'master'` 필터). operator 끼리는 서로 관리 가능.
+ * 남는 규칙은 두 개: 자기 자신 금지 + master 행 보호(미노출이지만 방어선).
  */
-function canActOn(
-  actorIsMaster: boolean,
-  actorIsOperator: boolean,
-  actorId: number,
-  target: AdminAccountItem,
-): boolean {
+function canActOn(actorId: number, target: AdminAccountItem): boolean {
   if (target.id === actorId) return false;
   if (target.admin_grade === "master") return false;
-  if (actorIsOperator && target.admin_grade === "operator") return false;
-  return actorIsMaster || actorIsOperator;
+  return true;
 }
 
 type ModalState =
@@ -113,11 +111,9 @@ export default function AdminAccountsPage() {
   const [toast, setToast] = useState<Toast | null>(null);
 
   const actorId = admin?.user_id ?? -1;
-  const actorIsMaster = !!admin?.is_master;
-  // is_master=false 인 활성 관리자는 일단 operator 로 취급.
-  // sub_operator/pending 은 require_admin_grade('master','operator') 로 페이지 자체 접근 불가이므로
-  // 이 페이지가 보인다는 사실 자체가 master 또는 operator 임을 의미한다.
-  const actorIsOperator = !actorIsMaster;
+  // 2026-05-28 SSOT — master/operator 권한 동일(수정요청 게시판 상태 변경 제외).
+  // is_master 분기 제거 — 페이지 자체 접근이 require_admin_grade('master','operator')
+  // 라 여기 도달한 이상 master 또는 operator 둘 중 하나.
 
   const queryClient = useQueryClient();
 
@@ -259,7 +255,7 @@ export default function AdminAccountsPage() {
             </thead>
             <tbody>
               {items.map((row) => {
-                const canAct = canActOn(actorIsMaster, actorIsOperator, actorId, row);
+                const canAct = canActOn(actorId, row);
                 const isPending = row.admin_grade === "pending";
                 const isBlocked =
                   !!row.admin_blocked_until &&
@@ -356,7 +352,6 @@ export default function AdminAccountsPage() {
       {modal.kind === "approve" ? (
         <ApproveModal
           target={modal.target}
-          actorIsMaster={actorIsMaster}
           onClose={closeModal}
           onSubmit={(grade) =>
             approveMutation.mutate({ id: modal.target.id, grade })
@@ -403,7 +398,6 @@ export default function AdminAccountsPage() {
       {modal.kind === "grade" ? (
         <GradeChangeModal
           target={modal.target}
-          actorIsMaster={actorIsMaster}
           onClose={closeModal}
           onSubmit={(grade) => gradeMutation.mutate({ id: modal.target.id, grade })}
           pending={gradeMutation.isPending}
@@ -426,13 +420,11 @@ export default function AdminAccountsPage() {
 
 function ApproveModal({
   target,
-  actorIsMaster,
   onClose,
   onSubmit,
   pending,
 }: {
   target: AdminAccountItem;
-  actorIsMaster: boolean;
   onClose: () => void;
   onSubmit: (grade: "sub_operator" | "operator") => void;
   pending: boolean;
@@ -460,10 +452,9 @@ function ApproveModal({
               type="radio"
               name="approve-grade"
               checked={grade === "operator"}
-              disabled={!actorIsMaster}
               onChange={() => setGrade("operator")}
             />
-            <span>운영 관리자{!actorIsMaster ? " (마스터 전용)" : ""}</span>
+            <span>운영 관리자</span>
           </label>
         </div>
       </div>
@@ -666,13 +657,11 @@ function DeleteModal({
 
 function GradeChangeModal({
   target,
-  actorIsMaster,
   onClose,
   onSubmit,
   pending,
 }: {
   target: AdminAccountItem;
-  actorIsMaster: boolean;
   onClose: () => void;
   onSubmit: (grade: AdminGrade) => void;
   pending: boolean;
@@ -702,10 +691,9 @@ function GradeChangeModal({
               type="radio"
               name="grade-new"
               checked={grade === "operator"}
-              disabled={!actorIsMaster}
               onChange={() => setGrade("operator")}
             />
-            <span>운영 관리자{!actorIsMaster ? " (마스터 전용)" : ""}</span>
+            <span>운영 관리자</span>
           </label>
         </div>
       </div>

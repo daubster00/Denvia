@@ -58,7 +58,7 @@ async def get_grade_permissions(
 async def patch_grade_permission(
     request: Request,
     body: UpdateRequest,
-    admin: User = Depends(require_admin_grade("master")),
+    admin: User = Depends(require_admin_grade("master", "operator")),
     db: AsyncSession = Depends(get_session),
 ) -> GradePermissionRow:
     result = await admin_grade_permission_service.upsert_permission(
