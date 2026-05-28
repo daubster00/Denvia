@@ -7,7 +7,8 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type ConfigurableGrade = "operator" | "sub_operator";
+// 0057 이후 동적 코드(VARCHAR) — 내장 operator/sub_operator + 커스텀(g_<hex>).
+export type ConfigurableGrade = string;
 
 export interface GradePermissionRow {
   admin_grade: ConfigurableGrade;
@@ -20,9 +21,16 @@ export interface PageMeta {
   label: string;
 }
 
+export interface GradeMeta {
+  code: string;
+  label: string;
+  is_builtin: boolean;
+}
+
 export interface GradePermissionMatrixResponse {
   pages: PageMeta[];
   grades: ConfigurableGrade[];
+  grade_meta: GradeMeta[];
   rows: GradePermissionRow[];
 }
 
@@ -91,7 +99,7 @@ export async function fetchGradePermissionMatrix(): Promise<GradePermissionMatri
 }
 
 export async function patchGradePermission(payload: {
-  admin_grade: ConfigurableGrade;
+  admin_grade: string;
   page_route: string;
   allowed: boolean;
 }): Promise<GradePermissionRow> {

@@ -18,7 +18,6 @@ import {
   GradePermissionsApiError,
   fetchGradePermissionMatrix,
   patchGradePermission,
-  type ConfigurableGrade,
   type GradePermissionMatrixResponse,
   type GradePermissionRow,
 } from "@/features/admin-grade-permissions/api";
@@ -26,12 +25,8 @@ import styles from "./page.module.css";
 
 const QUERY_KEY = ["admin-grade-permissions"] as const;
 
-const GRADE_LABELS: Record<ConfigurableGrade, string> = {
-  operator: "운영 관리자",
-  sub_operator: "부운영자",
-};
-
-const GRADE_CHIP_CLASS: Record<ConfigurableGrade, string> = {
+// 내장 등급의 칩 색상. 커스텀 등급은 fallback 클래스(gradeCustom)로.
+const _BUILTIN_GRADE_CHIP_CLASS: Record<string, string> = {
   operator: styles.gradeOperator,
   sub_operator: styles.gradeSub,
 };
@@ -58,7 +53,7 @@ export default function AdminGradePermissionsPage() {
 
   const patchMutation = useMutation({
     mutationFn: (payload: {
-      admin_grade: ConfigurableGrade;
+      admin_grade: string;
       page_route: string;
       allowed: boolean;
     }) => patchGradePermission(payload),
@@ -76,8 +71,11 @@ export default function AdminGradePermissionsPage() {
           ),
         };
       });
+      const label =
+        data?.grade_meta.find((g) => g.code === updated.admin_grade)?.label ??
+        updated.admin_grade;
       showToast(
-        `${GRADE_LABELS[updated.admin_grade]} · ${updated.page_route} → ${updated.allowed ? "허용" : "차단"}`,
+        `${label} · ${updated.page_route} → ${updated.allowed ? "허용" : "차단"}`,
       );
     },
     onError: (e, vars) => {
@@ -143,7 +141,8 @@ export default function AdminGradePermissionsPage() {
   }, [data]);
 
   const pages = data?.pages ?? [];
-  const grades: ConfigurableGrade[] = data?.grades ?? ["operator", "sub_operator"];
+  const gradeMeta = data?.grade_meta ?? [];
+  const grades: string[] = data?.grades ?? [];
 
   return (
     <section className={styles.page}>
@@ -183,13 +182,17 @@ export default function AdminGradePermissionsPage() {
             <thead>
               <tr>
                 <th scope="col">페이지</th>
-                {grades.map((g) => (
-                  <th key={g} scope="col" className={styles.toggleCell}>
-                    <span className={`${styles.gradeChip} ${GRADE_CHIP_CLASS[g]}`}>
-                      {GRADE_LABELS[g]}
-                    </span>
-                  </th>
-                ))}
+                {gradeMeta.map((g) => {
+                  const chipClass =
+                    _BUILTIN_GRADE_CHIP_CLASS[g.code] ?? styles.gradeCustom;
+                  return (
+                    <th key={g.code} scope="col" className={styles.toggleCell}>
+                      <span className={`${styles.gradeChip} ${chipClass}`}>
+                        {g.label}
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -206,6 +209,8 @@ export default function AdminGradePermissionsPage() {
                     const allowed = !!row?.allowed;
                     const key = `${g}|${p.page_route}`;
                     const isPending = pendingCells.has(key);
+                    const gLabel =
+                      gradeMeta.find((m) => m.code === g)?.label ?? g;
                     return (
                       <td key={g} className={styles.toggleCell}>
                         <label className={styles.switch}>
@@ -216,7 +221,7 @@ export default function AdminGradePermissionsPage() {
                             onChange={(e) =>
                               row && handleToggle(row, e.target.checked)
                             }
-                            aria-label={`${GRADE_LABELS[g]} · ${p.label} 접근 ${allowed ? "허용" : "차단"}`}
+                            aria-label={`${gLabel} · ${p.label} 접근 ${allowed ? "허용" : "차단"}`}
                             data-testid={`toggle-${g}-${p.page_route}`}
                           />
                           <span className={styles.slider} aria-hidden="true" />

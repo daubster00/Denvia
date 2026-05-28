@@ -56,6 +56,9 @@ AUDIT_ADMIN_ACCOUNT_GRADE_UPDATED = "admin.account.grade_updated"     # 등급 �
 AUDIT_ADMIN_MASTER_PROTECTION_TRIGGERED = "admin.master.protection_triggered"  # master 행 변경 시도 거부(이상행동 감사용)
 # Story 10.5 — 등급 × 페이지 권한 매트릭스 편집
 AUDIT_ADMIN_GRADE_PERMISSION_UPDATED = "admin.grade_permission.updated"  # /admin/admins/permissions 셀 토글
+# 관리자 등급 동적 추가/삭제 (0057)
+AUDIT_ADMIN_GRADE_CREATED = "admin.grade.created"  # /admin/admins/grades 신규 등급 추가
+AUDIT_ADMIN_GRADE_DELETED = "admin.grade.deleted"  # /admin/admins/grades 커스텀 등급 삭제
 
 
 def audit_action(action: str):

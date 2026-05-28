@@ -77,15 +77,16 @@ const MENU_ITEMS: MenuItem[] = [
   },
   { icon: IconBubble as IconComponent, label: "CS", href: "/admin/cs" },
   { icon: IconWrite as IconComponent, label: "수정요청", href: "/admin/board" },
-  // Story 10.3 — master/operator 만 보이는 항목. sub_operator 가 클릭해도 백엔드 403.
-  // Story 10.4 — children: 관리자 목록 + 활동 로그.
-  // Story 10.5 — "페이지 권한" children 추가 (조회 master/operator, 수정 master 전용).
+  // master/operator 만 보이는 항목. sub_operator 가 클릭해도 백엔드 403.
+  // children: 관리자 목록 / 등급 관리 / 페이지 권한 / 활동 로그.
+  // 권한 매트릭스 수정도 master/operator 동일(2026-05-28 SSOT 갱신).
   {
     icon: IconPersons as IconComponent,
     label: "관리자 관리",
     href: "/admin/admins",
     children: [
       { label: "관리자 목록", href: "/admin/admins" },
+      { label: "등급 관리", href: "/admin/admins/grades" },
       { label: "페이지 권한", href: "/admin/admins/permissions" },
       { label: "활동 로그", href: "/admin/admins/logs" },
     ],

@@ -18,6 +18,7 @@ from api.src.middleware.audit_actions import audit_action
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.grade_permission import (
+    GradeMeta,
     GradePermissionRow,
     MatrixResponse,
     PageMeta,
@@ -49,6 +50,7 @@ async def get_grade_permissions(
     return MatrixResponse(
         pages=[PageMeta(**p) for p in matrix["pages"]],
         grades=matrix["grades"],
+        grade_meta=[GradeMeta(**g) for g in matrix["grade_meta"]],
         rows=[GradePermissionRow(**r) for r in matrix["rows"]],
     )
 

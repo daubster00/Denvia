@@ -28,26 +28,41 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.src.models.admin_grade import AdminGrade
 from api.src.models.user import User
 
 logger = structlog.get_logger(__name__)
 
 
-# 등급 라벨 — 응답 + 알림톡 본문에 노출.
+# 내장 등급 라벨 — 응답 fallback + 알림톡 본문 등에 노출.
+# 커스텀 등급 라벨은 admin_grades 테이블에서 동적으로 조회된다(_load_grade_labels).
 GRADE_LABELS: dict[str, str] = {
     "master": "마스터",
     "operator": "운영 관리자",
     "sub_operator": "부운영자",
-    "pending": "승인대기",
+    "pending": "승인 대기",
 }
 
-# 정렬 우선순위 — master → operator → sub_operator → pending.
+# 정렬 우선순위 — master → operator → sub_operator → 커스텀 → pending.
 _GRADE_SORT_RANK: dict[str, int] = {
     "master": 1,
     "operator": 2,
     "sub_operator": 3,
-    "pending": 4,
+    "pending": 9,
 }
+
+
+async def _load_grade_labels(db: AsyncSession) -> dict[str, str]:
+    """admin_grades 의 (code → label) 매핑. 내장 라벨이 우선이지만 DB 라벨이 최신."""
+    rows = (await db.execute(select(AdminGrade.code, AdminGrade.label))).all()
+    return {code: label for code, label in rows}
+
+
+async def _grade_exists(db: AsyncSession, code: str) -> bool:
+    res = (
+        await db.execute(select(AdminGrade.code).where(AdminGrade.code == code))
+    ).scalar_one_or_none()
+    return res is not None
 
 ListFilter = Literal["all", "pending", "active", "blocked"]
 
@@ -115,11 +130,16 @@ def _guard_operator_hierarchy(actor: User, target: User) -> None:
     return
 
 
-def _guard_grade_assignment(actor: User, target_grade: str) -> None:
+async def _guard_grade_assignment(
+    db: AsyncSession, actor: User, target_grade: str
+) -> None:
     """등급 변경/승인 시 부여 가능한 등급인지 검증.
 
-    - master 부여는 누구도 불가 (FR63 — partial UNIQUE 가 DB 차원에서도 막지만 메시지 친화적으로 먼저 거부).
-    - operator / sub_operator / pending 부여는 master / operator 모두 가능 (2026-05-28 SSOT 갱신).
+    - master 부여는 누구도 불가 (FR63 — DB partial UNIQUE 도 같이 막음).
+    - operator 부여도 누구도 불가 — 운영 관리자는 시스템 단일 자리(2026-05-28 정책).
+      초기 시드/CLI 로만 지정. UI·API 어디서도 운영자로 승격 불가.
+    - sub_operator / pending / 커스텀 등급 부여는 master / operator 모두 가능.
+      커스텀 등급은 admin_grades 테이블에 존재해야 한다.
     """
     if target_grade == "master":
         raise HTTPException(
@@ -129,13 +149,20 @@ def _guard_grade_assignment(actor: User, target_grade: str) -> None:
                 "message": "마스터 등급은 새로 부여할 수 없습니다.",
             },
         )
-    if target_grade not in ("operator", "sub_operator", "pending"):
-        # pending 으로 회귀시키는 변경은 운영상 필요할 수 있어 허용.
+    if target_grade == "operator":
         raise HTTPException(
             422,
             detail={
-                "code": "ADMIN_GRADE_NOT_ALLOWED",
-                "message": "이 등급은 부여 권한이 없습니다.",
+                "code": "ADMIN_OPERATOR_SINGLETON",
+                "message": "운영 관리자는 한 사람만 가능합니다.",
+            },
+        )
+    if not await _grade_exists(db, target_grade):
+        raise HTTPException(
+            422,
+            detail={
+                "code": "ADMIN_GRADE_UNKNOWN",
+                "message": "알 수 없는 등급입니다.",
             },
         )
 
@@ -160,13 +187,15 @@ async def _get_target_or_404(db: AsyncSession, user_id: int) -> User:
 # ── 조회 ──────────────────────────────────────────────────────────────────────
 
 
-def _serialize(row: User) -> dict[str, Any]:
+def _serialize(row: User, labels: dict[str, str] | None = None) -> dict[str, Any]:
     grade = getattr(row, "admin_grade", None) or "pending"
+    labels = labels or {}
+    label = labels.get(grade) or GRADE_LABELS.get(grade, grade)
     return {
         "id": row.id,
         "email": row.email,
         "admin_grade": grade,
-        "grade_label": GRADE_LABELS.get(grade, grade),
+        "grade_label": label,
         "phone_masked": _mask_phone(row.phone),
         "admin_blocked_until": row.admin_blocked_until,
         "admin_block_reason": row.admin_block_reason,
@@ -214,7 +243,8 @@ async def list_admins(
         return (rank, -(u.created_at.timestamp() if u.created_at else 0))
 
     rows_sorted = sorted(rows, key=_rank)
-    return [_serialize(r) for r in rows_sorted]
+    labels = await _load_grade_labels(db)
+    return [_serialize(r, labels) for r in rows_sorted]
 
 
 # ── 액션 함수 ────────────────────────────────────────────────────────────────
@@ -238,7 +268,7 @@ async def approve_pending(
     _is_active_admin(actor)
     target = await _get_target_or_404(db, target_user_id)
     _guard_self_action(actor, target)
-    _guard_grade_assignment(actor, target_grade)
+    await _guard_grade_assignment(db, actor, target_grade)
 
     if getattr(target, "admin_grade", None) != "pending":
         raise HTTPException(
@@ -262,7 +292,7 @@ async def approve_pending(
     )
     return {
         "diff": {"before": {"admin_grade": before_grade}, "after": {"admin_grade": target_grade}},
-        "row": _serialize(target),
+        "row": _serialize(target, await _load_grade_labels(db)),
     }
 
 
@@ -320,7 +350,7 @@ async def block_admin(
                 "admin_block_reason": reason_clean,
             },
         },
-        "row": _serialize(target),
+        "row": _serialize(target, await _load_grade_labels(db)),
     }
 
 
@@ -361,7 +391,7 @@ async def unblock_admin(
     )
     return {
         "diff": {"before": before, "after": {"admin_blocked_until": None, "admin_block_reason": None}},
-        "row": _serialize(target),
+        "row": _serialize(target, await _load_grade_labels(db)),
     }
 
 
@@ -396,7 +426,7 @@ async def delete_admin(
     )
     return {
         "diff": {"before": before, "after": {"withdrawn_at": now.isoformat()}},
-        "row": _serialize(target),
+        "row": _serialize(target, await _load_grade_labels(db)),
     }
 
 
@@ -413,7 +443,7 @@ async def update_admin_grade(
     _guard_self_action(actor, target)
     _guard_master_target(target)
     _guard_operator_hierarchy(actor, target)
-    _guard_grade_assignment(actor, new_grade)
+    await _guard_grade_assignment(db, actor, new_grade)
 
     before_grade = target.admin_grade
     if before_grade == new_grade:
@@ -435,7 +465,7 @@ async def update_admin_grade(
     )
     return {
         "diff": {"before": {"admin_grade": before_grade}, "after": {"admin_grade": new_grade}},
-        "row": _serialize(target),
+        "row": _serialize(target, await _load_grade_labels(db)),
     }
 
 

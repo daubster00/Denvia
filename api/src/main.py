@@ -22,6 +22,7 @@ from api.src.routers import events as client_events
 from api.src.routers.admin import accounts as admin_accounts
 from api.src.routers.admin import auth as admin_auth
 from api.src.routers.admin import grade_permissions as admin_grade_permissions
+from api.src.routers.admin import grades as admin_grades
 from api.src.routers.admin import events as admin_events
 from api.src.routers.admin import audit_logs as admin_audit_logs
 from api.src.routers.admin import prompts as admin_prompts
@@ -192,6 +193,7 @@ app.include_router(client_events.router)
 app.include_router(admin_auth.router, prefix="/api/v1")
 app.include_router(admin_accounts.router, prefix="/api/v1")
 app.include_router(admin_grade_permissions.router, prefix="/api/v1")
+app.include_router(admin_grades.router, prefix="/api/v1")
 app.include_router(admin_events.router, prefix="/api/v1")
 app.include_router(admin_audit_logs.router, prefix="/api/v1")
 app.include_router(admin_rag.router, prefix="/api/v1")

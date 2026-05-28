@@ -68,6 +68,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "admin.account.grade_updated": "관리자 등급 변경",
   "admin.master.protection_triggered": "마스터 계정 변경 차단 발동",
   "admin.grade_permission.updated": "관리자 권한 매트릭스 변경",
+  "admin.grade.created": "관리자 등급 추가",
+  "admin.grade.deleted": "관리자 등급 삭제",
   "admin.auth.pending_login_attempt": "승인대기 관리자 로그인 시도",
 };
 

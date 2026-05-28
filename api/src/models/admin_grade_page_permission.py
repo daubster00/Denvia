@@ -15,14 +15,12 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
-    CheckConstraint,
     DateTime,
     ForeignKey,
     String,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -36,24 +34,11 @@ class AdminGradePagePermission(Base):
             "page_route",
             name="uq_admin_grade_page_permissions",
         ),
-        CheckConstraint(
-            "admin_grade IN ('operator','sub_operator')",
-            name="ck_admin_grade_page_permissions_grade",
-        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    admin_grade: Mapped[str] = mapped_column(
-        PGEnum(
-            "master",
-            "operator",
-            "sub_operator",
-            "pending",
-            name="admin_grade_enum",
-            create_type=False,
-        ),
-        nullable=False,
-    )
+    # 0057 이후 admin_grades.code 와 FK. 'master'/'pending' 행은 본 테이블에 존재하지 않음(관행).
+    admin_grade: Mapped[str] = mapped_column(String(32), nullable=False)
     page_route: Mapped[str] = mapped_column(String(64), nullable=False)
     allowed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"

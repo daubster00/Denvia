@@ -47,7 +47,6 @@ AUDIT_ADMIN_ACCOUNT_UNBLOCKED = "admin.account.unblocked"
 AUDIT_ADMIN_ACCOUNT_DELETED = "admin.account.deleted"
 AUDIT_ADMIN_ACCOUNT_GRADE_UPDATED = "admin.account.grade_updated"
 
-GradeName = Literal["master", "operator", "sub_operator", "pending"]
 ListFilterName = Literal["all", "pending", "active", "blocked"]
 
 
@@ -59,7 +58,8 @@ class AdminAccountListItem(BaseModel):
 
     id: int
     email: str
-    admin_grade: GradeName
+    # 0057 이후 admin_grade 는 동적 코드(VARCHAR). 내장 + 커스텀 모두 허용.
+    admin_grade: str
     grade_label: str
     phone_masked: str | None
     admin_blocked_until: datetime | None
@@ -75,7 +75,8 @@ class AdminAccountListResponse(BaseModel):
 
 
 class ApproveRequest(BaseModel):
-    target_grade: Literal["sub_operator", "operator"]
+    # 내장 + 커스텀 등급 코드. 'master'/'pending' 은 서비스 가드에서 거부.
+    target_grade: str = Field(min_length=1, max_length=32)
 
 
 class BlockRequest(BaseModel):
@@ -89,7 +90,7 @@ class BlockRequest(BaseModel):
 
 
 class PatchRequest(BaseModel):
-    admin_grade: GradeName | None = None
+    admin_grade: str | None = Field(default=None, max_length=32)
 
 
 # ── 엔드포인트 ────────────────────────────────────────────────────────────────

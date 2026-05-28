@@ -2,11 +2,12 @@
 
 매트릭스 정의:
 - 행: ADMIN_PAGE_ROUTES (9개 1차 라우트)
-- 열: configurable 등급 = ('operator', 'sub_operator')  — master 는 항상 전체 ON 으로 매트릭스 제외
+- 열: configurable 등급 = master/pending 을 제외한 모든 admin_grades 행
+       (내장: operator/sub_operator + 0057 이후 커스텀 등급)
+- master 는 항상 전체 ON, pending 은 매트릭스 외부에서 401 차단이라 모두 매트릭스 미포함.
 
 권한 가드 (라우터 측 require_admin_grade('master','operator') 와 중복 방어):
 - 조회 / 수정: master / operator 둘 다 가능 (2026-05-28 SSOT — 운영자가 본인 등급 매트릭스도 직접 조정).
-- master 등급 row 자체는 본 테이블에 존재하지 않음 — INSERT/UPDATE 시 422.
 
 업데이트는 단일 셀(UPSERT) 단위. 일괄 변경이 필요하면 프론트가 여러 번 호출.
 """
@@ -14,7 +15,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 import structlog
 from fastapi import HTTPException
@@ -22,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.src.models.admin_grade import AdminGrade
 from api.src.models.admin_grade_page_permission import AdminGradePagePermission
 from api.src.models.user import User
 
@@ -46,10 +48,8 @@ ADMIN_PAGE_ROUTES: list[tuple[str, str]] = [
 
 ADMIN_PAGE_ROUTE_SET: set[str] = {r for r, _ in ADMIN_PAGE_ROUTES}
 
-CONFIGURABLE_GRADES: list[str] = ["operator", "sub_operator"]
-
-
-GradeConfigurable = Literal["operator", "sub_operator"]
+# 매트릭스에서 항상 제외되는 등급 — master 는 전체 ON, pending 은 차단.
+_GRADES_NOT_CONFIGURABLE: set[str] = {"master", "pending"}
 
 
 def _now_utc() -> datetime:
@@ -67,9 +67,24 @@ def _validate_route(page_route: str) -> None:
         )
 
 
-def _validate_grade(admin_grade: str) -> None:
-    if admin_grade not in CONFIGURABLE_GRADES:
-        # master 는 본 테이블의 대상이 아니다(항상 전체 접근).
+async def _fetch_configurable_grades(db: AsyncSession) -> list[dict[str, Any]]:
+    """매트릭스 노출 등급(master/pending 제외) — admin_grades 메타에서 동적 조회."""
+    rows = (await db.execute(select(AdminGrade))).scalars().all()
+
+    def _rank(r: AdminGrade) -> tuple[int, datetime]:
+        # operator → sub_operator → 커스텀(생성순)
+        order = {"operator": 1, "sub_operator": 2}
+        return (order.get(r.code, 3), r.created_at or _now_utc())
+
+    return [
+        {"code": r.code, "label": r.label, "is_builtin": bool(r.is_builtin)}
+        for r in sorted(rows, key=_rank)
+        if r.code not in _GRADES_NOT_CONFIGURABLE
+    ]
+
+
+async def _validate_grade_configurable(db: AsyncSession, admin_grade: str) -> None:
+    if admin_grade in _GRADES_NOT_CONFIGURABLE:
         raise HTTPException(
             422,
             detail={
@@ -77,10 +92,22 @@ def _validate_grade(admin_grade: str) -> None:
                 "message": "이 등급은 권한 설정 대상이 아닙니다.",
             },
         )
+    exists = (
+        await db.execute(select(AdminGrade.code).where(AdminGrade.code == admin_grade))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "ADMIN_GRADE_UNKNOWN",
+                "message": "알 수 없는 등급입니다.",
+            },
+        )
 
 
 async def get_matrix(db: AsyncSession) -> dict[str, Any]:
-    """현재 매트릭스 전체를 반환. 누락된 셀은 기본값(operator=true, sub_operator=false)."""
+    """현재 매트릭스 전체를 반환. 누락 셀은 기본값(operator=true, 그 외=false)."""
+    configurable = await _fetch_configurable_grades(db)
     stmt = select(AdminGradePagePermission)
     rows = (await db.execute(stmt)).scalars().all()
     by_key: dict[tuple[str, str], bool] = {
@@ -89,14 +116,15 @@ async def get_matrix(db: AsyncSession) -> dict[str, Any]:
 
     result_rows: list[dict[str, Any]] = []
     for route, _label in ADMIN_PAGE_ROUTES:
-        for grade in CONFIGURABLE_GRADES:
+        for grade_meta in configurable:
+            code = grade_meta["code"]
             allowed = by_key.get(
-                (grade, route),
-                grade == "operator",  # operator default ON, sub_operator default OFF
+                (code, route),
+                code == "operator",  # operator default ON, 그 외 default OFF
             )
             result_rows.append(
                 {
-                    "admin_grade": grade,
+                    "admin_grade": code,
                     "page_route": route,
                     "allowed": allowed,
                 }
@@ -104,7 +132,8 @@ async def get_matrix(db: AsyncSession) -> dict[str, Any]:
 
     return {
         "pages": [{"page_route": r, "label": label} for r, label in ADMIN_PAGE_ROUTES],
-        "grades": list(CONFIGURABLE_GRADES),
+        "grades": [g["code"] for g in configurable],
+        "grade_meta": configurable,
         "rows": result_rows,
     }
 
@@ -120,10 +149,10 @@ async def upsert_permission(
     """단일 (등급, 페이지) 셀 UPSERT.
 
     Raises:
-        422 ADMIN_PAGE_ROUTE_UNKNOWN / ADMIN_GRADE_NOT_CONFIGURABLE
+        422 ADMIN_PAGE_ROUTE_UNKNOWN / ADMIN_GRADE_NOT_CONFIGURABLE / ADMIN_GRADE_UNKNOWN
     """
     _validate_route(page_route)
-    _validate_grade(admin_grade)
+    await _validate_grade_configurable(db, admin_grade)
 
     # before 값 — 없으면 default
     existing = (
@@ -190,13 +219,13 @@ async def get_allowed_pages_for_admin(
 
     프론트 사이드바·라우트 가드용 — /admin/auth/me 응답에 동봉된다.
     - master / NULL(레거시) → 매트릭스 전체 ON
-    - operator             → 누락 셀 True(default)
-    - sub_operator         → 누락 셀 False(default)
-    - pending 등 그 외      → 빈 리스트
+    - pending              → 빈 리스트 (등급 가드에서 401)
+    - operator             → 매트릭스 조회, 누락 셀 True(default)
+    - sub_operator/커스텀  → 매트릭스 조회, 누락 셀 False(default)
     """
     if admin_grade is None or admin_grade == "master":
         return [route for route, _ in ADMIN_PAGE_ROUTES]
-    if admin_grade not in CONFIGURABLE_GRADES:
+    if admin_grade in _GRADES_NOT_CONFIGURABLE:
         return []
 
     rows = (
@@ -222,14 +251,15 @@ async def is_page_allowed(
 ) -> bool:
     """deps.auth.require_admin_page 가 호출하는 단건 조회.
 
-    - master           → True (본 함수는 호출되지 않지만 방어)
-    - operator         → admin_grade_page_permissions 조회. 누락 셀은 True(default).
-    - sub_operator     → 조회. 누락 셀은 False(default).
-    - 그 외(pending 등) → False
+    - master                  → True (본 함수는 호출되지 않지만 방어)
+    - pending                 → False
+    - operator                → 매트릭스 조회. 누락 셀 True(default).
+    - sub_operator/커스텀     → 매트릭스 조회. 누락 셀 False(default).
+    - 매트릭스 외 등급(미상)  → False
     """
     if admin_grade == "master":
         return True
-    if admin_grade not in CONFIGURABLE_GRADES:
+    if admin_grade in _GRADES_NOT_CONFIGURABLE:
         return False
     if page_route not in ADMIN_PAGE_ROUTE_SET:
         # 매트릭스 대상이 아닌 경로는 별도 grade 가드(require_admin_grade)에 위임 — 통과.
@@ -250,8 +280,6 @@ async def is_page_allowed(
 __all__ = [
     "ADMIN_PAGE_ROUTES",
     "ADMIN_PAGE_ROUTE_SET",
-    "CONFIGURABLE_GRADES",
-    "GradeConfigurable",
     "get_allowed_pages_for_admin",
     "get_matrix",
     "is_page_allowed",

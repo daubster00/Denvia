@@ -27,6 +27,7 @@ from api.src.models.inquiry_reply import InquiryReply  # noqa: F401
 from api.src.models.inquiry_attachment import InquiryAttachment  # noqa: F401
 from api.src.models.admin_board_post import AdminBoardPost  # noqa: F401
 from api.src.models.admin_board_comment import AdminBoardComment  # noqa: F401
+from api.src.models.admin_grade import AdminGrade  # noqa: F401
 from api.src.models.admin_grade_page_permission import AdminGradePagePermission  # noqa: F401
 from api.src.models.login_event import LoginEvent  # noqa: F401
 from api.src.models.user_watch_flag import UserWatchFlag  # noqa: F401

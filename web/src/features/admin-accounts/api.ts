@@ -9,7 +9,11 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type AdminGrade = "master" | "operator" | "sub_operator" | "pending";
+// 0057 이후 admin_grade 는 동적 코드(VARCHAR).
+// 내장 4종: 'master' | 'operator' | 'sub_operator' | 'pending'
+// 커스텀 등급: 'g_<hex8>' (admin_grades 테이블에서 운영자가 추가한 등급)
+export type AdminGrade = string;
+export type BuiltinAdminGrade = "master" | "operator" | "sub_operator" | "pending";
 
 export type AdminListFilter = "all" | "pending" | "active" | "blocked";
 
@@ -98,7 +102,7 @@ export async function fetchAdminAccounts(
 
 export async function approveAdmin(
   userId: number,
-  targetGrade: "sub_operator" | "operator",
+  targetGrade: AdminGrade,
 ): Promise<AdminAccountItem> {
   const res = await fetch(
     `${API_BASE}/api/v1/admin/accounts/${userId}/approve`,

@@ -26,6 +26,10 @@ import {
   type AdminGrade,
   type AdminListFilter,
 } from "@/features/admin-accounts/api";
+import {
+  fetchAdminGrades,
+  type AdminGradeItem,
+} from "@/features/admin-grades/api";
 import styles from "./page.module.css";
 
 const FILTER_OPTIONS: { label: string; value: AdminListFilter }[] = [
@@ -72,8 +76,10 @@ function _gradeChipClass(grade: AdminGrade): string {
     case "sub_operator":
       return styles.gradeSub;
     case "pending":
-    default:
       return styles.gradePending;
+    default:
+      // 커스텀 등급(g_<hex>) — sub_operator 와 동일 색상 계열.
+      return styles.gradeSub;
   }
 }
 
@@ -123,6 +129,21 @@ export default function AdminAccountsPage() {
     staleTime: 10_000,
   });
 
+  // 등급 목록 — 내장 + 커스텀. 부여 가능한 등급은 master/operator/pending 제외.
+  // 운영 관리자(operator)는 시스템 단일 자리라 UI 에서 부여 불가(2026-05-28 정책).
+  const { data: gradesData } = useQuery({
+    queryKey: ["admin-grades"] as const,
+    queryFn: fetchAdminGrades,
+    staleTime: 30_000,
+  });
+  const assignableGrades: AdminGradeItem[] = useMemo(
+    () =>
+      (gradesData?.items ?? []).filter(
+        (g) => g.code !== "master" && g.code !== "operator" && g.code !== "pending",
+      ),
+    [gradesData],
+  );
+
   function showToast(message: string, isError = false) {
     setToast({ message, isError });
     window.setTimeout(() => setToast(null), 2500);
@@ -148,7 +169,7 @@ export default function AdminAccountsPage() {
 
   // 액션 mutation 들
   const approveMutation = useMutation({
-    mutationFn: ({ id, grade }: { id: number; grade: "sub_operator" | "operator" }) =>
+    mutationFn: ({ id, grade }: { id: number; grade: AdminGrade }) =>
       approveAdmin(id, grade),
     onSuccess: () => {
       showToast("승인되었습니다.");
@@ -352,6 +373,7 @@ export default function AdminAccountsPage() {
       {modal.kind === "approve" ? (
         <ApproveModal
           target={modal.target}
+          grades={assignableGrades}
           onClose={closeModal}
           onSubmit={(grade) =>
             approveMutation.mutate({ id: modal.target.id, grade })
@@ -398,6 +420,7 @@ export default function AdminAccountsPage() {
       {modal.kind === "grade" ? (
         <GradeChangeModal
           target={modal.target}
+          grades={assignableGrades}
           onClose={closeModal}
           onSubmit={(grade) => gradeMutation.mutate({ id: modal.target.id, grade })}
           pending={gradeMutation.isPending}
@@ -420,16 +443,22 @@ export default function AdminAccountsPage() {
 
 function ApproveModal({
   target,
+  grades,
   onClose,
   onSubmit,
   pending,
 }: {
   target: AdminAccountItem;
+  grades: AdminGradeItem[];
   onClose: () => void;
-  onSubmit: (grade: "sub_operator" | "operator") => void;
+  onSubmit: (grade: AdminGrade) => void;
   pending: boolean;
 }) {
-  const [grade, setGrade] = useState<"sub_operator" | "operator">("sub_operator");
+  const defaultGrade =
+    grades.find((g) => g.code === "sub_operator")?.code ??
+    grades[0]?.code ??
+    "sub_operator";
+  const [grade, setGrade] = useState<AdminGrade>(defaultGrade);
   return (
     <ModalShell onClose={onClose}>
       <h2 className={styles.modalTitle}>관리자 승인</h2>
@@ -438,24 +467,17 @@ function ApproveModal({
       </p>
       <div className={styles.field}>
         <div className={styles.radioRow}>
-          <label className={styles.radioLabel}>
-            <input
-              type="radio"
-              name="approve-grade"
-              checked={grade === "sub_operator"}
-              onChange={() => setGrade("sub_operator")}
-            />
-            <span>부운영자</span>
-          </label>
-          <label className={styles.radioLabel}>
-            <input
-              type="radio"
-              name="approve-grade"
-              checked={grade === "operator"}
-              onChange={() => setGrade("operator")}
-            />
-            <span>운영 관리자</span>
-          </label>
+          {grades.map((g) => (
+            <label key={g.code} className={styles.radioLabel}>
+              <input
+                type="radio"
+                name="approve-grade"
+                checked={grade === g.code}
+                onChange={() => setGrade(g.code)}
+              />
+              <span>{g.label}</span>
+            </label>
+          ))}
         </div>
       </div>
       <div className={styles.modalActions}>
@@ -657,18 +679,23 @@ function DeleteModal({
 
 function GradeChangeModal({
   target,
+  grades,
   onClose,
   onSubmit,
   pending,
 }: {
   target: AdminAccountItem;
+  grades: AdminGradeItem[];
   onClose: () => void;
   onSubmit: (grade: AdminGrade) => void;
   pending: boolean;
 }) {
-  const [grade, setGrade] = useState<AdminGrade>(
-    target.admin_grade === "operator" ? "sub_operator" : "operator",
-  );
+  // 첫 진입 시 현재 등급과 다른 첫 번째 등급을 기본 선택.
+  const defaultGrade =
+    grades.find((g) => g.code !== target.admin_grade)?.code ??
+    grades[0]?.code ??
+    target.admin_grade;
+  const [grade, setGrade] = useState<AdminGrade>(defaultGrade);
   return (
     <ModalShell onClose={onClose}>
       <h2 className={styles.modalTitle}>등급 변경</h2>
@@ -677,24 +704,17 @@ function GradeChangeModal({
       </p>
       <div className={styles.field}>
         <div className={styles.radioRow}>
-          <label className={styles.radioLabel}>
-            <input
-              type="radio"
-              name="grade-new"
-              checked={grade === "sub_operator"}
-              onChange={() => setGrade("sub_operator")}
-            />
-            <span>부운영자</span>
-          </label>
-          <label className={styles.radioLabel}>
-            <input
-              type="radio"
-              name="grade-new"
-              checked={grade === "operator"}
-              onChange={() => setGrade("operator")}
-            />
-            <span>운영 관리자</span>
-          </label>
+          {grades.map((g) => (
+            <label key={g.code} className={styles.radioLabel}>
+              <input
+                type="radio"
+                name="grade-new"
+                checked={grade === g.code}
+                onChange={() => setGrade(g.code)}
+              />
+              <span>{g.label}</span>
+            </label>
+          ))}
         </div>
       </div>
       <div className={styles.modalActions}>
