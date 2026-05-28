@@ -94,6 +94,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["amount_krw", "next_charge_at"],
         category=TemplateCategory.BILLING,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -115,6 +119,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=[],
         category=TemplateCategory.BILLING,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -140,6 +148,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=[],
         category=TemplateCategory.BILLING,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -162,6 +174,7 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=[],
         category=TemplateCategory.BILLING,
         buttons=[
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의작성",
                 link_type="WL",
@@ -196,6 +209,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         ],
         category=TemplateCategory.BILLING,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -227,6 +244,7 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         # UI_1758 알리고 콘솔 등록 버튼(2026-05-28 스크린샷 동기화).
         # 운영 환불은 1:1 문의 답변에서 진행되므로 목록 페이지로 이동.
         buttons=[
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="1:1문의 답변",
                 link_type="WL",
@@ -248,6 +266,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -270,6 +292,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["user_name", "effective_at"],
         category=TemplateCategory.SUBSCRIPTION,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -284,6 +310,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=[],
         category=TemplateCategory.SUBSCRIPTION,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
@@ -305,6 +335,10 @@ TEMPLATE_CATALOG: dict[str, TemplateDefinition] = {
         variables=["inquiry_subject"],
         category=TemplateCategory.SUPPORT,
         buttons=[
+            # 알리고 콘솔 등록 1번 버튼 — 카카오톡 채널 추가(AC). 발송 form button_1에
+            # 함께 포함되지 않으면 카카오 비즈채널이 "메시지가 템플릿과 일치하지 않음"
+            # 으로 거부한다(2026-05-28 진단 — user-facing 10종 미수신 원인).
+            TemplateButton(name="채널 추가", link_type="AC"),
             TemplateButton(
                 name="문의하기",
                 link_type="WL",
