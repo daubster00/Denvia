@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconClose } from "@wanteddev/wds-icon";
 import { fetchKnowledgeDetail, editKnowledge } from "../api/knowledge";
 import styles from "./KnowledgeFileEditDialog.module.css";
@@ -17,6 +17,7 @@ export function KnowledgeFileEditDialog({ uploadId, onClose, onSaved }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mouseDownOnOverlayRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,8 +67,16 @@ export function KnowledgeFileEditDialog({ uploadId, onClose, onSaved }: Props) {
     <div
       role="presentation"
       className={styles.overlay}
+      onMouseDown={(e) => {
+        // 다이얼로그 안에서 드래그를 시작해 바깥에서 떼는 경우 닫히지 않도록
+        // mousedown이 오버레이에서 시작됐는지를 기억해 둔다.
+        mouseDownOnOverlayRef.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && mouseDownOnOverlayRef.current) {
+          onClose();
+        }
+        mouseDownOnOverlayRef.current = false;
       }}
     >
       <div
