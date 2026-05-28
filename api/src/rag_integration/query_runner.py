@@ -97,15 +97,22 @@ def _do_init(faiss_path: str) -> None:
 
 
 def _reset_vendor_globals() -> None:
-    """vendor/rag/run_qa.py의 lazy-init 전역 변수를 비워 다음 init_rag 호출 시
-    FAISS 인덱스·동의어 사전을 디스크에서 새로 읽도록 한다.
+    """vendor/rag/run_qa/run_qa.py 안쪽 모듈의 lazy-init 전역 변수를 비워
+    다음 init_rag 호출 시 FAISS 인덱스·동의어 사전을 디스크에서 새로 읽도록 한다.
 
     재빌드 후 atomic_swap으로 디스크 symlink가 바뀌었을 때, 메모리에 들고 있던
     이전 vectorstore/retriever 객체가 stale해지는 것을 막는 유일한 경로.
     vendor 코드는 손대지 않고(ADR-0002), 모듈 전역만 외부에서 초기화한다.
+
+    주의: 전역(`_embeddings/_vectorstore/_retriever/_syn_dict`)은 패키지
+    `rag.run_qa`가 아니라 안쪽 파일 모듈 `rag.run_qa.run_qa`에 살아 있다.
+    `rag.run_qa.__init__`는 공개 함수만 re-export하고 언더스코어 전역은
+    가져오지 않으므로, 패키지를 잡고 속성을 설정하면 무관한 새 속성만
+    생기고 실제 캐시는 그대로 남아 init_rag가 `_retriever is None` 분기를
+    건너뛰어 재로드가 일어나지 않는다.
     """
     try:
-        import rag.run_qa as _vendor  # type: ignore[import-untyped]
+        import rag.run_qa.run_qa as _vendor  # type: ignore[import-untyped]
 
         _vendor._embeddings = None
         _vendor._vectorstore = None

@@ -54,7 +54,13 @@ services:
       # — 빌드된 이미지에 PYTHONPATH가 누락된 경우에도 안전.
       PYTHONPATH: /workspace:/workspace/vendor
       # RAG 인덱스 절대 경로 (uvicorn working dir이 /workspace라 상대경로 'data/faiss/current'는 못 찾음)
+      # 세 변수 모두 필요. trigger_rebuild의 get_current_slot()이 index_a/index_b를
+      # 상대경로(`data/faiss/index_a`)로 해석하면 CWD=/workspace 기준이라 절대 안 매칭되고,
+      # 그 결과 target_slot이 항상 "a"로 떨어져 활성 슬롯 위에 덮어쓰기 → 심볼릭 변화 없음
+      # → query_runner의 realpath 비교가 "같음"으로 판단 → 리로드 스킵.
       FAISS_CURRENT_PATH: /workspace/api/data/faiss/current
+      FAISS_INDEX_A_PATH: /workspace/api/data/faiss/index_a
+      FAISS_INDEX_B_PATH: /workspace/api/data/faiss/index_b
       WATCHFILES_FORCE_POLLING: "true"
     depends_on:
       postgres:
