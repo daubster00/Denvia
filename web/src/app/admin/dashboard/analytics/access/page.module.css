@@ -85,7 +85,7 @@
 
 .unitToggle {
   display: grid;
-  grid-template-columns: repeat(4, minmax(48px, 80px));
+  grid-template-columns: repeat(3, minmax(56px, 88px));
   gap: 0;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -122,6 +122,44 @@
 .unitButtonActive:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: -2px;
+}
+
+.dateRange {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dateLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.selectedHint {
+  min-height: 16px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.dateLabelText {
+  font-weight: 500;
+}
+
+.dateInput {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.dateInput:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 1px;
 }
 
 .summaryGrid {
@@ -262,7 +300,7 @@
     align-items: stretch;
   }
   .unitToggle {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     width: 100%;
   }
   .summaryGrid {

@@ -24,10 +24,8 @@ vi.mock("@/features/admin-dashboard/api/analytics", () => ({
   fetchFeedback: vi.fn(),
   fetchSegments: vi.fn(),
   fetchRevenueVariance: vi.fn(),
-}));
-
-vi.mock("@/features/admin-rag/api/knowledge", () => ({
-  fetchRagStatus: vi.fn(),
+  fetchAccess: vi.fn(),
+  fetchQuestions: vi.fn(),
 }));
 
 vi.mock("@/features/admin-anomaly/api/anomaly", () => ({
@@ -67,17 +65,15 @@ describe("AdminDashboardPage", () => {
       fetchFeedback,
       fetchSegments,
       fetchRevenueVariance,
+      fetchAccess,
+      fetchQuestions,
     } = await import("@/features/admin-dashboard/api/analytics");
-    const { fetchRagStatus } = await import(
-      "@/features/admin-rag/api/knowledge"
-    );
     const { fetchAnomalyList } = await import(
       "@/features/admin-anomaly/api/anomaly"
     );
     const { fetchSupportCounts } = await import(
       "@/features/admin-support/api/inquiries"
     );
-    // Story 5.6: 이상탐지/CS 위젯 기본 stub (빈 상태)
     (fetchAnomalyList as ReturnType<typeof vi.fn>).mockResolvedValue({
       page: 1,
       per_page: 3,
@@ -87,7 +83,21 @@ describe("AdminDashboardPage", () => {
     (fetchSupportCounts as ReturnType<typeof vi.fn>).mockResolvedValue({
       open_inquiries: 0,
     });
-    // Story 5.3: 기본 stub
+    (fetchAccess as ReturnType<typeof vi.fn>).mockResolvedValue({
+      unit: "day",
+      from: "2026-04-01",
+      to: "2026-04-30",
+      total_visitors: 0,
+      total_visits: 0,
+      buckets: [],
+    });
+    (fetchQuestions as ReturnType<typeof vi.fn>).mockResolvedValue({
+      unit: "day",
+      from: "2026-04-01",
+      to: "2026-04-30",
+      total_questions: 0,
+      series: [],
+    });
     (fetchSignups as ReturnType<typeof vi.fn>).mockResolvedValue({
       unit: "month",
       from: "2025-05-01",
@@ -105,7 +115,6 @@ describe("AdminDashboardPage", () => {
       pending_cancellation_count: 0,
       pending_cancellations: [],
     });
-    // Story 5.4: 피드백 위젯 stub
     (fetchFeedback as ReturnType<typeof vi.fn>).mockResolvedValue({
       unit: "month",
       from: "2025-05-01",
@@ -118,7 +127,6 @@ describe("AdminDashboardPage", () => {
       per_page: 1,
       total: 154,
     });
-    // Story 5.5: 재무 요약 위젯 stub
     (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValue({
       year_month: "2026-05",
       revenue_krw: 1_485_000,
@@ -137,7 +145,6 @@ describe("AdminDashboardPage", () => {
         kst_end_exclusive: "2026-06-01T00:00:00+09:00",
       },
     });
-    // Story 6.4: 가입유형 위젯 stub
     (fetchSegments as ReturnType<typeof vi.fn>).mockResolvedValue({
       as_of: "2026-05-01T15:30:00+09:00",
       applied_filters: { include_withdrawn: false, include_blocked: false },
@@ -152,7 +159,6 @@ describe("AdminDashboardPage", () => {
     return {
       fetchBudgetCurrentMonth,
       fetchUserTokens,
-      fetchRagStatus,
       fetchSignups,
       fetchSubscribers,
       fetchFeedback,
@@ -162,9 +168,8 @@ describe("AdminDashboardPage", () => {
     };
   }
 
-  it("placeholder 문구가 더 이상 노출되지 않음 + 위젯/KPI 렌더", async () => {
-    const { fetchBudgetCurrentMonth, fetchUserTokens, fetchRagStatus } =
-      await loadMocks();
+  it("월 예산 위젯 + 9개 analytics 위젯 렌더", async () => {
+    const { fetchBudgetCurrentMonth, fetchUserTokens } = await loadMocks();
     (fetchBudgetCurrentMonth as ReturnType<typeof vi.fn>).mockResolvedValue({
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
@@ -199,36 +204,15 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       usd_to_krw: 1400,
     });
-    (fetchRagStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
-      pending_changes_count: 0,
-      last_rebuild_at: "2026-04-28T12:00:00+09:00",
-      last_rebuild_status: "success",
-      active_rebuild: null,
-    });
 
     renderWithQuery(<AdminDashboardPage />);
 
-    expect(
-      screen.queryByText("대시보드 위젯은 Story 5.2에서 구현됩니다."),
-    ).toBeNull();
     expect(screen.getByText("관리자 대시보드")).toBeTruthy();
-    // 월 예산 사용률은 KPI 라벨과 위젯 제목 두 곳에 노출
     expect(screen.getAllByText("월 예산 사용률").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("상위 5명 질의 수")).toBeTruthy();
-    expect(screen.getByText("비용 TOP 사용자")).toBeTruthy();
-    expect(screen.getByText("재빌드 대기 변경")).toBeTruthy();
-
-    // KPI 값 — 비동기 query 결과 반영 후
-    expect(await screen.findByText("30.0%")).toBeTruthy();
-    // 질의 수 / 비용 / 대기 건은 위젯 내부에도 노출될 수 있어 length 검증
-    expect((await screen.findAllByText("8건")).length).toBeGreaterThanOrEqual(1);
-    expect((await screen.findAllByText("₩700")).length).toBeGreaterThanOrEqual(1);
-    expect((await screen.findAllByText("0건")).length).toBeGreaterThanOrEqual(1);
   });
 
   it("새로고침 버튼 렌더 + aria-label", async () => {
-    const { fetchBudgetCurrentMonth, fetchUserTokens, fetchRagStatus } =
-      await loadMocks();
+    const { fetchBudgetCurrentMonth, fetchUserTokens } = await loadMocks();
     (fetchBudgetCurrentMonth as ReturnType<typeof vi.fn>).mockResolvedValue({
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
@@ -250,21 +234,14 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       usd_to_krw: 1400,
     });
-    (fetchRagStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
-      pending_changes_count: 0,
-      last_rebuild_at: null,
-      last_rebuild_status: null,
-      active_rebuild: null,
-    });
 
     renderWithQuery(<AdminDashboardPage />);
     const refresh = screen.getByRole("button", { name: "대시보드 새로고침" });
     expect(refresh).toBeTruthy();
   });
 
-  it("Analytics 위젯 6종(가입자/구독/피드백/세그먼트/재무/이상탐지·CS) 모두 노출", async () => {
-    const { fetchBudgetCurrentMonth, fetchUserTokens, fetchRagStatus } =
-      await loadMocks();
+  it("Analytics 위젯 9종(접속/질문/가입자/구독/피드백/토큰/가입유형/재무/이상탐지·CS) 모두 노출 + 상세 링크", async () => {
+    const { fetchBudgetCurrentMonth, fetchUserTokens } = await loadMocks();
     (fetchBudgetCurrentMonth as ReturnType<typeof vi.fn>).mockResolvedValue({
       year_month: "2026-04",
       monthly_limit_usd: "100.00",
@@ -286,24 +263,15 @@ describe("AdminDashboardPage", () => {
       year_month: "2026-04",
       usd_to_krw: 1400,
     });
-    (fetchRagStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
-      pending_changes_count: 0,
-      last_rebuild_at: null,
-      last_rebuild_status: null,
-      active_rebuild: null,
-    });
 
     renderWithQuery(<AdminDashboardPage />);
-    // Story 5.3: 가입자 추이/구독 현황은 실데이터 위젯으로 활성화
     expect(await screen.findByText("가입자 추이")).toBeTruthy();
     expect(screen.getByText("구독 현황")).toBeTruthy();
     expect(screen.getByText("피드백 비율")).toBeTruthy();
     expect(screen.getByText("재무 요약")).toBeTruthy();
     expect(screen.getByText("이상탐지 / CS")).toBeTruthy();
-    // Story 5.6: 이상탐지/CS 활성화 → 준비 중 배지 없음
     expect(screen.queryAllByText("준비 중")).toHaveLength(0);
 
-    // Story 5.3 위젯 상세 링크 활성화 — 가입자 추이 / 구독 현황
     const signupsLink = screen.getByRole("link", {
       name: /가입자 추이 상세 페이지로 이동/,
     });
@@ -317,7 +285,6 @@ describe("AdminDashboardPage", () => {
       "/admin/dashboard/analytics/subscribers",
     );
 
-    // Story 5.4: 피드백 비율 위젯 상세 링크 활성화
     const feedbackLink = screen.getByRole("link", {
       name: /피드백 비율 상세 페이지로 이동/,
     });
@@ -325,7 +292,6 @@ describe("AdminDashboardPage", () => {
       "/admin/dashboard/analytics/feedback",
     );
 
-    // Story 6.4: 가입유형 분포 위젯 상세 링크 활성화
     const segmentsLink = screen.getByRole("link", {
       name: /가입유형 분포 상세 페이지로 이동/,
     });
@@ -333,51 +299,14 @@ describe("AdminDashboardPage", () => {
       "/admin/dashboard/analytics/segments",
     );
 
-    // Story 5.5: 재무 요약 위젯 상세 링크 활성화
     const revenueLink = screen.getByRole("link", {
       name: /재무 요약 상세 페이지로 이동/,
     });
     expect(revenueLink.getAttribute("href")).toBe("/admin/finance/revenue");
 
-    // Story 5.6: 이상탐지/CS 위젯 상세 링크 활성화
     const anomalyCsLink = screen.getByRole("link", {
       name: /이상탐지 \/ CS 상세 페이지로 이동/,
     });
     expect(anomalyCsLink.getAttribute("href")).toBe("/admin/anomaly");
-  });
-
-  it("일부 API 실패해도 다른 위젯 렌더 (격리)", async () => {
-    const { fetchBudgetCurrentMonth, fetchUserTokens, fetchRagStatus } =
-      await loadMocks();
-    (fetchBudgetCurrentMonth as ReturnType<typeof vi.fn>).mockResolvedValue({
-      year_month: "2026-04",
-      monthly_limit_usd: "100.00",
-      spent_usd: "10.00",
-      monthly_limit_krw: 140_000,
-      spent_krw: 14_000,
-      usd_to_krw: 1400,
-      percent: 10,
-      status: "normal",
-      killswitch_active: false,
-      killswitch_mode: null,
-    });
-    (fetchUserTokens as ReturnType<typeof vi.fn>).mockResolvedValue({
-      items: [],
-      page: 1,
-      per_page: 5,
-      total: 0,
-      range: "month",
-      year_month: "2026-04",
-      usd_to_krw: 1400,
-    });
-    (fetchRagStatus as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error("rag fail"),
-    );
-
-    renderWithQuery(<AdminDashboardPage />);
-    // 다른 위젯의 데이터/링크는 정상 렌더 (10 USD × 1400 = ₩14,000)
-    expect(await screen.findByText("₩14,000")).toBeTruthy();
-    // RAG 위젯은 alert 렌더
-    expect(await screen.findByRole("alert")).toBeTruthy();
   });
 });

@@ -50,6 +50,19 @@ export function BudgetSummaryWidget() {
   );
 }
 
+// OpenAI 청구는 보통 매월 1일에 전월 사용분 정산.
+function nextOpenAiSettlementKst(yearMonth: string): string {
+  const m = yearMonth.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return "—";
+  let year = Number(m[1]);
+  let month = Number(m[2]) + 1;
+  if (month > 12) {
+    year += 1;
+    month = 1;
+  }
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
 function BudgetSummaryBody({
   data,
 }: {
@@ -64,6 +77,7 @@ function BudgetSummaryBody({
       : data.status === "warning"
         ? styles.figureValueWarning
         : "";
+  const settlementDate = nextOpenAiSettlementKst(data.year_month);
 
   return (
     <div className={styles.summary}>
@@ -91,6 +105,10 @@ function BudgetSummaryBody({
         <div className={styles.figureItem}>
           <dt className={styles.figureLabel}>대상 월</dt>
           <dd className={styles.figureValue}>{data.year_month}</dd>
+        </div>
+        <div className={styles.figureItem}>
+          <dt className={styles.figureLabel}>OpenAI 청구 예정일</dt>
+          <dd className={styles.figureValue}>{settlementDate}</dd>
         </div>
       </dl>
     </div>

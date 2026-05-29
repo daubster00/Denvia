@@ -30,6 +30,9 @@ export default function SubscribersPage() {
           <p className={styles.caption}>
             {data ? `기준: ${formatAsOf(data.as_of)} KST` : "현재 시점 기준"}
           </p>
+          <p className={styles.caption}>
+            도넛/카드/범례 어디든 항목을 누르면 해당 사용자 목록(고객관리)으로 이동합니다.
+          </p>
         </div>
         <button
           type="button"
@@ -110,7 +113,15 @@ function PendingCancellationsSection({
             <tbody>
               {items.map((row) => (
                 <tr key={`${row.user_id}-${row.current_period_end}`}>
-                  <td>{row.email_masked}</td>
+                  <td>
+                    <Link
+                      href={`/admin/users/${row.user_id}`}
+                      className={styles.userLink}
+                      aria-label={`${row.email_masked} 고객 상세 보기`}
+                    >
+                      {row.email_masked}
+                    </Link>
+                  </td>
                   <td>{formatKstDate(row.canceled_at)}</td>
                   <td>{formatKstDate(row.current_period_end)}</td>
                   <td>{daysUntil(row.current_period_end)}</td>

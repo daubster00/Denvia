@@ -30,8 +30,32 @@
 
 .kpiRow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.kpiLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  border-radius: 12px;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.kpiLink:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.kpiLink:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+@media (max-width: 1023px) {
+  .kpiRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 767px) {

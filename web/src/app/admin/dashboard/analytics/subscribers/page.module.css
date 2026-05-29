@@ -196,6 +196,16 @@
   background: #fafafa;
 }
 
+.userLink {
+  color: #4c1d95;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.userLink:hover {
+  text-decoration: underline;
+}
+
 .tableFootnote {
   margin: 8px 4px 0;
   font-size: 12px;

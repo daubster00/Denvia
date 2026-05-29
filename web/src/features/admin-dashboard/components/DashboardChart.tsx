@@ -35,6 +35,8 @@ interface DashboardChartProps {
   height?: number;
   ariaLabel: string;
   emptyMessage?: string;
+  /** pie/donut 슬라이스 클릭 핸들러 (해당 데이터 행을 전달) */
+  onSliceClick?: (row: Record<string, string | number>) => void;
 }
 
 const TONE_COLORS: Record<ChartTone, string> = {
@@ -72,6 +74,7 @@ export function DashboardChart({
   height = 200,
   ariaLabel,
   emptyMessage = "표시할 데이터가 없습니다.",
+  onSliceClick,
 }: DashboardChartProps) {
   const isEmpty = !data || data.length === 0;
 
@@ -94,7 +97,7 @@ export function DashboardChart({
           minWidth={1}
           minHeight={height}
         >
-          {renderChart(variant, data, xKey, series)}
+          {renderChart(variant, data, xKey, series, onSliceClick)}
         </ResponsiveContainer>
       </div>
       <ul className={styles.legend} aria-hidden="true">
@@ -117,6 +120,7 @@ function renderChart(
   data: Array<Record<string, string | number>>,
   xKey: string,
   series: ChartSeries[],
+  onSliceClick?: (row: Record<string, string | number>) => void,
 ) {
   if (variant === "line") {
     return (
@@ -180,7 +184,7 @@ function renderChart(
   }
 
   if (variant === "pie" || variant === "donut") {
-    return renderPieChart(variant, data, xKey, series);
+    return renderPieChart(variant, data, xKey, series, onSliceClick);
   }
 
   return null;
@@ -191,9 +195,11 @@ function renderPieChart(
   data: Array<Record<string, string | number>>,
   xKey: string,
   series: ChartSeries[],
+  onSliceClick?: (row: Record<string, string | number>) => void,
 ) {
   const seriesKey = series[0]?.key ?? "value";
   const isDonut = variant === "donut";
+  const sliceCursor = onSliceClick ? "pointer" : undefined;
 
   return (
     <PieChart>
@@ -205,11 +211,20 @@ function renderPieChart(
         innerRadius={isDonut ? 40 : 0}
         outerRadius={70}
         paddingAngle={2}
+        onClick={
+          onSliceClick
+            ? (entry: { payload?: Record<string, string | number> }) => {
+                if (entry?.payload) onSliceClick(entry.payload);
+              }
+            : undefined
+        }
+        style={sliceCursor ? { cursor: sliceCursor } : undefined}
       >
         {data.map((_, idx) => (
           <Cell
             key={`cell-${idx}`}
             fill={toneFill(series[idx % series.length]?.tone)}
+            style={sliceCursor ? { cursor: sliceCursor } : undefined}
           />
         ))}
       </Pie>

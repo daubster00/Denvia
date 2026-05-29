@@ -85,7 +85,7 @@
 
 .unitToggle {
   display: grid;
-  grid-template-columns: repeat(4, minmax(48px, 80px));
+  grid-template-columns: repeat(3, minmax(56px, 88px));
   gap: 0;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -192,6 +192,12 @@
   color: #111827;
 }
 
+.selectedHint {
+  min-height: 16px;
+  font-size: 12px;
+  color: #64748b;
+}
+
 .statusMessage {
   text-align: center;
   color: #6b7280;
@@ -244,7 +250,7 @@
     align-items: stretch;
   }
   .unitToggle {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     width: 100%;
   }
   .presetToggle {

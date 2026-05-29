@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { DashboardChart, type ChartSeries } from "./DashboardChart";
 import { KPICard } from "./KPICard";
 import type {
@@ -70,13 +71,57 @@ export function SignupsTrendChart({ data }: Props) {
         />
       )}
       <div className={styles.kpiRow}>
-        <KPICard label="현재 누적 가입자" value={fmt(last?.cumulative)} />
-        <KPICard label="현재 활성" value={fmt(last?.active)} />
-        <KPICard label="최근 버킷 신규" value={fmt(last?.new_signups)} />
-        <KPICard label="누적 탈퇴" value={fmt(last?.withdrawn)} />
+        <Link
+          href="/admin/users"
+          className={styles.kpiLink}
+          aria-label={`전체 가입자 ${fmt(last?.cumulative)} — 고객관리에서 보기`}
+        >
+          <KPICard label="현재 누적 가입자" value={fmt(last?.cumulative)} />
+        </Link>
+        <Link
+          href="/admin/users?withdrawn=false"
+          className={styles.kpiLink}
+          aria-label={`활성 사용자 ${fmt(last?.active)} — 고객관리에서 보기`}
+        >
+          <KPICard label="현재 활성" value={fmt(last?.active)} />
+        </Link>
+        <Link
+          href={newSignupsHref(data)}
+          className={styles.kpiLink}
+          aria-label={`최근 버킷 신규 ${fmt(last?.new_signups)} — 고객관리에서 보기`}
+        >
+          <KPICard label="최근 버킷 신규" value={fmt(last?.new_signups)} />
+        </Link>
+        <Link
+          href="/admin/users?withdrawn=true"
+          className={styles.kpiLink}
+          aria-label={`누적 탈퇴 ${fmt(last?.withdrawn)} — 고객관리에서 보기`}
+        >
+          <KPICard label="누적 탈퇴" value={fmt(last?.withdrawn)} />
+        </Link>
       </div>
     </section>
   );
+}
+
+/** 마지막 버킷의 시작~다음 버킷 시작 직전 범위로 created_from/to 필터링. */
+function newSignupsHref(data: SignupsResponse): string {
+  const last = data.buckets[data.buckets.length - 1];
+  if (!last) return "/admin/users";
+  const from = last.bucket_start;
+  const to = bucketEndDate(last.bucket_start, data.unit);
+  return `/admin/users?created_from=${from}&created_to=${to}&withdrawn=false`;
+}
+
+function bucketEndDate(iso: string, unit: SignupsUnit): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (unit === "year") return `${y}-12-31`;
+  if (unit === "month") {
+    const last = new Date(y, m, 0).getDate();
+    return `${y}-${String(m).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  }
+  // day / week — 그 날 단일
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function fmt(n: number | undefined): string {

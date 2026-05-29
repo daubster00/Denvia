@@ -878,7 +878,16 @@ def _resolve_window(
             + timedelta(days=1),
             None,
         )
-    # year
+    # year — from/to 로 특정 연도 지정 가능. 미지정 시 현재 연도.
+    if from_ is not None or to is not None:
+        end_d = to or datetime.now(KST).date()
+        start_d = from_ or date(end_d.year, 1, 1)
+        return (
+            datetime(start_d.year, start_d.month, start_d.day, tzinfo=KST),
+            datetime(end_d.year, end_d.month, end_d.day, tzinfo=KST)
+            + timedelta(days=1),
+            None,
+        )
     now = datetime.now(KST)
     return (
         datetime(now.year, 1, 1, tzinfo=KST),

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DashboardChart, type ChartSeries } from "./DashboardChart";
 import { KPICard } from "./KPICard";
 import type { SubscribersResponse } from "../api/analytics";
@@ -50,6 +51,7 @@ const SERIES: ChartSeries[] = [
 ];
 
 export function SubscribersDonut({ data }: Props) {
+  const router = useRouter();
   const segments = useMemo(
     () => [
       { key: "free" as SegmentKey, name: SEGMENT_LABELS.free, value: data.free_count },
@@ -64,6 +66,12 @@ export function SubscribersDonut({ data }: Props) {
   const isEmpty = total === 0;
 
   const ariaLabel = `구독 현황 — 무료 ${data.free_count}명, Pro ${data.pro_count}명, 차단 ${data.blocked_count}명, 탈퇴 ${data.withdrawn_count}명`;
+
+  function handleSliceClick(row: Record<string, string | number>) {
+    const key = row.key as SegmentKey | undefined;
+    if (!key) return;
+    router.push(userListHrefForSegment(key));
+  }
 
   return (
     <section className={styles.wrapper} aria-labelledby="subscribers-title">
@@ -82,6 +90,7 @@ export function SubscribersDonut({ data }: Props) {
           series={SERIES}
           height={280}
           ariaLabel={ariaLabel}
+          onSliceClick={handleSliceClick}
         />
       )}
 

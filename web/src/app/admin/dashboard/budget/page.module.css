@@ -74,3 +74,63 @@
 .retryBtn:hover {
   background-color: #6d28d9;
 }
+
+.spendCard {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+  border: 1px solid #ddd6fe;
+  border-radius: 0.75rem;
+  padding: 1.5rem 1.75rem;
+}
+
+.spendMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.spendLabel {
+  font-size: 0.875rem;
+  color: #6b21a8;
+  margin: 0;
+  font-weight: 500;
+}
+
+.spendValue {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: #4c1d95;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.spendHint {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin: 0.25rem 0 0;
+}
+
+.settingsLinks {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.settingsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 1rem;
+  background-color: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #374151;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.settingsLink:hover {
+  background-color: #f9fafb;
+  border-color: #7c3aed;
+  color: #6d28d9;
+}

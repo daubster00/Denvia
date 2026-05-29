@@ -10,20 +10,12 @@ import {
 import { SignupsTrendChart } from "@/features/admin-dashboard/components/SignupsTrendChart";
 import styles from "./page.module.css";
 
-const UNITS: { value: SignupsUnit; label: string }[] = [
+type SelectableUnit = Exclude<SignupsUnit, "week">;
+
+const UNITS: { value: SelectableUnit; label: string }[] = [
   { value: "day", label: "일" },
-  { value: "week", label: "주" },
   { value: "month", label: "월" },
   { value: "year", label: "연" },
-];
-
-type RangePreset = "7d" | "30d" | "90d" | "custom";
-
-const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
-  { value: "7d", label: "최근 7일" },
-  { value: "30d", label: "최근 30일" },
-  { value: "90d", label: "최근 90일" },
-  { value: "custom", label: "사용자 지정" },
 ];
 
 function toISODate(d: Date): string {
@@ -33,50 +25,56 @@ function toISODate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function computePresetRange(preset: Exclude<RangePreset, "custom">): {
-  from: string;
-  to: string;
-} {
-  const days = preset === "7d" ? 7 : preset === "30d" ? 30 : 90;
-  const today = new Date();
-  const fromDate = new Date(today);
-  fromDate.setDate(fromDate.getDate() - (days - 1));
-  return { from: toISODate(fromDate), to: toISODate(today) };
+function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function lastDayOfMonth(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const last = new Date(year, month, 0).getDate();
+  return `${yearMonth}-${String(last).padStart(2, "0")}`;
+}
+
+function dateLabel(value: string): string {
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  });
+}
+
+function resolveRange(unit: SelectableUnit, day: string, month: string, year: string) {
+  if (unit === "day") return { from: day, to: day };
+  if (unit === "month") return { from: `${month}-01`, to: lastDayOfMonth(month) };
+  return { from: `${year}-01-01`, to: `${year}-12-31` };
 }
 
 export default function SignupsPage() {
-  const [unit, setUnit] = useState<SignupsUnit>("day");
-  const [preset, setPreset] = useState<RangePreset>("7d");
-  const [customFrom, setCustomFrom] = useState<string>("");
-  const [customTo, setCustomTo] = useState<string>("");
+  const [unit, setUnit] = useState<SelectableUnit>("day");
+  const [selectedDay, setSelectedDay] = useState<string>(() => toISODate(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => currentYearMonth());
+  const [selectedYear, setSelectedYear] = useState<string>(() =>
+    String(new Date().getFullYear()),
+  );
+  const range = useMemo(
+    () => resolveRange(unit, selectedDay, selectedMonth, selectedYear),
+    [selectedDay, selectedMonth, selectedYear, unit],
+  );
 
-  const { from, to } = useMemo(() => {
-    if (preset === "custom") {
-      return { from: customFrom || undefined, to: customTo || undefined };
-    }
-    const range = computePresetRange(preset);
-    return { from: range.from, to: range.to };
-  }, [preset, customFrom, customTo]);
-
-  const handlePresetChange = (next: RangePreset) => {
-    if (next === "custom" && preset !== "custom") {
-      const current =
-        preset === "custom" ? null : computePresetRange(preset);
-      if (current) {
-        setCustomFrom(current.from);
-        setCustomTo(current.to);
-      }
-    }
-    setPreset(next);
-  };
+  function handleUnitChange(next: SelectableUnit) {
+    setUnit(next);
+  }
 
   const { data, error, refetch, isLoading, isFetching } = useQuery({
-    queryKey: ["admin", "analytics", "signups", { unit, from, to }],
+    queryKey: ["admin", "analytics", "signups", { unit, ...range }],
     queryFn: () =>
       fetchSignups({
         unit,
-        from,
-        to,
+        ...range,
       }),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
@@ -108,27 +106,6 @@ export default function SignupsPage() {
       </header>
 
       <div className={styles.filters} role="toolbar" aria-label="기간 필터">
-        <div
-          className={styles.presetToggle}
-          role="group"
-          aria-label="기간 프리셋"
-        >
-          {RANGE_PRESETS.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              className={
-                preset === p.value
-                  ? styles.presetButtonActive
-                  : styles.presetButton
-              }
-              aria-pressed={preset === p.value}
-              onClick={() => handlePresetChange(p.value)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
         <div className={styles.unitToggle} role="group" aria-label="집계 단위">
           {UNITS.map((u) => (
             <button
@@ -138,36 +115,54 @@ export default function SignupsPage() {
                 unit === u.value ? styles.unitButtonActive : styles.unitButton
               }
               aria-pressed={unit === u.value}
-              onClick={() => setUnit(u.value)}
+              onClick={() => handleUnitChange(u.value)}
             >
               {u.label}
             </button>
           ))}
         </div>
-        {preset === "custom" && (
-          <div className={styles.dateRange}>
+        <div className={styles.dateRange}>
+          {unit === "day" ? (
             <label className={styles.dateLabel}>
-              <span className={styles.dateLabelText}>시작일</span>
+              <span className={styles.dateLabelText}>기준일</span>
               <input
                 type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(e.target.value)}
                 className={styles.dateInput}
-                aria-label="시작일"
+                aria-label="조회 기준일"
               />
+              <span className={styles.selectedHint}>{dateLabel(selectedDay)}</span>
             </label>
+          ) : null}
+          {unit === "month" ? (
             <label className={styles.dateLabel}>
-              <span className={styles.dateLabelText}>종료일</span>
+              <span className={styles.dateLabelText}>기준월</span>
               <input
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
                 className={styles.dateInput}
-                aria-label="종료일"
+                aria-label="조회 기준월"
               />
             </label>
-          </div>
-        )}
+          ) : null}
+          {unit === "year" ? (
+            <label className={styles.dateLabel}>
+              <span className={styles.dateLabelText}>기준연도</span>
+              <input
+                type="number"
+                min="2024"
+                max="2099"
+                step="1"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className={styles.dateInput}
+                aria-label="조회 기준연도"
+              />
+            </label>
+          ) : null}
+        </div>
       </div>
 
       {isLoading && (

@@ -3,18 +3,16 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import {
-  fetchAccess,
-  type AccessUnit,
-} from "@/features/admin-dashboard/api/analytics";
+import { fetchAccess, type AccessUnit } from "@/features/admin-dashboard/api/analytics";
 import { DashboardChart, type ChartSeries } from "@/features/admin-dashboard/components/DashboardChart";
 import styles from "./page.module.css";
 
-const UNITS: { value: AccessUnit; label: string; hint: string }[] = [
-  { value: "day", label: "일별", hint: "최근 30일" },
-  { value: "week", label: "주별", hint: "최근 12주" },
-  { value: "month", label: "월별", hint: "최근 12개월" },
-  { value: "year", label: "연도별", hint: "최근 5년" },
+type SelectableUnit = Exclude<AccessUnit, "week">;
+
+const UNITS: { value: SelectableUnit; label: string }[] = [
+  { value: "day", label: "일별" },
+  { value: "month", label: "월별" },
+  { value: "year", label: "연도별" },
 ];
 
 const SERIES: ChartSeries[] = [
@@ -22,16 +20,65 @@ const SERIES: ChartSeries[] = [
   { key: "visits", label: "접속횟수", tone: "success" },
 ];
 
+function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function lastDayOfMonth(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const last = new Date(year, month, 0).getDate();
+  return `${yearMonth}-${String(last).padStart(2, "0")}`;
+}
+
+function dateLabel(value: string): string {
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  });
+}
+
+function resolveRange(unit: SelectableUnit, day: string, month: string, year: string) {
+  if (unit === "day") return { from: day, to: day };
+  if (unit === "month") return { from: `${month}-01`, to: lastDayOfMonth(month) };
+  return { from: `${year}-01-01`, to: `${year}-12-31` };
+}
+
 export default function AccessAnalyticsPage() {
-  const [unit, setUnit] = useState<AccessUnit>("day");
+  const [unit, setUnit] = useState<SelectableUnit>("day");
+  const [selectedDay, setSelectedDay] = useState<string>(() => toIsoDate(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => currentYearMonth());
+  const [selectedYear, setSelectedYear] = useState<string>(() =>
+    String(new Date().getFullYear()),
+  );
+
   const activeUnit = UNITS.find((u) => u.value === unit) ?? UNITS[0];
+  const range = useMemo(
+    () => resolveRange(unit, selectedDay, selectedMonth, selectedYear),
+    [selectedDay, selectedMonth, selectedYear, unit],
+  );
 
   const { data, error, refetch, isLoading, isFetching } = useQuery({
-    queryKey: ["admin", "analytics", "access", { unit }],
-    queryFn: () => fetchAccess({ unit }),
+    queryKey: ["admin", "analytics", "access", { unit, ...range }],
+    queryFn: () => fetchAccess({ unit, ...range }),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+
+  function handleUnitChange(next: SelectableUnit) {
+    setUnit(next);
+  }
 
   const chartData = useMemo(
     () =>
@@ -79,11 +126,53 @@ export default function AccessAnalyticsPage() {
                 unit === u.value ? styles.unitButtonActive : styles.unitButton
               }
               aria-pressed={unit === u.value}
-              onClick={() => setUnit(u.value)}
+              onClick={() => handleUnitChange(u.value)}
             >
               {u.label}
             </button>
           ))}
+        </div>
+        <div className={styles.dateRange}>
+          {unit === "day" ? (
+            <label className={styles.dateLabel}>
+              <span className={styles.dateLabelText}>기준일</span>
+              <input
+                type="date"
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(e.target.value)}
+                className={styles.dateInput}
+                aria-label="조회 기준일"
+              />
+              <span className={styles.selectedHint}>{dateLabel(selectedDay)}</span>
+            </label>
+          ) : null}
+          {unit === "month" ? (
+            <label className={styles.dateLabel}>
+              <span className={styles.dateLabelText}>기준월</span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className={styles.dateInput}
+                aria-label="조회 기준월"
+              />
+            </label>
+          ) : null}
+          {unit === "year" ? (
+            <label className={styles.dateLabel}>
+              <span className={styles.dateLabelText}>기준연도</span>
+              <input
+                type="number"
+                min="2024"
+                max="2099"
+                step="1"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className={styles.dateInput}
+                aria-label="조회 기준연도"
+              />
+            </label>
+          ) : null}
         </div>
       </div>
 
@@ -109,21 +198,22 @@ export default function AccessAnalyticsPage() {
         <>
           <div className={styles.summaryGrid}>
             <div className={styles.summaryItem}>
-              <p className={styles.summaryLabel}>총 접속자 수</p>
+              <p className={styles.summaryLabel}>선택 기간 총 접속자 수</p>
               <p className={styles.summaryValue}>
                 {data.total_visitors.toLocaleString()}명
               </p>
               <p className={styles.summaryHint}>
-                {activeUnit.hint} ({data.from} ~ {data.to}) 동안 로그인한 고유 회원 수
+                {summaryRangeLabel(unit, data.from, data.to)} 로그인한 고유 회원 수
+                (중복 제거)
               </p>
             </div>
             <div className={styles.summaryItem}>
-              <p className={styles.summaryLabel}>총 접속횟수</p>
+              <p className={styles.summaryLabel}>선택 기간 총 접속횟수</p>
               <p className={styles.summaryValue}>
                 {data.total_visits.toLocaleString()}회
               </p>
               <p className={styles.summaryHint}>
-                {activeUnit.hint} 동안 로그인이 일어난 누적 횟수
+                {summaryRangeLabel(unit, data.from, data.to)} 누적 로그인 횟수
               </p>
             </div>
           </div>
@@ -191,4 +281,10 @@ function formatBucket(iso: string, unit: AccessUnit): string {
   if (unit === "month") return `${y}-${m}`;
   if (unit === "week") return `${m}-${d} 주`;
   return `${m}-${d}`;
+}
+
+function summaryRangeLabel(unit: SelectableUnit, from: string, _to: string): string {
+  if (unit === "day") return `${dateLabel(from)}에`;
+  if (unit === "month") return `${from.slice(0, 7)} 월에`;
+  return `${from.slice(0, 4)}년에`;
 }

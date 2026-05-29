@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type {
   AnomalyEventItem,
   AnomalyListResponse,
@@ -10,8 +10,14 @@ import {
   useAddWatch,
   useRemoveWatch,
 } from "@/features/admin-anomaly/hooks/useWatchToggle";
+import { AdminDMDialog } from "@/features/admin-users/components/AdminDMDialog";
 import { AnomalyStatusBadge } from "./AnomalyStatusBadge";
 import styles from "./AnomalyTable.module.css";
+
+interface DMTarget {
+  userId: number;
+  email: string;
+}
 
 interface Props {
   data: AnomalyListResponse | undefined;
@@ -69,6 +75,7 @@ export function AnomalyTable({
   const addWatch = useAddWatch();
   const removeWatch = useRemoveWatch();
   const watchPending = addWatch.isPending || removeWatch.isPending;
+  const [dmTarget, setDmTarget] = useState<DMTarget | null>(null);
 
   function handleToggleWatch(item: AnomalyEventItem) {
     if (item.target_user_id === null) return;
@@ -77,6 +84,14 @@ export function AnomalyTable({
     } else {
       addWatch.mutate({ anomalyId: item.id });
     }
+  }
+
+  function handleOpenDM(item: AnomalyEventItem) {
+    if (item.target_user_id === null) return;
+    setDmTarget({
+      userId: item.target_user_id,
+      email: item.target_user_email_masked ?? `#${item.target_user_id}`,
+    });
   }
 
   const items = data?.items ?? [];
@@ -127,6 +142,7 @@ export function AnomalyTable({
             <th scope="col">상태</th>
             <th scope="col">상세</th>
             <th scope="col" aria-label="주의 계정">주의</th>
+            <th scope="col" aria-label="쪽지 보내기">쪽지</th>
           </tr>
         </thead>
         <tbody>
@@ -209,11 +225,39 @@ export function AnomalyTable({
                     {item.target_user_id === null ? "☆" : "★"}
                   </button>
                 </td>
+                <td>
+                  <button
+                    type="button"
+                    className={styles.dmButton}
+                    aria-label={
+                      item.target_user_id === null
+                        ? "쪽지 — 대상 미식별로 발송 불가"
+                        : `${item.target_user_email_masked ?? "사용자"}에게 쪽지 보내기`
+                    }
+                    title={
+                      item.target_user_id === null
+                        ? "대상 사용자 미식별 — 발송 불가"
+                        : "쪽지 보내기"
+                    }
+                    onClick={() => handleOpenDM(item)}
+                    disabled={item.target_user_id === null}
+                    data-testid={`anomaly-dm-${item.id}`}
+                  >
+                    쪽지
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+
+      <AdminDMDialog
+        open={dmTarget !== null}
+        targetUserId={dmTarget?.userId ?? 0}
+        targetEmail={dmTarget?.email ?? ""}
+        onClose={() => setDmTarget(null)}
+      />
 
       <nav className={styles.pagination} aria-label="페이지 네비게이션">
         <button

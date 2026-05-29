@@ -18,6 +18,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 beforeAll(() => {
   // @ts-expect-error - jsdom polyfill
   global.ResizeObserver = class {

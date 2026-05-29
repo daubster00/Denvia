@@ -1,13 +1,8 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchBudgetCurrentMonth } from "@/features/admin-dashboard/api/budget";
-import { fetchUserTokens } from "@/features/admin-dashboard/api/analytics";
-import { fetchRagStatus } from "@/features/admin-rag/api/knowledge";
-import { KPICard } from "@/features/admin-dashboard/components/KPICard";
+import { useQueryClient } from "@tanstack/react-query";
 import { BudgetSummaryWidget } from "@/features/admin-dashboard/components/BudgetSummaryWidget";
 import { TokenTopUsersWidget } from "@/features/admin-dashboard/components/TokenTopUsersWidget";
-import { RagStatusWidget } from "@/features/admin-dashboard/components/RagStatusWidget";
 import {
   AnomalyCSSummaryWidget,
   ANOMALY_CS_SUMMARY_KEY,
@@ -40,44 +35,15 @@ import {
   QuestionsSummaryWidget,
   QUESTIONS_SUMMARY_KEY,
 } from "@/features/admin-dashboard/components/QuestionsSummaryWidget";
-import { formatKRW } from "@/lib/format-currency";
 import styles from "./dashboardHome.module.css";
 
 const BUDGET_KEY = ["admin", "dashboard", "budget-current"] as const;
-const TOKENS_KEY = [
-  "admin",
-  "dashboard",
-  "user-tokens-top",
-  { range: "month", per_page: 5 },
-] as const;
-const RAG_KEY = ["admin", "dashboard", "rag-status"] as const;
 
 export default function AdminDashboardPage() {
   const qc = useQueryClient();
 
-  const budgetQuery = useQuery({
-    queryKey: BUDGET_KEY,
-    queryFn: fetchBudgetCurrentMonth,
-    refetchInterval: 60_000,
-  });
-
-  const tokensQuery = useQuery({
-    queryKey: TOKENS_KEY,
-    queryFn: () => fetchUserTokens({ range: "month", per_page: 5 }),
-    refetchInterval: 60_000,
-  });
-
-  const ragQuery = useQuery({
-    queryKey: RAG_KEY,
-    queryFn: fetchRagStatus,
-    refetchInterval: (query) =>
-      query.state.data?.active_rebuild ? 5_000 : 60_000,
-  });
-
   function handleRefresh() {
     qc.invalidateQueries({ queryKey: BUDGET_KEY });
-    qc.invalidateQueries({ queryKey: TOKENS_KEY });
-    qc.invalidateQueries({ queryKey: RAG_KEY });
     qc.invalidateQueries({ queryKey: SIGNUPS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: SUBSCRIBERS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: FEEDBACK_SUMMARY_KEY });
@@ -87,19 +53,6 @@ export default function AdminDashboardPage() {
     qc.invalidateQueries({ queryKey: ACCESS_SUMMARY_KEY });
     qc.invalidateQueries({ queryKey: QUESTIONS_SUMMARY_KEY });
   }
-
-  const budget = budgetQuery.data;
-  const tokens = tokensQuery.data;
-  const rag = ragQuery.data;
-
-  const budgetPercentValue = budget ? `${budget.percent.toFixed(1)}%` : "—";
-  const topUsersQuestionCount =
-    tokens?.items.reduce((acc, row) => acc + row.question_count, 0) ?? null;
-  const topCostUser = tokens?.items[0];
-  const ragPendingValue =
-    rag?.pending_changes_count !== undefined
-      ? `${rag.pending_changes_count}건`
-      : "—";
 
   return (
     <div className={styles.page}>
@@ -120,62 +73,26 @@ export default function AdminDashboardPage() {
         </button>
       </header>
 
-      <div className={styles.kpiGrid}>
-        <KPICard
-          label="월 예산 사용률"
-          value={budgetPercentValue}
-          trend={
-            budget && budget.status !== "normal"
-              ? {
-                  direction: "up",
-                  text:
-                    budget.status === "critical"
-                      ? "위험"
-                      : "주의",
-                  tone:
-                    budget.status === "critical" ? "error" : "warning",
-                }
-              : undefined
-          }
-        />
-        <KPICard
-          label="상위 5명 질의 수"
-          value={
-            topUsersQuestionCount !== null
-              ? `${topUsersQuestionCount.toLocaleString()}건`
-              : "—"
-          }
-        />
-        <KPICard
-          label="비용 TOP 사용자"
-          value={topCostUser ? formatKRW(topCostUser.total_cost_krw) : "—"}
-        />
-        <KPICard
-          label="재빌드 대기 변경"
-          value={ragPendingValue}
-          trend={
-            rag?.active_rebuild
-              ? { direction: "flat", text: "재빌드 진행 중", tone: "warning" }
-              : undefined
-          }
-        />
+      <div className={styles.row2}>
+        <AnomalyCSSummaryWidget />
+        <FeedbackSummaryWidget />
       </div>
 
-      <div className={styles.mainGrid}>
+      <div className={styles.row2}>
         <BudgetSummaryWidget />
-        <RagStatusWidget />
+        <TokenTopUsersWidget />
       </div>
 
-      <div className={styles.analyticsGrid}>
-        <TokenTopUsersWidget />
+      <div className={styles.row3}>
+        <SignupsSummaryWidget />
         <AccessSummaryWidget />
         <QuestionsSummaryWidget />
-        <SignupsSummaryWidget />
-        <SubscribersSummaryWidget />
-        <FeedbackSummaryWidget />
+      </div>
+
+      <div className={styles.row3}>
         <SegmentsSummaryWidget />
+        <SubscribersSummaryWidget />
         <RevenueSummaryWidget />
-        <AnomalyCSSummaryWidget />
       </div>
     </div>
   );
