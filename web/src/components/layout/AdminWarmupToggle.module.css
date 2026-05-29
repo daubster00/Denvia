@@ -43,6 +43,21 @@
   white-space: nowrap;
 }
 
+.metaStale {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.model {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #f3f4f6;
+  color: #374151;
+  white-space: nowrap;
+}
+
 .button {
   height: 30px;
   padding: 0 12px;

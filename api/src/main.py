@@ -99,13 +99,25 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("lifespan.rag_preload.failed")
 
-    yield
-
-    # OpenAI 워밍업 루프 — 부팅 시점에는 띄우지 않고(마스터가 토글), 종료 시점에만 정리.
+    # OpenAI 워밍업 자동 복원 — Redis(runtime:openai_warmup_enabled) 가 1 이면 부팅 직후 재가동.
+    # 이전 in-memory only 시절: 컨테이너 재시작/재배포마다 토글이 silently OFF → 관리자는 ON 으로
+    # 인지한 채 cold path 를 맞았다. 2026-05-29 부터 영속화 + 자동 복원으로 해결.
     try:
         from api.src.services import openai_warmup_service
 
-        await openai_warmup_service.stop()
+        if await openai_warmup_service.is_persisted_enabled():
+            await openai_warmup_service.start(persist=False)
+            _log.info("lifespan.openai_warmup.auto_resumed")
+    except Exception:
+        _log.exception("lifespan.openai_warmup.auto_resume_failed")
+
+    yield
+
+    # OpenAI 워밍업 루프 정리 — 종료 시 task 만 cancel, Redis 영속화 상태는 유지(다음 부팅에 복원).
+    try:
+        from api.src.services import openai_warmup_service
+
+        await openai_warmup_service.stop(persist=False)
     except Exception:
         _log.exception("lifespan.openai_warmup.stop_failed")
 

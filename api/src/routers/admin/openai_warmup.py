@@ -91,8 +91,14 @@ async def start_warmup(
                 "message": "OPENAI_API_KEY 환경변수가 설정되어 있지 않아 워밍업을 시작할 수 없습니다.",
             },
         )
-    s = await openai_warmup_service.start()
-    logger.info("admin.openai_warmup.start", actor_user_id=admin.id, running=s.running)
+    # persist=True — 관리자 명시 토글이므로 Redis 에 ON 키 저장. 재시작 후 자동 복원의 기준.
+    s = await openai_warmup_service.start(persist=True)
+    logger.info(
+        "admin.openai_warmup.start",
+        actor_user_id=admin.id,
+        running=s.running,
+        model=s.model,
+    )
     return _to_response(s)
 
 
@@ -102,7 +108,8 @@ async def stop_warmup(
     request: Request,
     admin: Annotated[User, Depends(require_admin_page(WARMUP_FEATURE_ROUTE))],
 ) -> WarmupStatusResponse:
-    s = await openai_warmup_service.stop()
+    # persist=True — 관리자 명시 OFF 토글이므로 Redis 키 삭제. 이후 재시작에서도 OFF 유지.
+    s = await openai_warmup_service.stop(persist=True)
     logger.info("admin.openai_warmup.stop", actor_user_id=admin.id, running=s.running)
     return _to_response(s)
 

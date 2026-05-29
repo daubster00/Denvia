@@ -78,6 +78,15 @@ export function AdminWarmupToggle({ canSee }: Props) {
     [data?.last_ping_at, now],
   );
 
+  // 가동 중인데 마지막 ping 이 주기의 3배(=270초) 넘게 지나면 stale — silent dead 감지용 경고색.
+  // 정상 90초 주기 + 약간의 LLM 응답 지연 여유. 이 임계 넘으면 토글은 ON 인데 ping 이 실제로
+  // 안 도는 상태일 가능성이 큼 (이전 in-memory only 시절 컨테이너 재시작 후 발생하던 패턴).
+  const stale = useMemo(() => {
+    if (!running || !data?.last_ping_at) return false;
+    const ageSec = (Date.now() - new Date(data.last_ping_at).getTime()) / 1000;
+    return ageSec > (data.interval_seconds ?? 90) * 3;
+  }, [running, data?.last_ping_at, data?.interval_seconds, now]);
+
   if (!canSee) {
     return null;
   }
@@ -120,9 +129,16 @@ export function AdminWarmupToggle({ canSee }: Props) {
           {statusText}
         </span>
         {data && (
+          <span className={styles.model} title="관리자 설정의 챗 모델로 워밍업합니다">
+            {data.model}
+          </span>
+        )}
+        {data && (
           <span
-            className={styles.meta}
-            title={`주기 ${data.interval_seconds}초 · 모델 ${data.model} · 누적 ${data.total_pings}회`}
+            className={stale ? `${styles.meta} ${styles.metaStale}` : styles.meta}
+            title={`주기 ${data.interval_seconds}초 · 누적 ${data.total_pings}회${
+              stale ? " · 마지막 ping 이 오래됨(중단 의심)" : ""
+            }`}
           >
             마지막: {lastPingLabel}
           </span>
