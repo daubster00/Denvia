@@ -25,6 +25,27 @@
   display: flex;
   flex-direction: column;
   animation: fadeIn 150ms ease-out;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: #d8ccff transparent;
+}
+
+/* WebKit (Chrome / Edge / Safari) — 얇은 연보라 스크롤바 */
+.messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background-color: #d8ccff;
+  border-radius: 999px;
+}
+
+.messages::-webkit-scrollbar-thumb:hover {
+  background-color: #c4b5fd;
 }
 
 .inputCenter {
