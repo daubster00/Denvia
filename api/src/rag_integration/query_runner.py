@@ -350,9 +350,13 @@ async def stream_rag_answer(
             if hasattr(retriever, "search_kwargs"):
                 retriever.search_kwargs["k"] = runtime["rag_k"]
 
+            # callbacks 는 invoke time 에 RunnableConfig 로 전달 — build_chat_llm 의 모듈
+            # 전역 캐시(_LLM_CACHE) 가 같은 옵션의 ChatOpenAI 인스턴스를 재사용해 httpx
+            # keep-alive 풀을 유지한다. 워밍업도 같은 캐시 키로 미리 데워두면 첫 사용자
+            # 질문의 LLM TTFT cold-start 가 사라진다.
             llm = build_chat_llm(
                 streaming=True,
-                callbacks=[handler],
+                callbacks=None,
                 temperature=runtime["rag_temperature"],
                 max_tokens=runtime["max_tokens"],
                 model_name=runtime.get("chat_model"),
@@ -369,7 +373,12 @@ async def stream_rag_answer(
             )
 
             with capture_usage() as usage:
-                result = with_retry(chain.invoke)({"query": query})
+                # config={"callbacks": [handler]} — streaming on_llm_new_token 콜백이
+                # invoke time callbacks 에서도 정상 트리거됨 (LangChain RunnableConfig).
+                result = with_retry(chain.invoke)(
+                    {"query": query},
+                    config={"callbacks": [handler]},
+                )
             usage_holder.append(usage)
             # 관리자 감사용 — SSE/사용자 응답에는 흘리지 않고 docs_holder에만 적재
             raw_docs = result.get("source_documents", []) if isinstance(result, dict) else []
@@ -412,3 +421,80 @@ async def stream_rag_answer(
         )
 
     on_complete(usage, full_text, docs)
+
+
+async def warmup_once() -> dict:
+    """워밍업 ping — 실제 ``stream_rag_answer`` 와 100% 동일한 RetrievalQA 경로로 1회 더미 호출.
+
+    목적은 두 가지:
+    1) ``build_chat_llm`` 의 모듈 전역 캐시(_LLM_CACHE)에 현재 chat_model 의 ChatOpenAI 인스턴스를
+       올려두기 — 첫 사용자 질문이 매번 새 ChatOpenAI 를 만들지 않고 이 캐시를 그대로 받음.
+       httpx keep-alive 풀·TLS 세션이 워밍업 ping 사이에 살아 있으니 LLM TTFT cold-start 가 사라짐.
+    2) LangChain RetrievalQA·langchain_classic.chains·PromptTemplate 등의 lazy import 를 모두
+       부팅 직후에 끝내 두기 — 첫 사용자 질문에서 발생하던 200~400ms import 비용 제거.
+
+    반환: ``{"model": str, "latency_ms": int, "tokens": int}`` — 워밍업 서비스가 모니터링 로그에 사용.
+    예외는 caller 가 swallow 한다 (loop 가 계속 돌아야 함).
+    """
+    from rag.run_qa import get_retriever  # type: ignore[import-untyped]
+    from langchain_classic.chains import RetrievalQA
+    from langchain_core.prompts import PromptTemplate
+
+    await ensure_initialized()
+    runtime = await _load_runtime_params()
+
+    # 프롬프트 오버라이드 로딩은 실제 chat 과 동일하게 — 분기 코드를 데움.
+    block_ids = ("BASE", "치식_위치", "치면_방향", "마취_산정", "브릿지")
+    overrides: dict[str, PromptOverride] = {}
+    for bid in block_ids:
+        raw = runtime.get(f"prompt_{bid}")
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                overrides[bid] = PromptOverride(
+                    content=parsed.get("content", ""),
+                    enabled=parsed.get("enabled", True),
+                )
+            except Exception:
+                pass
+
+    # 짧은 더미 쿼리 — retriever 에 무엇이든 1번 통과시켜 FAISS·embedding 캐시도 데움.
+    # 실제 사용자 질의는 아니므로 결과 폐기.
+    query = "hi"
+    prompt_template_str = build_prompt_with_overrides(query, overrides or None)
+
+    def _run_sync() -> tuple[int, int]:
+        retriever = get_retriever()
+        if hasattr(retriever, "search_kwargs"):
+            retriever.search_kwargs["k"] = runtime["rag_k"]
+
+        # callbacks 없이 — 캐시 히트되도록. 워밍업이 데우는 인스턴스 == 실제 chat 이 쓰는 인스턴스.
+        llm = build_chat_llm(
+            streaming=True,
+            callbacks=None,
+            temperature=runtime["rag_temperature"],
+            max_tokens=runtime["max_tokens"],
+            model_name=runtime.get("chat_model"),
+        )
+
+        chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=retriever,
+            return_source_documents=False,  # 워밍업은 source_documents 불필요
+            chain_type_kwargs={
+                "prompt": PromptTemplate.from_template(prompt_template_str)
+            },
+        )
+
+        t_inner = time.perf_counter()
+        with capture_usage() as usage:
+            chain.invoke({"query": query})
+        return int((time.perf_counter() - t_inner) * 1000), usage.total_tokens
+
+    latency_ms, total_tokens = await asyncio.to_thread(_run_sync)
+    return {
+        "model": runtime.get("chat_model") or "",
+        "latency_ms": latency_ms,
+        "tokens": total_tokens,
+    }

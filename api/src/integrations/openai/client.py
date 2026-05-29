@@ -5,6 +5,7 @@ NFR-R3, AR12: 지수 백오프 3회 재시도.
 """
 from contextlib import contextmanager
 from dataclasses import dataclass
+from threading import Lock
 from typing import Generator
 
 import openai
@@ -37,6 +38,19 @@ def _is_reasoning_model(name: str) -> bool:
     return name.startswith("o3") or name.startswith("o4")
 
 
+# ChatOpenAI 인스턴스 모듈 전역 캐시 — 같은 옵션이면 같은 인스턴스 재사용해서
+# 내부 httpx 클라이언트(keep-alive 풀)·TLS 세션을 따뜻하게 유지한다.
+# 이전엔 매 chat 요청마다 새 ChatOpenAI 를 만들어 매번 TCP/TLS handshake 가 발생했고
+# 첫 요청의 LLM TTFT 가 2초+ 콜드였다. 워밍업도 같은 캐시 키로 접근해 같은 인스턴스를
+# 데우면 실제 chat 의 첫 요청부터 keep-alive 가 살아 있다.
+#
+# 캐시 키에서 callbacks 는 제외 — 호출자는 invoke time 에 RunnableConfig 로 callbacks 를
+# 전달해야 한다. callbacks 를 build time 에 박으면 같은 옵션이라도 매번 새 인스턴스가
+# 만들어져 캐시가 무의미해진다.
+_LLM_CACHE: dict[tuple, ChatOpenAI] = {}
+_LLM_CACHE_LOCK = Lock()
+
+
 def build_chat_llm(
     *,
     streaming: bool,
@@ -53,8 +67,16 @@ def build_chat_llm(
 
     reasoning 모델(o3-/o4-)은 ``temperature`` 파라미터를 미지원하므로 전달하지 않는다.
     일반 chat 모델(gpt-4o*, gpt-4-turbo 등)에만 ``temperature``를 전달한다.
+
+    캐시 동작 (2026-05-29):
+    - ``callbacks`` 가 None/빈 리스트면 ``_LLM_CACHE`` 에서 (모델·streaming·temperature·
+      max_tokens) 키로 캐시 히트. 같은 옵션이면 같은 ChatOpenAI 인스턴스를 재사용.
+    - ``callbacks`` 가 채워져 있으면 캐시 우회 + 새 인스턴스 (하위 호환성). 새 코드는
+      ``chain.invoke(input, config={"callbacks": [...]})`` 패턴으로 invoke time 에 전달해야
+      캐시 효과를 받는다.
     """
     effective_model = model_name or DEFAULT_CHAT_MODEL
+    use_cache = not callbacks  # None or [] 면 캐시 사용
 
     kwargs: dict = {
         "model_name": effective_model,
@@ -64,7 +86,44 @@ def build_chat_llm(
     }
     if not _is_reasoning_model(effective_model):
         kwargs["temperature"] = temperature
-    return ChatOpenAI(**kwargs)
+
+    if not use_cache:
+        return ChatOpenAI(**kwargs)
+
+    cache_key = (
+        effective_model,
+        streaming,
+        temperature if not _is_reasoning_model(effective_model) else None,
+        max_tokens,
+    )
+    cached = _LLM_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    with _LLM_CACHE_LOCK:
+        cached = _LLM_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        llm = ChatOpenAI(**kwargs)
+        _LLM_CACHE[cache_key] = llm
+        return llm
+
+
+def invalidate_chat_llm_cache(*, model_name: str | None = None) -> int:
+    """캐시 무효화 — model_name 지정 시 해당 모델 항목만, 미지정 시 전체.
+
+    관리자가 chat_model 을 바꿔 같은 옵션의 이전 모델 캐시가 stale 해진 경우는 거의 없다
+    (캐시 키에 모델이 포함되므로 자연 분리). 본 함수는 테스트·운영 디버깅 용도.
+    반환값: 제거된 엔트리 수.
+    """
+    with _LLM_CACHE_LOCK:
+        if model_name is None:
+            n = len(_LLM_CACHE)
+            _LLM_CACHE.clear()
+            return n
+        to_remove = [k for k in _LLM_CACHE if k[0] == model_name]
+        for k in to_remove:
+            _LLM_CACHE.pop(k, None)
+        return len(to_remove)
 
 
 def with_retry(fn):
