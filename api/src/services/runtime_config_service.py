@@ -13,6 +13,9 @@ from fastapi import Request
 from redis.asyncio import Redis as AsyncRedis
 
 from api.src.schemas.admin.runtime_config import (
+    AnomalyThresholdsConfigResponse,
+    AnomalyThresholdsConfigUpdateRequest,
+    AnomalyThresholdsItem,
     AnomalyThrottleConfigResponse,
     AnomalyThrottleConfigUpdateRequest,
     LoginBruteThresholdConfigResponse,
@@ -448,3 +451,409 @@ async def resolve_anomaly_throttle_delay(
         return (Decimal(str(cfg.pro_delay_seconds)).quantize(Decimal("0.1")), True)
     # admin 은 호출자에서 이미 우회됨. free/그 외 status 는 무료 값.
     return (Decimal(str(cfg.free_delay_seconds)).quantize(Decimal("0.1")), True)
+
+
+# =============================================================================
+# 이상탐지 임계값 통합 설정 — 별도 페이지(/admin/anomaly/thresholds)에서
+# 6개 카테고리 11개 항목을 한 번에 편집한다. 서버 재배포 없이 즉시 반영.
+#
+# 각 항목은 Redis 키 + 코드 기본값 + clamp 범위(min/max)로 정의된다. fail-safe:
+# Redis 미설정/손상/연결 실패 시 코드 기본값으로 폴백 — 인증/QA 경로가 런타임
+# 설정 가용성에 의존하지 않도록 한다.
+# =============================================================================
+
+# 1) 비밀번호 반복 실패 — 잠금 시간 (실패 허용 횟수는 위 LOGIN_BRUTE_THRESHOLD 재사용).
+KEY_LOGIN_LOCKOUT_SECONDS = "runtime:login_lockout_seconds"
+DEFAULT_LOGIN_LOCKOUT_SECONDS = 600         # 10분
+LOGIN_LOCKOUT_SECONDS_MIN = 60              # 최소 1분
+LOGIN_LOCKOUT_SECONDS_MAX = 86400           # 최대 24시간
+
+# 2) 동일 IP 다중 로그인.
+KEY_CONCURRENT_IP_THRESHOLD = "runtime:concurrent_ip_threshold"
+DEFAULT_CONCURRENT_IP_THRESHOLD = 3
+CONCURRENT_IP_THRESHOLD_MIN = 2
+CONCURRENT_IP_THRESHOLD_MAX = 50
+
+KEY_CONCURRENT_IP_WINDOW_SECONDS = "runtime:concurrent_ip_window_seconds"
+DEFAULT_CONCURRENT_IP_WINDOW_SECONDS = 600  # 10분
+CONCURRENT_IP_WINDOW_SECONDS_MIN = 60
+CONCURRENT_IP_WINDOW_SECONDS_MAX = 3600
+
+# 3) 동일 질문 반복.
+KEY_REPEATED_QUESTION_THRESHOLD = "runtime:repeated_question_threshold"
+DEFAULT_REPEATED_QUESTION_THRESHOLD = 3
+REPEATED_QUESTION_THRESHOLD_MIN = 2
+REPEATED_QUESTION_THRESHOLD_MAX = 50
+
+# 4) 답변 직후 빠른 후속 질문.
+KEY_RAPID_FOLLOWUP_WINDOW_SECONDS = "runtime:rapid_followup_window_seconds"
+DEFAULT_RAPID_FOLLOWUP_WINDOW_SECONDS = Decimal("3.0")
+RAPID_FOLLOWUP_WINDOW_SECONDS_MIN = Decimal("0.5")
+RAPID_FOLLOWUP_WINDOW_SECONDS_MAX = Decimal("60.0")
+
+KEY_RAPID_FOLLOWUP_THRESHOLD = "runtime:rapid_followup_threshold"
+DEFAULT_RAPID_FOLLOWUP_THRESHOLD = 3
+RAPID_FOLLOWUP_THRESHOLD_MIN = 2
+RAPID_FOLLOWUP_THRESHOLD_MAX = 50
+
+# 5) 휴대폰 인증 남용.
+KEY_SMS_MAX_RETRIES = "runtime:sms_max_retries"
+DEFAULT_SMS_MAX_RETRIES = 5                 # 시간당 발송 허용 (6번째부터 429)
+SMS_MAX_RETRIES_MIN = 1
+SMS_MAX_RETRIES_MAX = 20
+
+KEY_SMS_ABUSE_THRESHOLD = "runtime:sms_abuse_threshold"
+DEFAULT_SMS_ABUSE_THRESHOLD = 10            # 1시간 누적 도달 시 24시간 차단
+SMS_ABUSE_THRESHOLD_MIN = 2
+SMS_ABUSE_THRESHOLD_MAX = 100
+
+KEY_SMS_MAX_WRONG = "runtime:sms_max_wrong"
+DEFAULT_SMS_MAX_WRONG = 3                   # OTP 오답 허용 횟수
+SMS_MAX_WRONG_MIN = 1
+SMS_MAX_WRONG_MAX = 20
+
+# 6) 비밀번호·아이디 찾기 남용.
+KEY_RECOVERY_ABUSE_THRESHOLD = "runtime:recovery_abuse_threshold"
+DEFAULT_RECOVERY_ABUSE_THRESHOLD = 4        # 1시간 N회 시도
+RECOVERY_ABUSE_THRESHOLD_MIN = 2
+RECOVERY_ABUSE_THRESHOLD_MAX = 50
+
+
+def _clamp_int(raw: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, raw))
+
+
+def _clamp_decimal(raw: Decimal, lo: Decimal, hi: Decimal) -> Decimal:
+    if raw < lo:
+        return lo
+    if raw > hi:
+        return hi
+    return raw
+
+
+async def _get_clamped_int(
+    redis_runtime: AsyncRedis, key: str, default: int, lo: int, hi: int
+) -> int:
+    raw = await redis_runtime.get(key)
+    return _clamp_int(_to_int(raw, default), lo, hi)
+
+
+async def _get_clamped_decimal(
+    redis_runtime: AsyncRedis,
+    key: str,
+    default: Decimal,
+    lo: Decimal,
+    hi: Decimal,
+) -> Decimal:
+    raw = await redis_runtime.get(key)
+    return _clamp_decimal(_to_decimal_seconds(raw, default), lo, hi)
+
+
+# ── 개별 fail-safe getters — 인증/QA 경로에서 직접 호출 ───────────────────────
+
+async def get_login_lockout_seconds(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_LOGIN_LOCKOUT_SECONDS,
+        DEFAULT_LOGIN_LOCKOUT_SECONDS,
+        LOGIN_LOCKOUT_SECONDS_MIN,
+        LOGIN_LOCKOUT_SECONDS_MAX,
+    )
+
+
+async def get_concurrent_ip_threshold(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_CONCURRENT_IP_THRESHOLD,
+        DEFAULT_CONCURRENT_IP_THRESHOLD,
+        CONCURRENT_IP_THRESHOLD_MIN,
+        CONCURRENT_IP_THRESHOLD_MAX,
+    )
+
+
+async def get_concurrent_ip_window_seconds(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_CONCURRENT_IP_WINDOW_SECONDS,
+        DEFAULT_CONCURRENT_IP_WINDOW_SECONDS,
+        CONCURRENT_IP_WINDOW_SECONDS_MIN,
+        CONCURRENT_IP_WINDOW_SECONDS_MAX,
+    )
+
+
+async def get_repeated_question_threshold(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_REPEATED_QUESTION_THRESHOLD,
+        DEFAULT_REPEATED_QUESTION_THRESHOLD,
+        REPEATED_QUESTION_THRESHOLD_MIN,
+        REPEATED_QUESTION_THRESHOLD_MAX,
+    )
+
+
+async def get_rapid_followup_window_seconds(redis_runtime: AsyncRedis) -> Decimal:
+    return await _get_clamped_decimal(
+        redis_runtime,
+        KEY_RAPID_FOLLOWUP_WINDOW_SECONDS,
+        DEFAULT_RAPID_FOLLOWUP_WINDOW_SECONDS,
+        RAPID_FOLLOWUP_WINDOW_SECONDS_MIN,
+        RAPID_FOLLOWUP_WINDOW_SECONDS_MAX,
+    )
+
+
+async def get_rapid_followup_threshold(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_RAPID_FOLLOWUP_THRESHOLD,
+        DEFAULT_RAPID_FOLLOWUP_THRESHOLD,
+        RAPID_FOLLOWUP_THRESHOLD_MIN,
+        RAPID_FOLLOWUP_THRESHOLD_MAX,
+    )
+
+
+async def get_sms_max_retries(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_SMS_MAX_RETRIES,
+        DEFAULT_SMS_MAX_RETRIES,
+        SMS_MAX_RETRIES_MIN,
+        SMS_MAX_RETRIES_MAX,
+    )
+
+
+async def get_sms_abuse_threshold(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_SMS_ABUSE_THRESHOLD,
+        DEFAULT_SMS_ABUSE_THRESHOLD,
+        SMS_ABUSE_THRESHOLD_MIN,
+        SMS_ABUSE_THRESHOLD_MAX,
+    )
+
+
+async def get_sms_max_wrong(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_SMS_MAX_WRONG,
+        DEFAULT_SMS_MAX_WRONG,
+        SMS_MAX_WRONG_MIN,
+        SMS_MAX_WRONG_MAX,
+    )
+
+
+async def get_recovery_abuse_threshold(redis_runtime: AsyncRedis) -> int:
+    return await _get_clamped_int(
+        redis_runtime,
+        KEY_RECOVERY_ABUSE_THRESHOLD,
+        DEFAULT_RECOVERY_ABUSE_THRESHOLD,
+        RECOVERY_ABUSE_THRESHOLD_MIN,
+        RECOVERY_ABUSE_THRESHOLD_MAX,
+    )
+
+
+# ── 묶음 응답/저장 — 관리자 페이지 prefill·일괄 PUT ───────────────────────────
+
+def _int_item(current: int, default: int, lo: int, hi: int) -> AnomalyThresholdsItem:
+    return AnomalyThresholdsItem(
+        current=float(current),
+        default=float(default),
+        min=float(lo),
+        max=float(hi),
+    )
+
+
+def _dec_item(
+    current: Decimal, default: Decimal, lo: Decimal, hi: Decimal
+) -> AnomalyThresholdsItem:
+    return AnomalyThresholdsItem(
+        current=float(current),
+        default=float(default),
+        min=float(lo),
+        max=float(hi),
+    )
+
+
+async def get_anomaly_thresholds_config(
+    redis_runtime: AsyncRedis,
+) -> AnomalyThresholdsConfigResponse:
+    """관리자 페이지 prefill — 11개 항목 + 각 항목 bounds 동봉."""
+    return AnomalyThresholdsConfigResponse(
+        login_brute_threshold=_int_item(
+            await get_login_brute_threshold(redis_runtime),
+            DEFAULT_LOGIN_BRUTE_THRESHOLD,
+            LOGIN_BRUTE_THRESHOLD_MIN,
+            LOGIN_BRUTE_THRESHOLD_MAX,
+        ),
+        login_lockout_seconds=_int_item(
+            await get_login_lockout_seconds(redis_runtime),
+            DEFAULT_LOGIN_LOCKOUT_SECONDS,
+            LOGIN_LOCKOUT_SECONDS_MIN,
+            LOGIN_LOCKOUT_SECONDS_MAX,
+        ),
+        concurrent_ip_threshold=_int_item(
+            await get_concurrent_ip_threshold(redis_runtime),
+            DEFAULT_CONCURRENT_IP_THRESHOLD,
+            CONCURRENT_IP_THRESHOLD_MIN,
+            CONCURRENT_IP_THRESHOLD_MAX,
+        ),
+        concurrent_ip_window_seconds=_int_item(
+            await get_concurrent_ip_window_seconds(redis_runtime),
+            DEFAULT_CONCURRENT_IP_WINDOW_SECONDS,
+            CONCURRENT_IP_WINDOW_SECONDS_MIN,
+            CONCURRENT_IP_WINDOW_SECONDS_MAX,
+        ),
+        repeated_question_threshold=_int_item(
+            await get_repeated_question_threshold(redis_runtime),
+            DEFAULT_REPEATED_QUESTION_THRESHOLD,
+            REPEATED_QUESTION_THRESHOLD_MIN,
+            REPEATED_QUESTION_THRESHOLD_MAX,
+        ),
+        rapid_followup_window_seconds=_dec_item(
+            await get_rapid_followup_window_seconds(redis_runtime),
+            DEFAULT_RAPID_FOLLOWUP_WINDOW_SECONDS,
+            RAPID_FOLLOWUP_WINDOW_SECONDS_MIN,
+            RAPID_FOLLOWUP_WINDOW_SECONDS_MAX,
+        ),
+        rapid_followup_threshold=_int_item(
+            await get_rapid_followup_threshold(redis_runtime),
+            DEFAULT_RAPID_FOLLOWUP_THRESHOLD,
+            RAPID_FOLLOWUP_THRESHOLD_MIN,
+            RAPID_FOLLOWUP_THRESHOLD_MAX,
+        ),
+        sms_max_retries=_int_item(
+            await get_sms_max_retries(redis_runtime),
+            DEFAULT_SMS_MAX_RETRIES,
+            SMS_MAX_RETRIES_MIN,
+            SMS_MAX_RETRIES_MAX,
+        ),
+        sms_abuse_threshold=_int_item(
+            await get_sms_abuse_threshold(redis_runtime),
+            DEFAULT_SMS_ABUSE_THRESHOLD,
+            SMS_ABUSE_THRESHOLD_MIN,
+            SMS_ABUSE_THRESHOLD_MAX,
+        ),
+        sms_max_wrong=_int_item(
+            await get_sms_max_wrong(redis_runtime),
+            DEFAULT_SMS_MAX_WRONG,
+            SMS_MAX_WRONG_MIN,
+            SMS_MAX_WRONG_MAX,
+        ),
+        recovery_abuse_threshold=_int_item(
+            await get_recovery_abuse_threshold(redis_runtime),
+            DEFAULT_RECOVERY_ABUSE_THRESHOLD,
+            RECOVERY_ABUSE_THRESHOLD_MIN,
+            RECOVERY_ABUSE_THRESHOLD_MAX,
+        ),
+    )
+
+
+async def update_anomaly_thresholds_config(
+    request,
+    body: AnomalyThresholdsConfigUpdateRequest,
+    redis_runtime: AsyncRedis,
+) -> AnomalyThresholdsConfigResponse:
+    """11개 항목 일괄 저장. clamp 후 모든 키 SET. audit diff 는 미들웨어가 INSERT."""
+    before = await get_anomaly_thresholds_config(redis_runtime)
+
+    # 각 값 clamp 후 SET.
+    pairs_int = (
+        (
+            KEY_LOGIN_BRUTE_THRESHOLD,
+            _clamp_int(
+                body.login_brute_threshold,
+                LOGIN_BRUTE_THRESHOLD_MIN,
+                LOGIN_BRUTE_THRESHOLD_MAX,
+            ),
+        ),
+        (
+            KEY_LOGIN_LOCKOUT_SECONDS,
+            _clamp_int(
+                body.login_lockout_seconds,
+                LOGIN_LOCKOUT_SECONDS_MIN,
+                LOGIN_LOCKOUT_SECONDS_MAX,
+            ),
+        ),
+        (
+            KEY_CONCURRENT_IP_THRESHOLD,
+            _clamp_int(
+                body.concurrent_ip_threshold,
+                CONCURRENT_IP_THRESHOLD_MIN,
+                CONCURRENT_IP_THRESHOLD_MAX,
+            ),
+        ),
+        (
+            KEY_CONCURRENT_IP_WINDOW_SECONDS,
+            _clamp_int(
+                body.concurrent_ip_window_seconds,
+                CONCURRENT_IP_WINDOW_SECONDS_MIN,
+                CONCURRENT_IP_WINDOW_SECONDS_MAX,
+            ),
+        ),
+        (
+            KEY_REPEATED_QUESTION_THRESHOLD,
+            _clamp_int(
+                body.repeated_question_threshold,
+                REPEATED_QUESTION_THRESHOLD_MIN,
+                REPEATED_QUESTION_THRESHOLD_MAX,
+            ),
+        ),
+        (
+            KEY_RAPID_FOLLOWUP_THRESHOLD,
+            _clamp_int(
+                body.rapid_followup_threshold,
+                RAPID_FOLLOWUP_THRESHOLD_MIN,
+                RAPID_FOLLOWUP_THRESHOLD_MAX,
+            ),
+        ),
+        (
+            KEY_SMS_MAX_RETRIES,
+            _clamp_int(
+                body.sms_max_retries,
+                SMS_MAX_RETRIES_MIN,
+                SMS_MAX_RETRIES_MAX,
+            ),
+        ),
+        (
+            KEY_SMS_ABUSE_THRESHOLD,
+            _clamp_int(
+                body.sms_abuse_threshold,
+                SMS_ABUSE_THRESHOLD_MIN,
+                SMS_ABUSE_THRESHOLD_MAX,
+            ),
+        ),
+        (
+            KEY_SMS_MAX_WRONG,
+            _clamp_int(
+                body.sms_max_wrong,
+                SMS_MAX_WRONG_MIN,
+                SMS_MAX_WRONG_MAX,
+            ),
+        ),
+        (
+            KEY_RECOVERY_ABUSE_THRESHOLD,
+            _clamp_int(
+                body.recovery_abuse_threshold,
+                RECOVERY_ABUSE_THRESHOLD_MIN,
+                RECOVERY_ABUSE_THRESHOLD_MAX,
+            ),
+        ),
+    )
+    for key, value in pairs_int:
+        await redis_runtime.set(key, str(value))
+
+    # Decimal 1개 — 0.1 정밀도.
+    rapid_window = _clamp_decimal(
+        Decimal(str(body.rapid_followup_window_seconds)).quantize(Decimal("0.1")),
+        RAPID_FOLLOWUP_WINDOW_SECONDS_MIN,
+        RAPID_FOLLOWUP_WINDOW_SECONDS_MAX,
+    )
+    await redis_runtime.set(KEY_RAPID_FOLLOWUP_WINDOW_SECONDS, str(rapid_window))
+
+    after = await get_anomaly_thresholds_config(redis_runtime)
+
+    request.state.audit_target_type = "runtime_config"
+    request.state.audit_diff = {
+        "before": before.model_dump(),
+        "after": after.model_dump(),
+    }
+    return after

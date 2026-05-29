@@ -26,7 +26,74 @@ from api.src.models.anomaly_event import AnomalyEvent
 from api.src.models.inbox_message import InboxMessage
 from api.src.models.user import User
 from api.src.models.user_watch_flag import UserWatchFlag
+from api.src.settings import REDIS_DB_RUNTIME_CONFIG, settings
 from api.src.utils.html_sanitize import sanitize_body_html
+
+# Runtime Config(DB 3) Redis 연결 — 관리자 편집 임계값 동적 조회용. 호출 시점에 새로 열고
+# context manager 로 닫는다(테스트 격리 + 연결 누수 방지).
+_RUNTIME_URL = f"{settings.redis_url}/{REDIS_DB_RUNTIME_CONFIG}"
+
+
+def _make_redis_runtime():
+    """Runtime DB 3 (관리자 편집 임계값) — 호출자가 ``async with`` 로 닫는다."""
+    from redis.asyncio import Redis as _Redis
+
+    return _Redis.from_url(_RUNTIME_URL, decode_responses=True)
+
+
+async def _resolve_concurrent_ip_threshold() -> int:
+    """동일 IP N명 임계. fail-safe 폴백 = 3."""
+    try:
+        from api.src.services import runtime_config_service as _rc
+
+        async with _make_redis_runtime() as r:
+            return await _rc.get_concurrent_ip_threshold(r)
+    except Exception:
+        return 3
+
+
+async def _resolve_concurrent_ip_window_seconds() -> int:
+    """동일 IP 추적 윈도우(초). fail-safe 폴백 = 600."""
+    try:
+        from api.src.services import runtime_config_service as _rc
+
+        async with _make_redis_runtime() as r:
+            return await _rc.get_concurrent_ip_window_seconds(r)
+    except Exception:
+        return 600
+
+
+async def _resolve_repeated_question_threshold() -> int:
+    """동일 질문 N회 임계. fail-safe 폴백 = 3."""
+    try:
+        from api.src.services import runtime_config_service as _rc
+
+        async with _make_redis_runtime() as r:
+            return await _rc.get_repeated_question_threshold(r)
+    except Exception:
+        return 3
+
+
+async def _resolve_rapid_followup_window_seconds() -> float:
+    """답변 직후 N초 임계. fail-safe 폴백 = 3.0."""
+    try:
+        from api.src.services import runtime_config_service as _rc
+
+        async with _make_redis_runtime() as r:
+            return float(await _rc.get_rapid_followup_window_seconds(r))
+    except Exception:
+        return 3.0
+
+
+async def _resolve_rapid_followup_threshold() -> int:
+    """답변 직후 연속 N회 임계. fail-safe 폴백 = 3."""
+    try:
+        from api.src.services import runtime_config_service as _rc
+
+        async with _make_redis_runtime() as r:
+            return await _rc.get_rapid_followup_threshold(r)
+    except Exception:
+        return 3
 
 logger = structlog.get_logger(__name__)
 
@@ -563,24 +630,28 @@ async def check_concurrent_ip_login(
     if ip is None:
         return
 
+    # 관리자 편집 임계 — 윈도우/명수. fail-safe 폴백.
+    window_seconds = await _resolve_concurrent_ip_window_seconds()
+    threshold = await _resolve_concurrent_ip_threshold()
+
     ip_key = f"login:ip:{ip}"
     now_ts = time.time()
-    window_start = now_ts - 600
+    window_start = now_ts - window_seconds
 
     try:
         await redis_rl.zadd(ip_key, {str(user_id): now_ts})
         await redis_rl.zremrangebyscore(ip_key, "-inf", window_start)
-        await redis_rl.expire(ip_key, 600)
+        await redis_rl.expire(ip_key, window_seconds)
         members = await redis_rl.zrange(ip_key, 0, -1)
         distinct_user_ids = sorted({int(m) for m in members})
 
-        if len(distinct_user_ids) < 3:
+        if len(distinct_user_ids) < threshold:
             return
 
         inserted: list[AnomalyEvent] = []
         for uid in distinct_user_ids:
             user_flag_key = f"concurrent_ip_user_flagged:{ip}:{uid}"
-            flag_ok = await redis_rl.set(user_flag_key, "1", ex=600, nx=True)
+            flag_ok = await redis_rl.set(user_flag_key, "1", ex=window_seconds, nx=True)
             if not flag_ok:
                 continue
 
@@ -671,6 +742,10 @@ async def check_rapid_followup_questions(
     if subscription_status == "admin":
         return False
 
+    # 관리자 편집 가능 임계 — 윈도우(초) + 연속 횟수. fail-safe 폴백.
+    window_seconds = await _resolve_rapid_followup_window_seconds()
+    streak_threshold = await _resolve_rapid_followup_threshold()
+
     last_done_key = _RAPID_FOLLOWUP_LAST_DONE_KEY.format(user_id=user_id)
     streak_key = _RAPID_FOLLOWUP_STREAK_KEY.format(user_id=user_id)
 
@@ -696,7 +771,7 @@ async def check_rapid_followup_questions(
     now_ts = time.time()
     delta = now_ts - last_done_ts
 
-    if delta > RAPID_FOLLOWUP_WINDOW_SECONDS or delta < 0:
+    if delta > window_seconds or delta < 0:
         # 윈도우 밖 — streak 리셋. 다음 답변 완료 시점부터 새로 시작.
         try:
             await redis_quota.delete(streak_key)
@@ -713,7 +788,7 @@ async def check_rapid_followup_questions(
         logger.error("anomaly.rapid_followup.streak_incr_failed", exc_info=True)
         return False
 
-    if streak < RAPID_FOLLOWUP_STREAK_THRESHOLD:
+    if streak < streak_threshold:
         return False
 
     # 임계 도달 — anomaly 기록 + throttle 적용.
@@ -756,7 +831,7 @@ async def check_rapid_followup_questions(
             ua=None,
             details={
                 "streak": int(streak),
-                "window_seconds": RAPID_FOLLOWUP_WINDOW_SECONDS,
+                "window_seconds": float(window_seconds),
                 "last_done_delta_seconds": round(delta, 3),
                 "already_throttled": already_throttled,
                 "auto_actioned": True,
@@ -851,6 +926,9 @@ async def check_repeated_question(
     if not normalized:
         return False
 
+    # 관리자 편집 가능 임계. fail-safe 폴백.
+    streak_threshold = await _resolve_repeated_question_threshold()
+
     last_key = _REPEATED_QUESTION_LAST_KEY.format(user_id=user_id)
     streak_key = _REPEATED_QUESTION_STREAK_KEY.format(user_id=user_id)
 
@@ -876,7 +954,7 @@ async def check_repeated_question(
         logger.error("anomaly.repeated_question.streak_incr_failed", exc_info=True)
         return False
 
-    if streak < REPEATED_QUESTION_STREAK_THRESHOLD:
+    if streak < streak_threshold:
         return False
 
     try:

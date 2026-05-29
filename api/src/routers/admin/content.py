@@ -32,6 +32,7 @@ from api.src.deps.auth import require_admin, require_admin_page
 from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_ADMIN_DM_DELETE,
+    AUDIT_ANOMALY_THRESHOLDS_UPDATE,
     AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE,
     AUDIT_INBOX_PREVIEW_CONFIG_UPDATE,
     AUDIT_LOGIN_BRUTE_THRESHOLD_UPDATE,
@@ -67,6 +68,8 @@ from api.src.schemas.admin.popup import (
     PopupUpdateRequest,
 )
 from api.src.schemas.admin.runtime_config import (
+    AnomalyThresholdsConfigResponse,
+    AnomalyThresholdsConfigUpdateRequest,
     AnomalyThrottleConfigResponse,
     AnomalyThrottleConfigUpdateRequest,
     ChatModelConfigResponse,
@@ -319,6 +322,41 @@ async def update_login_brute_threshold_config(
 ) -> LoginBruteThresholdConfigResponse:
     """로그인 실패 이상탐지 기준 횟수 저장 (1~20). diff_json 은 audit middleware 가 INSERT."""
     return await runtime_config_service.update_login_brute_threshold_config(
+        request, body, redis_runtime
+    )
+
+
+@router.get(
+    "/runtime-config/anomaly-thresholds",
+    response_model=AnomalyThresholdsConfigResponse,
+)
+async def get_anomaly_thresholds_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> AnomalyThresholdsConfigResponse:
+    """이상탐지 통합 임계값 조회 — 6 카테고리 11 항목.
+
+    /admin/anomaly/thresholds 페이지 prefill 전용. 본 응답은 각 항목의 현재값과 함께
+    bounds(min/max/default)도 동봉해 프론트 폼이 동적으로 안내한다.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    return await runtime_config_service.get_anomaly_thresholds_config(redis_runtime)
+
+
+@router.put(
+    "/runtime-config/anomaly-thresholds",
+    response_model=AnomalyThresholdsConfigResponse,
+)
+@audit_action(AUDIT_ANOMALY_THRESHOLDS_UPDATE)
+async def update_anomaly_thresholds_config(
+    request: Request,
+    body: AnomalyThresholdsConfigUpdateRequest,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> AnomalyThresholdsConfigResponse:
+    """이상탐지 통합 임계값 일괄 저장 — 서버에서 추가 clamp 후 SET. 즉시 반영(배포 불필요)."""
+    return await runtime_config_service.update_anomaly_thresholds_config(
         request, body, redis_runtime
     )
 

@@ -47,8 +47,25 @@ DEFAULTS = {
     "runtime:anomaly_throttle_enabled": "true",
     "runtime:anomaly_throttle_free_delay": "5.0",
     "runtime:anomaly_throttle_pro_delay": "2.0",
-    # 로그인 실패 이상탐지 기준 — N회 연속 실패 시 anomaly + 10분 lockout. 관리자 편집(1~20).
+    # 로그인 실패 이상탐지 기준 — N회 연속 실패 시 anomaly + 잠금. 관리자 편집(1~20).
     "runtime:login_brute_threshold": "3",
+    # ── 이상탐지 통합 임계값 (/admin/anomaly/thresholds 페이지에서 관리자 편집) ──
+    # 1) 비밀번호 반복 실패 — 잠금 지속 시간(초). 기본 600(10분), 60~86400.
+    "runtime:login_lockout_seconds": "600",
+    # 2) 동일 IP 다중 로그인 — 동시 계정 수 + 윈도우.
+    "runtime:concurrent_ip_threshold": "3",
+    "runtime:concurrent_ip_window_seconds": "600",
+    # 3) 동일 질문 반복.
+    "runtime:repeated_question_threshold": "3",
+    # 4) 답변 직후 빠른 후속 질문.
+    "runtime:rapid_followup_window_seconds": "3.0",
+    "runtime:rapid_followup_threshold": "3",
+    # 5) 휴대폰 인증 남용.
+    "runtime:sms_max_retries": "5",          # 시간당 발송 허용
+    "runtime:sms_abuse_threshold": "10",     # 1시간 누적 N회 → 24h 차단
+    "runtime:sms_max_wrong": "3",            # OTP 오답 허용
+    # 6) 비밀번호·아이디 찾기 남용.
+    "runtime:recovery_abuse_threshold": "4",
 }
 
 

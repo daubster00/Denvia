@@ -118,41 +118,58 @@ export async function updateAnomalyThrottleConfig(
   return res.json();
 }
 
-// 로그인 실패 이상탐지 기준 횟수 — 동일 이메일 N회 연속 실패 시 anomaly + 10분 lockout 트리거.
-// 백엔드 bounds(1~20)는 응답에서 함께 받아 폼이 동적으로 표시.
-export const loginBruteThresholdFormSchema = z.object({
-  threshold: z
-    .number({ invalid_type_error: "숫자를 입력해주세요" })
-    .int("정수만 입력 가능합니다")
-    .min(1, "1회 이상이어야 합니다")
-    .max(20, "20회 이하여야 합니다"),
-});
+// ── 이상탐지 통합 임계값 (/admin/anomaly/thresholds) ──────────────────────────
+// 6 카테고리 11 항목 — 묶음 GET/PUT. 서버에서 추가 clamp 적용 후 SET.
 
-export type LoginBruteThresholdFormInput = z.infer<
-  typeof loginBruteThresholdFormSchema
->;
-
-export interface LoginBruteThresholdResponse {
-  threshold: number;
-  default_threshold: number;
-  min_threshold: number;
-  max_threshold: number;
+export interface AnomalyThresholdsItem {
+  current: number;
+  default: number;
+  min: number;
+  max: number;
 }
 
-export async function fetchLoginBruteThresholdConfig(): Promise<LoginBruteThresholdResponse> {
+export interface AnomalyThresholdsResponse {
+  login_brute_threshold: AnomalyThresholdsItem;
+  login_lockout_seconds: AnomalyThresholdsItem;
+  concurrent_ip_threshold: AnomalyThresholdsItem;
+  concurrent_ip_window_seconds: AnomalyThresholdsItem;
+  repeated_question_threshold: AnomalyThresholdsItem;
+  rapid_followup_window_seconds: AnomalyThresholdsItem;
+  rapid_followup_threshold: AnomalyThresholdsItem;
+  sms_max_retries: AnomalyThresholdsItem;
+  sms_abuse_threshold: AnomalyThresholdsItem;
+  sms_max_wrong: AnomalyThresholdsItem;
+  recovery_abuse_threshold: AnomalyThresholdsItem;
+}
+
+export interface AnomalyThresholdsUpdateInput {
+  login_brute_threshold: number;
+  login_lockout_seconds: number;
+  concurrent_ip_threshold: number;
+  concurrent_ip_window_seconds: number;
+  repeated_question_threshold: number;
+  rapid_followup_window_seconds: number;
+  rapid_followup_threshold: number;
+  sms_max_retries: number;
+  sms_abuse_threshold: number;
+  sms_max_wrong: number;
+  recovery_abuse_threshold: number;
+}
+
+export async function fetchAnomalyThresholdsConfig(): Promise<AnomalyThresholdsResponse> {
   const res = await fetch(
-    `${API_BASE}/api/v1/admin/runtime-config/login-brute-threshold`,
+    `${API_BASE}/api/v1/admin/runtime-config/anomaly-thresholds`,
     { credentials: "include" },
   );
   if (!res.ok) throw await parseError(res);
   return res.json();
 }
 
-export async function updateLoginBruteThresholdConfig(
-  input: LoginBruteThresholdFormInput,
-): Promise<LoginBruteThresholdResponse> {
+export async function updateAnomalyThresholdsConfig(
+  input: AnomalyThresholdsUpdateInput,
+): Promise<AnomalyThresholdsResponse> {
   const res = await fetch(
-    `${API_BASE}/api/v1/admin/runtime-config/login-brute-threshold`,
+    `${API_BASE}/api/v1/admin/runtime-config/anomaly-thresholds`,
     {
       method: "PUT",
       credentials: "include",

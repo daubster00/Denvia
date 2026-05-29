@@ -1,0 +1,263 @@
+.page {
+  width: 100%;
+  max-width: 1300px;
+  margin-left: 0;
+  padding: 24px 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-neutral-900, #18181b);
+}
+
+.subheading {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-neutral-600, #525252);
+  line-height: 1.6;
+}
+
+.applyHint {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #075985;
+  line-height: 1.6;
+}
+
+.loading,
+.errorBox {
+  background: #fff;
+  border: 1px solid var(--color-neutral-200, #e4e4e7);
+  border-radius: 12px;
+  padding: 24px;
+  font-size: 13px;
+  color: var(--color-neutral-700, #404040);
+  text-align: center;
+}
+
+.errorBox {
+  color: #b91c1c;
+}
+
+.formStack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.formCard {
+  background: #fff;
+  border: 1px solid var(--color-neutral-200, #e4e4e7);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-neutral-100, #f4f4f5);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-neutral-900, #18181b);
+}
+
+.cardEffect {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-600, #525252);
+  line-height: 1.6;
+}
+
+.cardEffect strong {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-neutral-100, #f4f4f5);
+}
+
+.row:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rowLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-neutral-900, #18181b);
+}
+
+.rowDesc {
+  font-size: 12px;
+  color: var(--color-neutral-600, #525252);
+  line-height: 1.5;
+}
+
+.numberCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.numberInput {
+  width: 100px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  background: #fff;
+  font-size: 14px;
+  color: var(--color-neutral-900, #18181b);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.numberInput:focus {
+  outline: 2px solid var(--color-brand-500, #3b82f6);
+  outline-offset: 1px;
+}
+
+.unit {
+  font-size: 13px;
+  color: var(--color-neutral-700, #404040);
+}
+
+.fieldError {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  background: #fff;
+  border: 1px solid var(--color-neutral-200, #e4e4e7);
+  border-radius: 12px;
+  margin-top: 8px;
+}
+
+.statusText {
+  font-size: 13px;
+}
+
+.statusText.error {
+  color: #b91c1c;
+}
+
+.statusText.success {
+  color: #15803d;
+}
+
+.statusText.dirty {
+  color: var(--color-neutral-600, #525252);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.resetBtn,
+.saveBtn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resetBtn {
+  background: #fff;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  color: var(--color-neutral-700, #404040);
+}
+
+.resetBtn:hover:not(:disabled) {
+  background: var(--color-neutral-100, #f4f4f5);
+}
+
+.saveBtn {
+  background: var(--color-brand-600, #2563eb);
+  color: #fff;
+  border: none;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: var(--color-brand-700, #1d4ed8);
+}
+
+.resetBtn:disabled,
+.saveBtn:disabled {
+  background: var(--color-neutral-200, #e4e4e7);
+  color: var(--color-neutral-500, #71717a);
+  cursor: not-allowed;
+  border-color: var(--color-neutral-200, #e4e4e7);
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 16px 16px 32px;
+  }
+  .formCard {
+    padding: 16px;
+  }
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .numberCell {
+    justify-content: flex-end;
+  }
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .actions {
+    justify-content: flex-end;
+  }
+}

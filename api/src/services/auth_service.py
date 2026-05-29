@@ -129,6 +129,61 @@ async def _resolve_login_brute_threshold(redis_url: str) -> int:
     except Exception:
         return _LOGIN_BRUTE_THRESHOLD
 
+
+async def _resolve_login_lockout_seconds(redis_url: str) -> int:
+    """1차 잠금 지속 시간(초). fail-safe 폴백 = 코드 기본값 600(10분)."""
+    try:
+        from api.src.services import runtime_config_service
+
+        async with _make_redis_runtime(redis_url) as r:
+            return await runtime_config_service.get_login_lockout_seconds(r)
+    except Exception:
+        return _LOGIN_LOCKOUT_TTL
+
+
+async def _resolve_sms_max_retries(redis_url: str) -> int:
+    """시간당 OTP 발송 허용 횟수. fail-safe 폴백 = 3."""
+    try:
+        from api.src.services import runtime_config_service
+
+        async with _make_redis_runtime(redis_url) as r:
+            return await runtime_config_service.get_sms_max_retries(r)
+    except Exception:
+        return _MAX_RETRIES
+
+
+async def _resolve_sms_abuse_threshold(redis_url: str) -> int:
+    """1시간 누적 N회 도달 시 24h 차단 발동 임계. fail-safe 폴백 = 10."""
+    try:
+        from api.src.services import runtime_config_service
+
+        async with _make_redis_runtime(redis_url) as r:
+            return await runtime_config_service.get_sms_abuse_threshold(r)
+    except Exception:
+        return _SMS_ANOMALY_THRESHOLD
+
+
+async def _resolve_sms_max_wrong(redis_url: str) -> int:
+    """OTP 검증 오답 허용 횟수. fail-safe 폴백 = 3."""
+    try:
+        from api.src.services import runtime_config_service
+
+        async with _make_redis_runtime(redis_url) as r:
+            return await runtime_config_service.get_sms_max_wrong(r)
+    except Exception:
+        return _MAX_WRONG
+
+
+async def _resolve_recovery_abuse_threshold(redis_url: str) -> int:
+    """1시간 비번/아이디 찾기 시도 N회 도달 시 anomaly. fail-safe 폴백 = 4."""
+    try:
+        from api.src.services import runtime_config_service
+
+        async with _make_redis_runtime(redis_url) as r:
+            return await runtime_config_service.get_recovery_abuse_threshold(r)
+    except Exception:
+        return _RECOVERY_ABUSE_THRESHOLD
+
 # OAuth provider → 한국어 라벨 매핑 (AC-1, AC-6)
 _PROVIDER_LABEL_KO: dict[str, str] = {
     "kakao": "카카오",
@@ -322,6 +377,9 @@ async def send_sms_otp_flow(
     otp_key, cooldown_key, retry_key = _otp_keys(purpose, phone)
     attempt_key = _SMS_ATTEMPT_KEY.format(phone=phone)
     block_key = _SMS_BLOCK_KEY.format(phone=phone)
+    # 관리자 편집 가능 임계값 — Runtime DB 장애 시 코드 기본값 폴백.
+    sms_max_retries = await _resolve_sms_max_retries(redis_url)
+    sms_abuse_threshold = await _resolve_sms_abuse_threshold(redis_url)
 
     async with _make_redis(redis_url) as r:
         # 0) 24h 차단 키 우선 확인 — 어떤 카운터/쿨다운보다 먼저.
@@ -336,11 +394,11 @@ async def send_sms_otp_flow(
                 },
             )
 
-        # 1) 시도 카운터 INCR — purpose 무관·성공/실패 무관. 10회 도달 시 24h 차단으로 전이.
+        # 1) 시도 카운터 INCR — purpose 무관·성공/실패 무관. N회 도달 시 24h 차단으로 전이.
         attempt_count = await r.incr(attempt_key)
         if attempt_count == 1:
             await r.expire(attempt_key, _SMS_ATTEMPT_WINDOW)
-        if attempt_count >= _SMS_ANOMALY_THRESHOLD:
+        if attempt_count >= sms_abuse_threshold:
             await r.set(block_key, "1", ex=_SMS_BLOCK_TTL)
             await _record_sms_abuse_anomaly(
                 phone=phone,
@@ -368,7 +426,7 @@ async def send_sms_otp_flow(
         # 시간당 재시도 횟수 확인
         count_raw = await r.get(retry_key)
         count = int(count_raw) if count_raw else 0
-        if count >= _MAX_RETRIES:
+        if count >= sms_max_retries:
             raise HTTPException(
                 status_code=429,
                 detail={"code": "SMS_MAX_RETRIES_EXCEEDED", "message": "인증번호 발송 한도를 초과했습니다. 1시간 후 다시 시도해주세요."},
@@ -396,7 +454,7 @@ async def send_sms_otp_flow(
     result = {
         "sent_at": sent_at,
         "cooldown_seconds": _COOLDOWN_TTL,
-        "max_retries": _MAX_RETRIES,
+        "max_retries": sms_max_retries,
     }
     if expose_code:
         result["debug_code"] = otp
@@ -423,6 +481,8 @@ async def verify_sms_otp_flow(
     otp_key, _, _ = _otp_keys(purpose, phone)
     wrong_key = f"otp_wrong:{purpose}:{phone}"
     block_key = _SMS_BLOCK_KEY.format(phone=phone)
+    # 관리자 편집 가능 임계값.
+    sms_max_wrong = await _resolve_sms_max_wrong(redis_url)
 
     async with _make_redis(redis_url) as r:
         # 24h 차단 키 우선 확인 — send 단계에서 이미 OTP 가 발급됐어도 검증 단계에서 거절.
@@ -448,7 +508,7 @@ async def verify_sms_otp_flow(
         # 불일치 횟수 확인
         wrong_raw = await r.get(wrong_key)
         wrong_count = int(wrong_raw) if wrong_raw else 0
-        if wrong_count >= _MAX_WRONG:
+        if wrong_count >= sms_max_wrong:
             await r.delete(otp_key)
             raise HTTPException(
                 status_code=400,
@@ -458,7 +518,7 @@ async def verify_sms_otp_flow(
         # OTP 검증
         if stored_otp != code:
             new_wrong = wrong_count + 1
-            if new_wrong >= _MAX_WRONG:
+            if new_wrong >= sms_max_wrong:
                 await r.delete(otp_key)
                 await r.delete(wrong_key)
                 raise HTTPException(
@@ -636,6 +696,8 @@ async def login_user(
     hard_lock_key = _LOGIN_HARD_LOCK_KEY.format(email=email)
     # 관리자가 편집한 임계값(기본 3회). Runtime DB 장애 시 코드 기본값으로 폴백.
     brute_threshold = await _resolve_login_brute_threshold(redis_url)
+    # 1차 잠금 지속 시간(초). 관리자 편집 — 기본 600.
+    lockout_seconds = await _resolve_login_lockout_seconds(redis_url)
 
     # 락아웃 체크 — hard_lock(2차) 이 lockout(1차)보다 강함이므로 먼저 확인.
     async with _make_redis_rl(redis_url) as r:
@@ -733,7 +795,7 @@ async def login_user(
 
                     # OAuth-only enumeration 은 stage_key 를 세팅하지 않는다 —
                     # password verify 경로가 없으므로 stage-2 escalation 이 발생할 수 없음.
-                    await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
+                    await r.set(lockout_key, "1", ex=lockout_seconds)
 
             raise HTTPException(
                 status_code=409,
@@ -844,7 +906,7 @@ async def login_user(
                     await db.rollback()
 
                 # 10분 lockout + 24h stage 표식
-                await r.set(lockout_key, "1", ex=_LOGIN_LOCKOUT_TTL)
+                await r.set(lockout_key, "1", ex=lockout_seconds)
                 await r.set(stage_key, "1", ex=_LOGIN_STAGE_TTL)
                 await r.delete(fail_key)
 
@@ -964,6 +1026,8 @@ async def _check_recovery_abuse(
 ) -> None:
     """복구 요청 횟수를 카운트하고 남용 임계 도달 시 anomaly_events에 기록한다."""
     recovery_key = _RECOVERY_KEY.format(phone=phone)
+    # 관리자 편집 가능 임계값 — fail-safe 폴백.
+    recovery_threshold = await _resolve_recovery_abuse_threshold(redis_url)
     async with _make_redis_rl(redis_url) as r:
         count_raw = await r.get(recovery_key)
         count = int(count_raw) + 1 if count_raw else 1
@@ -972,7 +1036,7 @@ async def _check_recovery_abuse(
         else:
             await r.incr(recovery_key)
 
-        if count >= _RECOVERY_ABUSE_THRESHOLD:
+        if count >= recovery_threshold:
             now = datetime.now(tz=timezone.utc)
             event = AnomalyEvent(
                 type="recovery_abuse",

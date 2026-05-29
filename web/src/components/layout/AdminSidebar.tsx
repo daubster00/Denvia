@@ -43,6 +43,7 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { label: "이상 이벤트", href: "/admin/anomaly" },
       { label: "주의 계정", href: "/admin/anomaly/watched" },
+      { label: "탐지 기준 설정", href: "/admin/anomaly/thresholds" },
     ],
   },
   {

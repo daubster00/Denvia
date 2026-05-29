@@ -1,7 +1,6 @@
 "use client";
 
 import { AnomalyThrottleForm } from "@/features/admin-content/components/AnomalyThrottleForm";
-import { LoginBruteThresholdForm } from "@/features/admin-content/components/LoginBruteThresholdForm";
 import { ServiceTogglesForm } from "@/features/admin-content/components/ServiceTogglesForm";
 import styles from "./page.module.css";
 
@@ -17,7 +16,6 @@ export default function AdminContentHubPage() {
 
       <ServiceTogglesForm />
       <AnomalyThrottleForm />
-      <LoginBruteThresholdForm />
     </main>
   );
 }

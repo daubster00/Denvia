@@ -82,6 +82,64 @@ class LoginBruteThresholdConfigUpdateRequest(BaseModel):
     threshold: int = Field(ge=1, le=20)
 
 
+class AnomalyThresholdsItem(BaseModel):
+    """관리자 페이지 prefill 용 — 현재값 + 기본값 + bounds 묶음.
+
+    float 로 통일해 시각(소수 초) 항목과 횟수(정수) 항목을 같은 폼이 다룰 수 있게 한다.
+    """
+
+    current: float
+    default: float
+    min: float
+    max: float
+
+
+class AnomalyThresholdsConfigResponse(BaseModel):
+    """이상탐지 임계값 11개 묶음 응답.
+
+    의미와 적용 동작:
+    - login_brute_threshold: 동일 이메일 N회 연속 실패 시 anomaly + lockout.
+    - login_lockout_seconds: 위 잠금 지속 시간(초).
+    - concurrent_ip_threshold / concurrent_ip_window_seconds:
+      같은 IP에서 N명 이상이 윈도우 안에 로그인하면 각 사용자 anomaly INSERT.
+    - repeated_question_threshold: 같은 질문 N회 연속 시 자동 throttle.
+    - rapid_followup_window_seconds / rapid_followup_threshold:
+      답변 완료 N초 안에 새 질문이 N회 연속이면 자동 throttle.
+    - sms_max_retries: 시간당 OTP 발송 허용 횟수 (초과 시 429).
+    - sms_abuse_threshold: 1시간 누적 OTP 시도 N회 도달 시 24시간 차단 + anomaly.
+    - sms_max_wrong: OTP 검증 오답 허용 횟수.
+    - recovery_abuse_threshold: 1시간 비밀번호/아이디 찾기 시도 N회 도달 시 anomaly.
+    """
+
+    login_brute_threshold: AnomalyThresholdsItem
+    login_lockout_seconds: AnomalyThresholdsItem
+    concurrent_ip_threshold: AnomalyThresholdsItem
+    concurrent_ip_window_seconds: AnomalyThresholdsItem
+    repeated_question_threshold: AnomalyThresholdsItem
+    rapid_followup_window_seconds: AnomalyThresholdsItem
+    rapid_followup_threshold: AnomalyThresholdsItem
+    sms_max_retries: AnomalyThresholdsItem
+    sms_abuse_threshold: AnomalyThresholdsItem
+    sms_max_wrong: AnomalyThresholdsItem
+    recovery_abuse_threshold: AnomalyThresholdsItem
+
+
+class AnomalyThresholdsConfigUpdateRequest(BaseModel):
+    """일괄 저장 요청 — 서버에서 추가 clamp."""
+
+    login_brute_threshold: int = Field(ge=1, le=20)
+    login_lockout_seconds: int = Field(ge=60, le=86400)
+    concurrent_ip_threshold: int = Field(ge=2, le=50)
+    concurrent_ip_window_seconds: int = Field(ge=60, le=3600)
+    repeated_question_threshold: int = Field(ge=2, le=50)
+    rapid_followup_window_seconds: float = Field(ge=0.5, le=60.0)
+    rapid_followup_threshold: int = Field(ge=2, le=50)
+    sms_max_retries: int = Field(ge=1, le=20)
+    sms_abuse_threshold: int = Field(ge=2, le=100)
+    sms_max_wrong: int = Field(ge=1, le=20)
+    recovery_abuse_threshold: int = Field(ge=2, le=50)
+
+
 class ForexConfigResponse(BaseModel):
     """USD→KRW 환율 + 자동 갱신 메타 — 관리자 UI 표시 전용 (read-only).
 
