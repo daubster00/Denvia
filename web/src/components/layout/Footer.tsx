@@ -7,7 +7,7 @@ const COMPANY = {
   representative: "이규성",
   businessNumber: "399-71-00496",
   address: "경기도 가평군 가평읍 향교로27번길 4-32, 201호(한성연립)",
-  email: "dlrbtjd357@naver.com",
+  email: "denvia@naver.com",
   phone: "010-2323-2753",
 };
 

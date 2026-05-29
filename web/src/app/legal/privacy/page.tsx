@@ -259,7 +259,7 @@ export default function PrivacyPage() {
                 <tr>
                   <th>이메일</th>
                   <td>
-                    <a href="mailto:dlrbtjd357@naver.com">dlrbtjd357@naver.com</a>
+                    <a href="mailto:denvia@naver.com">denvia@naver.com</a>
                   </td>
                 </tr>
               </tbody>
