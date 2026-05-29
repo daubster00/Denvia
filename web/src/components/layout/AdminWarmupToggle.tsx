@@ -3,7 +3,10 @@
 /**
  * 상단바 우측에 노출되는 OpenAI 워밍업 루프 토글.
  *
- * 마스터가 아닌 관리자에게는 컴포넌트 자체를 렌더하지 않는다 (라벨로 권한을 알리지 않음).
+ * 가시성 규칙:
+ * - 마스터는 항상 노출.
+ * - 그 외 등급은 권한 매트릭스에서 "/admin/feature/openai-warmup" 이 켜져 있을 때만 노출.
+ * 권한이 없는 관리자에게는 라벨조차 보이지 않도록 컴포넌트 자체를 렌더하지 않는다.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,7 +21,7 @@ import {
 import styles from "./AdminWarmupToggle.module.css";
 
 interface Props {
-  isMaster: boolean;
+  canSee: boolean;
 }
 
 const QUERY_KEY = ["admin-openai-warmup-status"];
@@ -36,14 +39,14 @@ function formatRelative(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-export function AdminWarmupToggle({ isMaster }: Props) {
+export function AdminWarmupToggle({ canSee }: Props) {
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
 
   const { data, isLoading, isError, error } = useQuery<WarmupStatus, ApiError>({
     queryKey: QUERY_KEY,
     queryFn: fetchWarmupStatus,
-    enabled: isMaster,
+    enabled: canSee,
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
@@ -60,10 +63,10 @@ export function AdminWarmupToggle({ isMaster }: Props) {
 
   // "마지막 핑 ~초 전" 라벨이 매초 자동으로 새로고침되도록 1초 틱.
   useEffect(() => {
-    if (!isMaster) return;
+    if (!canSee) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [isMaster]);
+  }, [canSee]);
   // now 변경에만 의존하는 라벨 — 미사용 변수 경고 회피용 참조.
   void now;
 
@@ -75,7 +78,7 @@ export function AdminWarmupToggle({ isMaster }: Props) {
     [data?.last_ping_at, now],
   );
 
-  if (!isMaster) {
+  if (!canSee) {
     return null;
   }
 
@@ -93,7 +96,8 @@ export function AdminWarmupToggle({ isMaster }: Props) {
     if (isError) {
       const code = error?.code;
       if (code === "OPENAI_KEY_MISSING") return "키 없음";
-      if (code === "ADMIN_FORBIDDEN_GRADE") return "권한 없음";
+      if (code === "ADMIN_FORBIDDEN_PAGE" || code === "ADMIN_FORBIDDEN_GRADE")
+        return "권한 없음";
       return "오류";
     }
     if (running) return "가동 중";

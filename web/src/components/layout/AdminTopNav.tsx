@@ -27,12 +27,18 @@ export function AdminTopNav() {
 
   const gradeLabel = admin?.is_master ? "마스터" : "관리자";
 
+  // 마스터는 무조건 노출, 그 외 등급은 권한 매트릭스의 /admin/feature/openai-warmup 가 켜져 있어야 노출.
+  const canSeeWarmup =
+    !!admin &&
+    (admin.is_master ||
+      (admin.allowed_pages?.includes("/admin/feature/openai-warmup") ?? false));
+
   return (
     <header className={styles.header}>
       <LogoLink href="/admin" ariaLabel="관리자 대시보드" />
 
       <div className={styles.right}>
-        <AdminWarmupToggle isMaster={admin?.is_master ?? false} />
+        <AdminWarmupToggle canSee={canSeeWarmup} />
         {admin && (
           <Link
             href="/admin/account"

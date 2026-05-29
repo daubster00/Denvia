@@ -1,10 +1,13 @@
-"""Admin OpenAI 워밍업 라우터 — 마스터 전용.
+"""Admin OpenAI 워밍업 라우터.
 
 GET   /api/v1/admin/openai-warmup/status   현재 루프 상태(가동 여부·마지막 핑·통계)
 POST  /api/v1/admin/openai-warmup/start    90초 주기 핑 루프 시작
 POST  /api/v1/admin/openai-warmup/stop     핑 루프 정지
 
-마스터 1인만 접근 — operator 도 보지 못한다 (운영상 비용 토글이므로 단일 책임자).
+접근 제어:
+- 마스터는 항상 통과 (require_admin_page 내부에서 master 단락 평가).
+- operator/sub_operator/커스텀 등급은 등급별 페이지 권한 매트릭스에서
+  /admin/feature/openai-warmup 행이 ON 일 때만 통과.
 """
 
 from __future__ import annotations
@@ -16,12 +19,16 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from api.src.deps.auth import require_admin_grade
+from api.src.deps.auth import require_admin_page
 from api.src.middleware.rate_limit import limiter
 from api.src.models.user import User
 from api.src.services import openai_warmup_service
 
 logger = structlog.get_logger(__name__)
+
+
+# 매트릭스의 1차 라우트 — admin_grade_permission_service.ADMIN_PAGE_ROUTES 와 동일 키.
+WARMUP_FEATURE_ROUTE = "/admin/feature/openai-warmup"
 
 
 class WarmupStatusResponse(BaseModel):
@@ -40,7 +47,7 @@ class WarmupStatusResponse(BaseModel):
 router = APIRouter(
     prefix="/admin/openai-warmup",
     tags=["admin-openai-warmup"],
-    dependencies=[Depends(require_admin_grade("master"))],
+    dependencies=[Depends(require_admin_page(WARMUP_FEATURE_ROUTE))],
 )
 
 
@@ -63,7 +70,7 @@ def _to_response(s: openai_warmup_service.WarmupStatus) -> WarmupStatusResponse:
 @limiter.limit("60/minute")
 async def get_warmup_status(
     request: Request,
-    admin: Annotated[User, Depends(require_admin_grade("master"))],
+    admin: Annotated[User, Depends(require_admin_page(WARMUP_FEATURE_ROUTE))],
 ) -> WarmupStatusResponse:
     return _to_response(openai_warmup_service.status())
 
@@ -72,7 +79,7 @@ async def get_warmup_status(
 @limiter.limit("10/minute")
 async def start_warmup(
     request: Request,
-    admin: Annotated[User, Depends(require_admin_grade("master"))],
+    admin: Annotated[User, Depends(require_admin_page(WARMUP_FEATURE_ROUTE))],
 ) -> WarmupStatusResponse:
     import os
 
@@ -93,7 +100,7 @@ async def start_warmup(
 @limiter.limit("10/minute")
 async def stop_warmup(
     request: Request,
-    admin: Annotated[User, Depends(require_admin_grade("master"))],
+    admin: Annotated[User, Depends(require_admin_page(WARMUP_FEATURE_ROUTE))],
 ) -> WarmupStatusResponse:
     s = await openai_warmup_service.stop()
     logger.info("admin.openai_warmup.stop", actor_user_id=admin.id, running=s.running)

@@ -34,6 +34,8 @@ logger = structlog.get_logger(__name__)
 # 매트릭스에 노출되는 1차 라우트와 라벨.
 # - /admin/admins/* 는 본 매트릭스에서 제외 — require_admin_grade('master','operator') 단독 가드.
 # - 새 페이지 추가 시 본 상수 + 0055 마이그레이션의 _DEFAULT_ROUTES 동시 갱신.
+# - "/admin/feature/*" 는 실제 페이지가 아니라 상단바·기타 UI 기능의 노출 토글 자리.
+#   매트릭스 한 행을 차지해 등급별 ON/OFF 만 컨트롤하고, 라우팅 가드는 사용하지 않는다.
 ADMIN_PAGE_ROUTES: list[tuple[str, str]] = [
     ("/admin", "대시보드"),
     ("/admin/users", "고객관리"),
@@ -44,6 +46,7 @@ ADMIN_PAGE_ROUTES: list[tuple[str, str]] = [
     ("/admin/cs", "CS"),
     ("/admin/board", "수정요청"),
     ("/admin/settings", "설정"),
+    ("/admin/feature/openai-warmup", "AI 워밍업 (상단바 토글)"),
 ]
 
 ADMIN_PAGE_ROUTE_SET: set[str] = {r for r, _ in ADMIN_PAGE_ROUTES}
