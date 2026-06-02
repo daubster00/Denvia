@@ -10,6 +10,7 @@ import {
   useAddWatch,
   useRemoveWatch,
 } from "@/features/admin-anomaly/hooks/useWatchToggle";
+import { useMarkReviewed } from "@/features/admin-anomaly/hooks/useMarkReviewed";
 import { AdminDMDialog } from "@/features/admin-users/components/AdminDMDialog";
 import { AnomalyStatusBadge } from "./AnomalyStatusBadge";
 import styles from "./AnomalyTable.module.css";
@@ -74,8 +75,18 @@ export function AnomalyTable({
 }: Props) {
   const addWatch = useAddWatch();
   const removeWatch = useRemoveWatch();
+  const markReviewed = useMarkReviewed();
   const watchPending = addWatch.isPending || removeWatch.isPending;
   const [dmTarget, setDmTarget] = useState<DMTarget | null>(null);
+
+  function handleShowDetail(item: AnomalyEventItem) {
+    // 상세보기 클릭 시 'new' 상태인 항목은 곧바로 검토완료로 전이.
+    // 'reviewed'/'actioned'/'unblocked' 는 그대로 두고 드로어만 연다.
+    if (item.status === "new") {
+      markReviewed.mutate(item.id);
+    }
+    onShowDetail(item);
+  }
 
   function handleToggleWatch(item: AnomalyEventItem) {
     if (item.target_user_id === null) return;
@@ -193,7 +204,7 @@ export function AnomalyTable({
                   <button
                     type="button"
                     className={styles.detailButton}
-                    onClick={() => onShowDetail(item)}
+                    onClick={() => handleShowDetail(item)}
                     data-testid={`anomaly-detail-${item.id}`}
                   >
                     상세보기

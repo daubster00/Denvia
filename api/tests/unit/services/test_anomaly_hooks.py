@@ -3,8 +3,9 @@
 Coverage:
 - check_concurrent_ip_login: 1~2 user_id skip / 3 user_id 사용자별 INSERT / 사용자별 멱등
   flag / 추가 합류 사용자 INSERT / IP None skip
-- check_rapid_followup_questions: streak 임계 도달 시 status='actioned' + auto 검토 마킹
-  + 신규 throttle 적용 시 사용자 쪽지함 안내(InboxMessage) 동반 INSERT
+- check_rapid_followup_questions: streak 임계 도달 시 status='new' (관리자 미검토 표식)
+  + auto_actioned details 표식 + 신규 throttle 적용 시 사용자 쪽지함 안내(InboxMessage)
+  동반 INSERT
 """
 
 from __future__ import annotations
@@ -167,8 +168,8 @@ async def test_concurrent_ip_login_different_ips_independent(fake_rl, db):
 
 
 @pytest.mark.asyncio
-async def test_rapid_followup_threshold_inserts_actioned_event(fake_quota, db):
-    """답변 직후 3초 윈도우에서 streak 임계(3) 도달 시 actioned + 자동검토."""
+async def test_rapid_followup_threshold_inserts_new_event(fake_quota, db):
+    """답변 직후 3초 윈도우에서 streak 임계(3) 도달 시 status='new' (관리자 미검토)."""
     user_id = 7
     # streak=2 까지 사전 누적 → 본 호출에서 3 도달.
     await fake_quota.set(
@@ -199,10 +200,11 @@ async def test_rapid_followup_threshold_inserts_actioned_event(fake_quota, db):
     event = events[0]
     assert event.type == "rapid_followup_questions"
     assert event.target_user_id == user_id
-    # 핵심 — 시스템 자동조치이므로 등록 시점부터 actioned + 자동검토.
-    assert event.status == "actioned"
+    # 자동 throttle 이 걸려도 anomaly row 는 'new' 로 INSERT — 대시보드 "이상행동 미검토"
+    # 카운트에 잡혀야 하기 때문. 자동조치 여부는 details.auto_actioned 표식으로 구분.
+    assert event.status == "new"
     assert event.reviewed_by_admin_id is None
-    assert event.reviewed_at is not None
+    assert event.reviewed_at is None
     assert event.details.get("auto_actioned") is True
     # 쪽지함 안내 — 사용자에게 자동 제한 적용 사실을 알린다.
     inbox = inboxes[0]

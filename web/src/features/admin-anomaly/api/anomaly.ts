@@ -312,7 +312,7 @@ export async function fetchWatchedAccounts(params: {
 export async function markAnomalyReviewed(
   anomalyId: number,
 ): Promise<AnomalyEventItem> {
-  const csrf = _readCookie("denvia_csrf");
+  const csrf = _readCookie("denvia_admin_csrf");
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (csrf) headers["X-CSRF-Token"] = csrf;
 

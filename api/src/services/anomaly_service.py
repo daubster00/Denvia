@@ -822,9 +822,9 @@ async def check_rapid_followup_questions(
                 )
             )
 
-        # rapid_followup 은 시스템이 즉시 자동조치(throttle)를 적용하므로
-        # 등록 시점에 바로 actioned + 자동검토 처리. reviewed_by_admin_id=None 이
-        # "시스템 자동조치" 표식 — 24h/7d/영구차단 액션 분기와 구분된다.
+        # 자동 throttle 이 적용되더라도 anomaly row 자체는 'new' 로 INSERT —
+        # 관리자 대시보드 "이상행동 미검토" 카운트에 잡혀야 하기 때문.
+        # auto_actioned=True 표식은 details 에 남겨 자동조치 여부는 상세 드로어에서 구분 가능.
         now_dt2 = datetime.now(tz=timezone.utc)
         event = AnomalyEvent(
             type="rapid_followup_questions",
@@ -838,9 +838,7 @@ async def check_rapid_followup_questions(
                 "already_throttled": already_throttled,
                 "auto_actioned": True,
             },
-            status="actioned",
-            reviewed_by_admin_id=None,
-            reviewed_at=now_dt2,
+            status="new",
             created_at=now_dt2,
         )
         db.add(event)
@@ -987,7 +985,8 @@ async def check_repeated_question(
             )
 
         now_dt2 = datetime.now(tz=timezone.utc)
-        # rapid_followup 과 동일 — 시스템 즉시 자동조치이므로 INSERT 시점에 actioned 처리.
+        # rapid_followup 과 동일 — 자동조치라도 anomaly row 는 'new' 로 INSERT 하여
+        # 관리자 대시보드 "이상행동 미검토" 카운트에 잡히게 한다.
         event = AnomalyEvent(
             type="repeated_question",
             target_user_id=user_id,
@@ -999,9 +998,7 @@ async def check_repeated_question(
                 "already_throttled": already_throttled,
                 "auto_actioned": True,
             },
-            status="actioned",
-            reviewed_by_admin_id=None,
-            reviewed_at=now_dt2,
+            status="new",
             created_at=now_dt2,
         )
         db.add(event)

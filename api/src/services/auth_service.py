@@ -316,6 +316,8 @@ async def _record_sms_abuse_anomaly(
             existing_user_id = None
 
         now_dt = datetime.now(tz=timezone.utc)
+        # 자동 24h 차단이 적용되어도 anomaly row 는 'new' 로 INSERT —
+        # 관리자 대시보드 "이상행동 미검토" 카운트에 잡혀야 하기 때문.
         event = _AnomalyEvent(
             type="sms_abuse",
             target_user_id=existing_user_id,
@@ -329,9 +331,7 @@ async def _record_sms_abuse_anomaly(
                 "block_seconds": _SMS_BLOCK_TTL,
                 "auto_actioned": True,
             },
-            status="actioned",
-            reviewed_by_admin_id=None,
-            reviewed_at=now_dt,
+            status="new",
             created_at=now_dt,
         )
         db.add(event)
