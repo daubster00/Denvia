@@ -280,7 +280,7 @@ async def test_rapid_followup_admin_skipped(fake_quota, db):
 
 @pytest.mark.asyncio
 async def test_rapid_followup_outside_window_resets_streak(fake_quota, db):
-    """답변 완료 후 3초 초과 — streak 리셋, INSERT 없음."""
+    """답변 완료 후 윈도우 초과 — streak=1 로 초기화 (이 질문을 새 시작점으로 카운트), INSERT 없음."""
     user_id = 7
     await fake_quota.set(
         f"qa:last_done:user:{user_id}", str(time.time() - 10.0)
@@ -296,5 +296,23 @@ async def test_rapid_followup_outside_window_resets_streak(fake_quota, db):
 
     assert result is False
     assert db.added == []
-    # streak 키 삭제 확인.
-    assert await fake_quota.get(f"qa:rapid_followup_streak:user:{user_id}") is None
+    # 직관적 N회 카운팅 — 윈도우 밖이라도 이 질문이 1번째로 다시 카운트되어 streak="1".
+    assert await fake_quota.get(f"qa:rapid_followup_streak:user:{user_id}") == "1"
+
+
+@pytest.mark.asyncio
+async def test_rapid_followup_first_question_initializes_streak(fake_quota, db):
+    """첫 질문(last_done 없음) — streak=1 로 초기화, INSERT 없음. 직관적 N회 카운팅."""
+    user_id = 7
+
+    result = await anomaly_service.check_rapid_followup_questions(
+        user_id=user_id,
+        subscription_status="free",
+        redis_quota=fake_quota,
+        db=db,
+    )
+
+    assert result is False
+    assert db.added == []
+    # 이 질문 자체를 1번째로 카운트.
+    assert await fake_quota.get(f"qa:rapid_followup_streak:user:{user_id}") == "1"

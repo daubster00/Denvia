@@ -257,10 +257,11 @@ class QAService:
             elif repeated_just_applied:
                 throttle_anomaly_type = "repeated_question"
 
-            if throttle_just_applied:
-                # 메모리상 user 객체에도 반영 — 아래 throttle 분기에서 즉시 사용.
-                user.anomaly_throttled_at = datetime.now(tz=timezone.utc)
-
+            # 주의 — 트리거 질문(이번 호출에서 throttle 이 새로 적용된 그 질문) 자체에는
+            # throttle delay 를 걸지 않는다. 사용자에게 "이 답변까지는 평소 속도로 받고,
+            # 답변이 끝나는 순간 알림이 뜨며, 그 다음 질문부터 속도가 느려진다" 는 직관을 준다.
+            # 다음 요청에서 get_current_user 가 DB 에서 anomaly_throttled_at 을 새로 읽어
+            # 자연스럽게 throttle 분기가 켜진다. show_popup 은 throttle_just_applied 그대로 사용.
             try:
                 await db.commit()
             except Exception:
@@ -376,9 +377,13 @@ class QAService:
 
         delay, dsrc = await _resolve_delay(user, redis_runtime)
 
-        # 신규 — 사용자에게 anomaly throttle 이 적용 중이면 throttle delay 로 override.
-        # max(base_delay, throttle_delay) — throttle 이 항상 더 길거나 같게 보장.
-        throttle_active = user.anomaly_throttled_at is not None
+        # anomaly throttle 분기 — 트리거 질문(throttle_just_applied=True) 자체는 무조건 제외한다.
+        # "이 답변까지는 평소 속도 + 답변 끝나면 알림, 그 다음 질문부터 throttle" 정책의 가드.
+        # 트리거 질문에서는 user.anomaly_throttled_at 가 어떤 경로로든 채워졌더라도 delay 분기 차단.
+        throttle_active = (
+            user.anomaly_throttled_at is not None
+            and not throttle_just_applied
+        )
         if throttle_active:
             throttle_delay, throttle_enabled = (
                 await runtime_config_service.resolve_anomaly_throttle_delay(

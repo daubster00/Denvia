@@ -725,10 +725,11 @@ async def check_rapid_followup_questions(
 ) -> bool:
     """qa_service.preflight 내 hook. admin 은 skip.
 
-    동작:
+    동작 (직관적 N회 카운팅 — 사용자 시각에서 "빠르게 N번 질문하면 N번째에 걸림"):
       1. Redis 에서 직전 답변 완료 시각 (``qa:last_done:user:{id}``) 조회.
-      2. last_done 이 없거나 (now - last_done) > 3초 → streak 카운터 리셋(DEL) 후 return.
-      3. (now - last_done) <= 3초 → streak INCR (24h TTL). 3 도달 시 anomaly 발생.
+      2. last_done 이 없거나 (now - last_done) > 윈도우 → streak=1 로 초기화 후 return
+         (이 질문 자체를 1번째로 카운트. 임계가 3 이면 곧장 빠르게 2번 더 보낼 때 3번째에서 트리거).
+      3. (now - last_done) <= 윈도우 → streak INCR (1h TTL). 임계 도달 시 anomaly 발생.
 
     Anomaly 발생 시:
       - INSERT AnomalyEvent(type='rapid_followup_questions', target_user_id=user_id)
@@ -756,9 +757,10 @@ async def check_rapid_followup_questions(
         return False
 
     if raw_last_done is None:
-        # 직전 답변이 없으면 신규 세션 — streak 리셋.
+        # 첫 질문 — streak=1 로 초기화 (이 질문을 1번째로 카운트). 직관적 N회 카운팅.
+        # 사용자가 곧장 빠르게 2번 더 질문하면 3번째 질문에서 임계 도달 → 트리거.
         try:
-            await redis_quota.delete(streak_key)
+            await redis_quota.set(streak_key, "1", ex=_RAPID_FOLLOWUP_STREAK_TTL)
         except Exception:
             pass
         return False
@@ -772,9 +774,9 @@ async def check_rapid_followup_questions(
     delta = now_ts - last_done_ts
 
     if delta > window_seconds or delta < 0:
-        # 윈도우 밖 — streak 리셋. 다음 답변 완료 시점부터 새로 시작.
+        # 윈도우 밖 — streak=1 로 리셋 (이 질문을 새 시작점으로 카운트). 직관적 N회 카운팅.
         try:
-            await redis_quota.delete(streak_key)
+            await redis_quota.set(streak_key, "1", ex=_RAPID_FOLLOWUP_STREAK_TTL)
         except Exception:
             pass
         return False
