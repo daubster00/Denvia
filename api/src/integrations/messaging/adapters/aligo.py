@@ -147,7 +147,11 @@ class AligoMessagingAdapter:
 
         success = code_int >= 0 and response.status_code == 200
         info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
-        message_id = info.get("mid") if info else None
+        # 알리고는 mid(메시지 ID)를 정수로 내려준다(예: 1363220599). AlimtalkResult·
+        # TestSendResponse 계약은 str|None 이므로 경계에서 문자열로 변환한다.
+        # (미변환 시 응답 직렬화 단계에서 pydantic ValidationError → 발송 성공인데 HTTP 500)
+        mid_raw = info.get("mid") if info else None
+        message_id = str(mid_raw) if mid_raw is not None else None
 
         log_data = {
             "phone": _mask_phone(recipient_phone),

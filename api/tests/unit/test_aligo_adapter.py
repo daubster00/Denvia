@@ -203,6 +203,35 @@ class TestSendAlimtalk:
         assert form["testmode_yn"] == "Y"
 
     @pytest.mark.asyncio
+    async def test_integer_mid_is_coerced_to_str(self):
+        # 알리고 실 응답은 mid를 정수로 내려준다(예: 1363220599).
+        # AlimtalkResult.message_id 계약은 str|None — 경계에서 문자열로 변환돼야 한다.
+        # (미변환 시 TestSendResponse 직렬화에서 pydantic ValidationError → 발송 성공인데 HTTP 500)
+        handler = _make_handler(
+            [
+                (
+                    200,
+                    {
+                        "code": 0,
+                        "message": "success",
+                        "info": {"type": "AT", "mid": 1363220599, "scnt": "1"},
+                    },
+                )
+            ]
+        )
+        adapter = AligoMessagingAdapter(transport=httpx.MockTransport(handler))
+
+        result = await adapter.send_alimtalk(
+            recipient_phone="01012345678",
+            template_code="billing.first_charge_success",
+            variables={"amount_krw": "9,900", "next_charge_at": "2026-06-07"},
+        )
+
+        assert result["success"] is True
+        assert result["message_id"] == "1363220599"
+        assert isinstance(result["message_id"], str)
+
+    @pytest.mark.asyncio
     async def test_negative_code_returns_unsuccess(self):
         handler = _make_handler(
             [(200, {"code": -99, "message": "템플릿 미일치"})]
