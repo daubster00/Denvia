@@ -100,6 +100,8 @@ const MENU_ITEMS: MenuItem[] = [
       { label: "활동 로그", href: "/admin/admins/logs" },
     ],
   },
+  // Story 4.6 — 운영 가시성 확장. children 없는 단일 페이지.
+  { icon: IconBubble as IconComponent, label: "알림톡 관리", href: "/admin/alimtalk" },
   {
     icon: IconSetting as IconComponent,
     label: "설정",

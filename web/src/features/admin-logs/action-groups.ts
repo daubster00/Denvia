@@ -79,6 +79,7 @@ export const ACTION_GROUPS: ActionGroup[] = [
       "budget.",
       "seo_config.",
       "login_brute_threshold.",
+      "alimtalk.",
     ],
   },
 ];

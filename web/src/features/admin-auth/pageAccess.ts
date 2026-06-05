@@ -18,6 +18,7 @@ export const ADMIN_MATRIX_ROUTES = [
   "/admin/finance",
   "/admin/cs",
   "/admin/board",
+  "/admin/alimtalk",
   "/admin/settings",
 ] as const;
 
@@ -56,6 +57,11 @@ export function resolveAdminPageRoute(pathname: string): ResolvedRoute {
     pathname.startsWith("/admin/prompt")
   ) {
     return "/admin/rag";
+  }
+
+  // 알림톡 관리(/admin/alimtalk) — 단일 페이지, children 없음
+  if (pathname === "/admin/alimtalk" || pathname.startsWith("/admin/alimtalk/")) {
+    return "/admin/alimtalk";
   }
 
   for (const route of ADMIN_MATRIX_ROUTES) {

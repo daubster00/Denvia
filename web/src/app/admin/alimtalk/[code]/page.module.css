@@ -1,0 +1,382 @@
+/**
+ * `/admin/alimtalk/[code]` 상세 페이지 스타일.
+ *
+ * 좌측 정렬 1300px (feedback_admin_left_align), 인라인 CSS 0건 (feedback_no_inline_css).
+ */
+
+.page {
+  max-width: 1300px;
+  margin-left: 0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: var(--font-pretendard, "Pretendard", sans-serif);
+}
+
+.breadcrumb {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.backLink {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.loadingBox,
+.emptyState {
+  padding: 40px 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.invalidBox {
+  padding: 20px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+/* ── 헤더 ─────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.headerChips {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  font-family: monospace;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* 채널·카테고리 칩 (상위 page.module.css와 동일) */
+
+.chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.chip[data-category="billing"] {
+  background: #7c3aed;
+}
+
+.chip[data-category="subscription"] {
+  background: #0891b2;
+}
+
+.chip[data-category="support"] {
+  background: #ea580c;
+}
+
+.chip[data-category="system"] {
+  background: #6b7280;
+}
+
+.chip[data-category="sms"] {
+  background: #0d9488;
+}
+
+.channelChip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.channelChip[data-channel="alimtalk"] {
+  background: #facc15;
+  color: #422006;
+}
+
+.channelChip[data-channel="sms"] {
+  background: #1e3a8a;
+  color: #ffffff;
+}
+
+/* ── 메타데이터 카드 ────────────────────────────────────── */
+
+.metaCard {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.metaGrid dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  padding-top: 2px;
+}
+
+.metaGrid dd {
+  margin: 0;
+  font-size: 14px;
+  color: #111827;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+.metaMono {
+  font-family: monospace !important;
+  font-size: 13px !important;
+  color: #4b5563 !important;
+}
+
+/* ── 본문 예시 ──────────────────────────────────────────── */
+
+.bodySection {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #374151;
+  margin: 0;
+}
+
+.totalCount {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-left: 4px;
+}
+
+.bodyPre {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-family: var(--font-pretendard, "Pretendard", sans-serif);
+  font-size: 14px;
+  color: #111827;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  margin: 0;
+}
+
+/* ── 로그 섹션 ─────────────────────────────────────────── */
+
+.logsSection {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.logsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filterLabel {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.filterSelect {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.logTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.logTable thead {
+  background: #f9fafb;
+}
+
+.logTable th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.logTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+
+.logTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.logStatus {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.logStatus[data-status="sent"] {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.logStatus[data-status="failed"] {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* 운영/테스트 구분 칩 — idempotency_key 의 "test:" prefix 여부로 판정 */
+
+.kindChip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.kindChip[data-kind="prod"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.kindChip[data-kind="test"] {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.logError {
+  color: #b91c1c;
+  font-size: 12px;
+  max-width: 360px;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* ── 페이지네이션 ──────────────────────────────────────── */
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 0;
+  flex-wrap: wrap;
+}
+
+.pageBtn {
+  min-width: 36px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pageBtn:hover:not(:disabled):not([data-active="true"]) {
+  background: #f3f4f6;
+}
+
+.pageBtn:disabled {
+  color: #9ca3af;
+  background: #f9fafb;
+  cursor: not-allowed;
+}
+
+.pageBtn[data-active="true"] {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  cursor: default;
+}
+
+.pageGap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 32px;
+  color: #9ca3af;
+  font-size: 13px;
+}

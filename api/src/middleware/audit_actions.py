@@ -63,6 +63,9 @@ AUDIT_ADMIN_GRADE_PERMISSION_UPDATED = "admin.grade_permission.updated"  # /admi
 # 관리자 등급 동적 추가/삭제 (0057)
 AUDIT_ADMIN_GRADE_CREATED = "admin.grade.created"  # /admin/admins/grades 신규 등급 추가
 AUDIT_ADMIN_GRADE_DELETED = "admin.grade.deleted"  # /admin/admins/grades 커스텀 등급 삭제
+# Story 4.6 — `/admin/alimtalk` 관리자 알림톡 관리 페이지
+AUDIT_ALIMTALK_TEST_SEND_DISPATCHED = "alimtalk.test_send_dispatched"   # 운영자가 테스트 발송 실행(성공/실패 무관 기록)
+AUDIT_ALIMTALK_TEST_RECIPIENT_UPDATED = "alimtalk.test_recipient_updated"  # 테스트 수신 번호 등록/변경/해제
 
 
 def audit_action(action: str):
