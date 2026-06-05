@@ -11,6 +11,8 @@
 응답에는 ``permanent_purge_at = deleted_at + 30 days`` 가 항상 포함된다.
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,12 +38,33 @@ async def list_trash(
     response: Response,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    email: str | None = Query(
+        None,
+        max_length=320,
+        description="사용자 이메일 부분 일치 (대소문자 무시).",
+    ),
+    date_from: date | None = Query(
+        None,
+        description="휴지통 이동일 시작 (YYYY-MM-DD, KST 기준 00:00 이상).",
+    ),
+    date_to: date | None = Query(
+        None,
+        description="휴지통 이동일 종료 (YYYY-MM-DD, KST 기준 23:59:59 이하).",
+    ),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ) -> TrashListResponse:
     """휴지통 목록 — 사용자가 삭제한 모든 쪽지(deleted_at IS NOT NULL)."""
     response.headers["Cache-Control"] = "no-store"
-    return await admin_inbox_trash_service.list_trash(page, per_page, admin, db)
+    return await admin_inbox_trash_service.list_trash(
+        page,
+        per_page,
+        admin,
+        db,
+        email=email,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/{message_id}", response_model=TrashDetailResponse)

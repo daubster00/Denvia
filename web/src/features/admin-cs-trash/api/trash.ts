@@ -71,11 +71,27 @@ async function parseError(res: Response): Promise<TrashApiError> {
   return new TrashApiError(message, res.status, code);
 }
 
+export interface TrashListFilters {
+  email?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export async function fetchTrashList(
   page = 1,
   perPage = 20,
+  filters: TrashListFilters = {},
 ): Promise<TrashListResponse> {
-  const url = `${API_BASE}/api/v1/admin/inbox/trash?page=${page}&per_page=${perPage}`;
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(perPage),
+  });
+  const email = filters.email?.trim();
+  if (email) params.set("email", email);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+
+  const url = `${API_BASE}/api/v1/admin/inbox/trash?${params.toString()}`;
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw await parseError(res);
   return res.json();

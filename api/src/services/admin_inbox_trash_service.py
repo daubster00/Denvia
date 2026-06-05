@@ -18,7 +18,7 @@ retention 규약: ``permanent_purge_at = deleted_at + 30 days``. 동일한 컷�
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 import structlog
 from fastapi import HTTPException, Request
@@ -32,6 +32,7 @@ from api.src.schemas.admin.inbox_trash import (
     TrashListItem,
     TrashListResponse,
 )
+from api.src.services.budget_service import KST
 from api.src.utils.html_sanitize import sanitize_body_html
 
 logger = structlog.get_logger()
@@ -40,19 +41,57 @@ logger = structlog.get_logger()
 RETENTION_DAYS = 30
 
 
+def _kst_window(
+    f: date | None, t: date | None
+) -> tuple[datetime | None, datetime | None]:
+    """[from 00:00 KST, (to+1) 00:00 KST). 한쪽만 있으면 그쪽 경계만 반환."""
+    start = (
+        datetime(f.year, f.month, f.day, tzinfo=KST) if f is not None else None
+    )
+    end_excl = (
+        datetime(t.year, t.month, t.day, tzinfo=KST) + timedelta(days=1)
+        if t is not None
+        else None
+    )
+    return start, end_excl
+
+
 async def list_trash(
     page: int,
     per_page: int,
     admin: User,
     db: AsyncSession,
+    *,
+    email: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> TrashListResponse:
-    """휴지통 목록 — 사용자별 삭제일 desc."""
-    base_filter = [InboxMessage.deleted_at.is_not(None)]
+    """휴지통 목록 — 사용자별 삭제일 desc.
+
+    필터:
+    - ``email``: User.email 부분 일치 (대소문자 무시). 빈 문자열은 무시.
+    - ``date_from``/``date_to``: deleted_at 을 KST 자정~다음날 자정 윈도우로
+      걸러낸다. 한쪽만 들어오면 해당 경계만 적용.
+    """
+    base_filter: list = [InboxMessage.deleted_at.is_not(None)]
+
+    if email:
+        needle = email.strip()
+        if needle:
+            base_filter.append(User.email.ilike(f"%{needle}%"))
+
+    start, end_excl = _kst_window(date_from, date_to)
+    if start is not None:
+        base_filter.append(InboxMessage.deleted_at >= start)
+    if end_excl is not None:
+        base_filter.append(InboxMessage.deleted_at < end_excl)
 
     total = int(
         (
             await db.execute(
-                select(func.count(InboxMessage.id)).where(*base_filter)
+                select(func.count(InboxMessage.id))
+                .join(User, User.id == InboxMessage.user_id)
+                .where(*base_filter)
             )
         ).scalar_one()
     )
@@ -98,6 +137,9 @@ async def list_trash(
         page=page,
         per_page=per_page,
         total=total,
+        filter_email=bool(email),
+        filter_date_from=date_from.isoformat() if date_from else None,
+        filter_date_to=date_to.isoformat() if date_to else None,
     )
 
     return TrashListResponse(
