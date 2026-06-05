@@ -351,6 +351,17 @@ async def patch_user(
     """
     item = await user_service.update_permission(request, user_id, payload, db)
 
+    if payload.unblock is True:
+        await inbox_service.send_system_message(
+            db,
+            target_user_id=user_id,
+            title="계정 차단 해제 안내",
+            body_html=(
+                "<p>계정 <strong>차단이 해제</strong>되었습니다.</p>"
+                "<p>이제 정상적으로 서비스를 이용하실 수 있습니다.</p>"
+            ),
+        )
+
     logger.info(
         "admin.users.permission_edited",
         actor_user_id=admin.id,
