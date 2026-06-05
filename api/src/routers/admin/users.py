@@ -529,6 +529,17 @@ async def clear_login_lockout(
         email=user_row.email, redis_rl=redis_rl
     )
 
+    if cleared.get("lockout") or cleared.get("hard_lock"):
+        await inbox_service.send_system_message(
+            db,
+            target_user_id=user_id,
+            title="로그인 잠금 해제 안내",
+            body_html=(
+                "<p>비정상적인 로그인 시도로 인해 적용되었던 <strong>로그인 잠금이 해제</strong>되었습니다.</p>"
+                "<p>이제 정상적으로 로그인하실 수 있습니다.</p>"
+            ),
+        )
+
     request.state.audit_target_type = "user"
     request.state.audit_target_id = user_id
     request.state.audit_diff = {
