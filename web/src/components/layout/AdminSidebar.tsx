@@ -76,7 +76,15 @@ const MENU_ITEMS: MenuItem[] = [
       { label: "비상 정지", href: "/admin/finance/killswitch" },
     ],
   },
-  { icon: IconBubble as IconComponent, label: "CS", href: "/admin/cs" },
+  {
+    icon: IconBubble as IconComponent,
+    label: "CS",
+    href: "/admin/cs",
+    children: [
+      { label: "문의 관리", href: "/admin/cs" },
+      { label: "휴지통", href: "/admin/cs/trash" },
+    ],
+  },
   { icon: IconWrite as IconComponent, label: "수정요청", href: "/admin/board" },
   // master/operator 만 보이는 항목. sub_operator 가 클릭해도 백엔드 403.
   // children: 관리자 목록 / 등급 관리 / 페이지 권한 / 활동 로그.
@@ -99,6 +107,7 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { label: "예산 · AI 모델", href: "/admin/settings" },
       { label: "SEO", href: "/admin/settings/seo" },
+      { label: "결제(PG) 키", href: "/admin/settings/payment" },
     ],
   },
 ];

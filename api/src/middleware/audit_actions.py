@@ -15,6 +15,8 @@ AUDIT_NOTICE_PUBLISH = "notice.publish"                 # A-301
 AUDIT_NOTICE_CREATE = "notice.create"                   # Story 7.1 — 작성+즉시발행
 AUDIT_NOTICE_DELETE = "notice.delete"                   # Story 7.1 — 발행 회수(CASCADE)
 AUDIT_INBOX_PREVIEW_CONFIG_UPDATE = "inbox_preview_config.update"  # 노출 개수 전역 설정
+AUDIT_INBOX_TRASH_RESTORE = "inbox_trash.restore"               # CS · 휴지통 — 사용자 쪽지함으로 복구(deleted_at=NULL)
+AUDIT_INBOX_TRASH_HARD_DELETE = "inbox_trash.hard_delete"       # CS · 휴지통 — 30일 대기 없이 영구 삭제
 AUDIT_POPUP_CREATE = "popup.create"                     # A-302
 AUDIT_POPUP_UPDATE = "popup.update"                     # A-302
 AUDIT_POPUP_TOGGLE = "popup.toggle"                     # A-302
@@ -48,6 +50,7 @@ AUDIT_RUNTIME_CONFIG_UPDATE = "runtime_config.update"   # A-303/A-305 (Story 7.3
 AUDIT_BUDGET_LIMIT_UPDATE = "budget.monthly_limit.update"  # 관리자 설정 — 당월 KST 예산 한도 조정
 AUDIT_SEO_CONFIG_UPDATE = "seo_config.update"           # 관리자 설정 → SEO — 사이트 이름/설명/키워드/OG/파비콘 편집
 AUDIT_SEO_ASSET_UPLOAD = "seo_config.asset_upload"      # 관리자 설정 → SEO — 파비콘/OG 이미지 업로드
+AUDIT_PG_CONFIG_UPDATE = "pg_config.update"             # 관리자 설정 → 결제(PG) — 토스 모드 토글 + 키 편집
 # Story 10.3 — /admin/admins 페이지 CRUD (Epic 10 RBAC)
 AUDIT_ADMIN_ACCOUNT_APPROVED = "admin.account.approved"               # pending → sub_operator/operator 승인
 AUDIT_ADMIN_ACCOUNT_BLOCKED = "admin.account.blocked"                 # 다른 관리자 일시 차단

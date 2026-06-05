@@ -4,14 +4,17 @@ Story 3.6 v1.1 (2026-05-12): 자가 환불 폼 폐지. 청약철회 단일 경�
 GET /subscriptions/me/refund-eligibility + POST /subscriptions/me/cancel-with-refund.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import get_current_user
 from api.src.deps.rate_limit import limit_billing
+from api.src.deps.redis import get_redis_runtime
 from api.src.integrations.payment.adapters.toss import TossApiError
 from api.src.models.base import get_session
 from api.src.models.user import User
+from api.src.schemas.admin.runtime_config import TossPgClientConfigResponse
 from api.src.schemas.billing import (
     BillingPlansResponse,
     CancelSubscriptionRequest,
@@ -25,6 +28,7 @@ from api.src.schemas.billing import (
     ResumeSubscriptionResponse,
     StartSubscriptionResponse,
 )
+from api.src.services import pg_config_service
 from api.src.services.billing_service import (
     BillingCardDeclined,
     BillingKeyRequired,
@@ -59,6 +63,22 @@ async def list_billing_plans(
     """구독 플랜 목록을 반환한다. 인증 필수(로그인 사용자 전용)."""
     plans = get_billing_plans()
     return BillingPlansResponse(plans=plans)
+
+
+@router.get("/client-config", response_model=TossPgClientConfigResponse)
+async def get_billing_client_config(
+    response: Response,
+    _: User = Depends(get_current_user),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> TossPgClientConfigResponse:
+    """결제창 초기화용 — 현재 활성 모드의 토스 client_key 반환.
+
+    관리자 페이지에서 모드 토글/키 교체 시 다음 결제 시도부터 즉시 반영된다.
+    client_key 가 비어있으면 빈 문자열을 돌려주고, 프론트가 안내 메시지로 폴백.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    client_key, mode = await pg_config_service.get_active_client_key(redis_runtime)
+    return TossPgClientConfigResponse(mode=mode, client_key=client_key)
 
 
 @router.post(

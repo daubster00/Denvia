@@ -48,9 +48,26 @@ export function BillingKeyForm({
     try {
       // 브라우저 전용 동적 import — SSR 시 window 접근 금지 (AR30)
       const { loadTossPayments } = await import("@tosspayments/tosspayments-sdk");
-      const clientKey = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
+
+      // 활성 client_key 는 관리자가 /admin/settings/payment 에서 편집한다.
+      // env 빌드시점 박힘 대신 매 호출 시 서버에서 최신 키 + 모드를 받아온다.
+      const apiBase =
+        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const configRes = await fetch(`${apiBase}/api/v1/billing/client-config`, {
+        credentials: "include",
+      });
+      if (!configRes.ok) {
+        throw new Error("결제 설정을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+      }
+      const config = (await configRes.json()) as {
+        mode: string;
+        client_key: string;
+      };
+      const clientKey = config.client_key;
       if (!clientKey) {
-        throw new Error("결제 설정이 올바르지 않습니다. 관리자에게 문의해주세요.");
+        throw new Error(
+          "결제 설정이 올바르지 않습니다. 관리자에게 문의해주세요.",
+        );
       }
 
       // crypto.randomUUID() — 자동증가 user id/email/phone 금지 (토스 정책)

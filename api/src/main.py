@@ -34,6 +34,7 @@ from api.src.routers.admin import users as admin_users
 from api.src.routers.admin import anomaly as admin_anomaly
 from api.src.routers.admin import support as admin_support
 from api.src.routers.admin import content as admin_content
+from api.src.routers.admin import inbox_trash as admin_inbox_trash
 from api.src.routers.admin import finance as admin_finance
 from api.src.routers.admin import payments as admin_payments
 from api.src.routers.admin import killswitch as admin_killswitch
@@ -226,6 +227,7 @@ app.include_router(admin_users.router, prefix="/api/v1")
 app.include_router(admin_anomaly.router, prefix="/api/v1")
 app.include_router(admin_support.router, prefix="/api/v1")
 app.include_router(admin_content.router, prefix="/api/v1")
+app.include_router(admin_inbox_trash.router, prefix="/api/v1")
 app.include_router(admin_finance.router, prefix="/api/v1")
 app.include_router(admin_payments.router, prefix="/api/v1")
 app.include_router(admin_killswitch.router, prefix="/api/v1")

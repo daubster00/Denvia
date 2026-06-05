@@ -152,3 +152,56 @@ class ForexConfigResponse(BaseModel):
     updated_at: str | None  # ISO8601 UTC, 한 번도 자동 갱신 안 됐으면 None
     search_date: str | None  # YYYY-MM-DD, API 가 데이터 반환한 영업일
     source: str  # "auto" | "fallback" — auto_renew 우선 정책 명시
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 토스 PG 키 관리 — /admin/settings/payment 페이지에서 4개 키 + 모드 편집.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TossPgKeyView(BaseModel):
+    """단일 키 표시 — 원본 노출 금지, 마스킹된 문자열 + 존재 여부."""
+
+    masked: str
+    has_value: bool
+
+
+class TossPgConfigResponse(BaseModel):
+    """관리자 GET 응답 — 모드 + 4개 키 마스킹 묶음.
+
+    클라이언트 키 2개는 프론트 결제창에서 어차피 노출되는 값이지만, 관리자 UI
+    에서는 일관되게 마스킹해서 보여주고 "수정" 클릭 시에만 빈 입력창을 띄운다.
+    secret 키 2개는 절대로 평문으로 응답에 실리지 않는다.
+    """
+
+    mode: str  # "test" | "live"
+    test_client: TossPgKeyView
+    test_secret: TossPgKeyView
+    live_client: TossPgKeyView
+    live_secret: TossPgKeyView
+
+
+class TossPgConfigUpdateRequest(BaseModel):
+    """부분 업데이트 — None 또는 빈 문자열인 필드는 그대로 둔다.
+
+    예) 모드만 토글: ``{"mode": "live"}``
+    예) live secret 만 교체: ``{"live_secret_key": "live_sk_..."}``
+    """
+
+    mode: str | None = Field(default=None, description="test | live")
+    test_client_key: str | None = Field(default=None, max_length=512)
+    test_secret_key: str | None = Field(default=None, max_length=512)
+    live_client_key: str | None = Field(default=None, max_length=512)
+    live_secret_key: str | None = Field(default=None, max_length=512)
+
+
+class TossPgClientConfigResponse(BaseModel):
+    """공개 엔드포인트 응답 — 활성 모드 + 그 모드의 client_key.
+
+    프론트 BillingKeyForm 이 결제창 초기화 직전에 호출한다. 관리자가 키를
+    바꾸자마자 다음 결제 시도부터 새 키가 적용된다(빌드 재배포 불필요).
+    client_key 가 비어있으면 결제창은 사용 불가 안내로 폴백.
+    """
+
+    mode: str
+    client_key: str  # 빈 문자열이면 미설정

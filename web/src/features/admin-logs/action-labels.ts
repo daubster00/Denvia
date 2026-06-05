@@ -59,6 +59,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "budget.monthly_limit.update": "월 예산 한도 변경",
   "seo_config.update": "SEO 설정 변경",
   "seo_config.asset_upload": "SEO 이미지 업로드",
+  "pg_config.update": "결제(PG) 설정 변경",
 
   // 관리자 계정 (Story 10.3 / 10.5)
   "admin.account.approved": "관리자 승인",

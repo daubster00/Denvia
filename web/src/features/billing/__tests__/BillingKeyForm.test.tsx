@@ -34,7 +34,17 @@ describe("BillingKeyForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requestBillingAuthMock.mockResolvedValue(undefined);
-    vi.stubEnv("NEXT_PUBLIC_TOSS_CLIENT_KEY", "test_ck_123");
+    // /billing/client-config 응답 stub — 관리자 페이지에서 편집한 활성 키를
+    // 매 호출 시 받아오는 새 흐름(2026-06 토스 PG 관리자 토글 추가).
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ mode: "test", client_key: "test_ck_123" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
   });
 
   it("isOpen=false 시 모달이 렌더되지 않는다", () => {

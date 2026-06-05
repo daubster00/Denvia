@@ -22,6 +22,8 @@
 - GET    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 조회 + 허용 목록
 - PUT    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 변경 (화이트리스트)
 - GET    /admin/runtime-config/forex       USD→KRW 환율 + 자동 갱신 메타 (read-only)
+- GET    /admin/runtime-config/toss-pg     관리자 설정 — 토스 PG 모드 + 4개 키 마스킹 조회
+- PUT    /admin/runtime-config/toss-pg     관리자 설정 — 토스 PG 모드 토글 + 키 부분 업데이트
 """
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
@@ -39,6 +41,7 @@ from api.src.middleware.audit_actions import (
     AUDIT_MODEL_PARAMS_EDIT,
     AUDIT_NOTICE_CREATE,
     AUDIT_NOTICE_DELETE,
+    AUDIT_PG_CONFIG_UPDATE,
     AUDIT_POPUP_CREATE,
     AUDIT_POPUP_DELETE,
     AUDIT_POPUP_IMAGE_UPLOAD,
@@ -79,8 +82,11 @@ from api.src.schemas.admin.runtime_config import (
     LoginBruteThresholdConfigUpdateRequest,
     RuntimeConfigResponse,
     RuntimeConfigUpdateRequest,
+    TossPgConfigResponse,
+    TossPgConfigUpdateRequest,
+    TossPgKeyView,
 )
-from api.src.services import notice_service, popup_service, runtime_config_service
+from api.src.services import notice_service, pg_config_service, popup_service, runtime_config_service
 
 router = APIRouter(prefix="/admin", tags=["admin-content"])
 # NOTE: content.py 는 prefix가 `/admin`이고 `/admin/runtime-config*` 같이 여러 사이드바 페이지
@@ -382,6 +388,96 @@ async def get_forex_config(
         search_date=snap.search_date,
         source=source,
     )
+
+
+# ── 관리자 설정 → 결제(PG) — 토스 모드 + 4개 키 관리 ───────────────────────────
+
+
+def _snapshot_to_response(snap: pg_config_service.TossPgSnapshot) -> TossPgConfigResponse:
+    def view(v: pg_config_service.TossPgKeyView) -> TossPgKeyView:
+        return TossPgKeyView(masked=v.masked, has_value=v.has_value)
+
+    return TossPgConfigResponse(
+        mode=snap.mode,
+        test_client=view(snap.test_client),
+        test_secret=view(snap.test_secret),
+        live_client=view(snap.live_client),
+        live_secret=view(snap.live_secret),
+    )
+
+
+@router.get("/runtime-config/toss-pg", response_model=TossPgConfigResponse)
+async def get_toss_pg_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> TossPgConfigResponse:
+    """토스 PG 설정 조회 — 모드(test|live) + 4개 키 마스킹 묶음.
+
+    secret 키 원본은 절대 응답에 실리지 않는다. 관리자 UI 는 "수정" 버튼을 눌러
+    빈 입력창에 새 값을 직접 다시 입력하는 흐름이다.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    snap = await pg_config_service.get_snapshot(redis_runtime)
+    return _snapshot_to_response(snap)
+
+
+@router.put("/runtime-config/toss-pg", response_model=TossPgConfigResponse)
+@audit_action(AUDIT_PG_CONFIG_UPDATE)
+async def update_toss_pg_config(
+    request: Request,
+    body: TossPgConfigUpdateRequest,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> TossPgConfigResponse:
+    """토스 PG 모드 토글 + 키 부분 업데이트.
+
+    빈 문자열/공백/None 인 키 필드는 무시(미변경). 모드만 바꾸려면 키 필드는
+    모두 비워둔다. audit diff_json 에는 마스킹 전후 상태만 기록한다(원본 금지).
+    """
+    before = await pg_config_service.get_snapshot(redis_runtime)
+
+    if body.mode is not None:
+        try:
+            await pg_config_service.set_mode(redis_runtime, body.mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    updates = (
+        (pg_config_service.KEY_TEST_CLIENT, body.test_client_key),
+        (pg_config_service.KEY_TEST_SECRET, body.test_secret_key),
+        (pg_config_service.KEY_LIVE_CLIENT, body.live_client_key),
+        (pg_config_service.KEY_LIVE_SECRET, body.live_secret_key),
+    )
+    for key, value in updates:
+        if value is None:
+            continue
+        stripped = value.strip()
+        if not stripped:
+            continue
+        await pg_config_service.set_key(redis_runtime, key, stripped)
+
+    after = await pg_config_service.get_snapshot(redis_runtime)
+
+    request.state.audit_target_type = "pg_config"
+    request.state.audit_diff = {
+        "before": {
+            "mode": before.mode,
+            "test_client_has_value": before.test_client.has_value,
+            "test_secret_has_value": before.test_secret.has_value,
+            "live_client_has_value": before.live_client.has_value,
+            "live_secret_has_value": before.live_secret.has_value,
+        },
+        "after": {
+            "mode": after.mode,
+            "test_client_has_value": after.test_client.has_value,
+            "test_secret_has_value": after.test_secret.has_value,
+            "live_client_has_value": after.live_client.has_value,
+            "live_secret_has_value": after.live_secret.has_value,
+        },
+    }
+
+    return _snapshot_to_response(after)
 
 
 # ── Story 7.1 — 공지(쪽지) admin CRUD ─────────────────────────────────────────
