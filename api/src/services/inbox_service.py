@@ -7,6 +7,7 @@
 - get_unread_count(): TopNav 뱃지용 미읽음 개수
 - get_active_popups(): 메인 진입 시 노출 후보 배열 조회 (디바이스 필터)
 - send_admin_dm(): 관리자 → 특정 사용자 1:1 쪽지 발송
+- send_system_message(): 시스템 자동 발송 쪽지 (type='system', created_by_admin_id NULL)
 - (제거됨) mark_popup_seen — Story 7.2 v2에서 쪽지함 보관 중단. 노출 추적은 클라이언트 sessionStorage.
 
 권한 경계: 모든 조회 함수가 user_id를 강제 매개변수로 받고 WHERE 절에 항상 포함하며,
@@ -180,6 +181,35 @@ async def send_admin_dm(
         body_html=body_html,
         is_read=False,
         created_by_admin_id=admin_id,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def send_system_message(
+    db: AsyncSession,
+    *,
+    target_user_id: int,
+    title: str,
+    body_html: str,
+) -> InboxMessage:
+    """시스템 자동 발송 쪽지 INSERT (type='system').
+
+    관리자 개입 없이 서버 이벤트(예: 속도 제한 해제)에 의해 자동 생성된다.
+    호출자는 사용자 존재 여부를 미리 검증해야 한다.
+    body_html은 코드에서 직접 생성된 신뢰된 HTML만 전달한다.
+    """
+    row = InboxMessage(
+        user_id=target_user_id,
+        notice_id=None,
+        popup_id=None,
+        type="system",
+        title=title,
+        body_html=body_html,
+        is_read=False,
+        created_by_admin_id=None,
     )
     db.add(row)
     await db.commit()

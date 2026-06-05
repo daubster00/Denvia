@@ -468,6 +468,17 @@ async def clear_anomaly_throttle(
     )
     await db.commit()
 
+    if cleared:
+        await inbox_service.send_system_message(
+            db,
+            target_user_id=user_id,
+            title="속도 제한 해제 안내",
+            body_html=(
+                "<p>이상 질문 패턴으로 인해 적용되었던 <strong>속도 제한이 해제</strong>되었습니다.</p>"
+                "<p>이제 정상적으로 서비스를 이용하실 수 있습니다.</p>"
+            ),
+        )
+
     request.state.audit_target_type = "user"
     request.state.audit_target_id = user_id
     request.state.audit_diff = {
