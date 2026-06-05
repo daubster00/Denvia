@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from api.src.middleware.audit_actions import (
@@ -27,6 +27,7 @@ from api.src.middleware.audit_actions import (
     AUDIT_USER_BLOCK_AUTO_EXPIRED,
 )
 from api.src.models.audit_log import AuditLog
+from api.src.models.inbox_message import InboxMessage
 from api.src.models.user import User
 from api.src.services import admin_account_service
 from api.src.settings import settings
@@ -37,8 +38,10 @@ logger = structlog.get_logger(__name__)
 
 @celery_app.task(name="anomaly_tasks.expire_blocks")
 def expire_blocks() -> dict:
-    """매시간 정각 호출 — 동기 wrapper."""
-    return asyncio.run(_expire_blocks_async())
+    """매시간 30분 호출 — 동기 wrapper."""
+    block_result = asyncio.run(_expire_blocks_async())
+    lock_result = asyncio.run(_expire_login_locks_async())
+    return {**block_result, "login_lock_expired_count": lock_result.get("expired_count", 0)}
 
 
 async def _resolve_system_actor_id(session) -> int | None:
@@ -154,7 +157,27 @@ async def _expire_blocks_async() -> dict[str, Any]:
 
             await session.commit()
 
-            # 5) 관리자 차단 자동 만료 (Story 10.3) — 분리 트랜잭션으로 처리해
+            # 5) 차단 해제 쪽지 발송
+            inbox_msgs = [
+                InboxMessage(
+                    user_id=row.id,
+                    notice_id=None,
+                    popup_id=None,
+                    type="system",
+                    title="계정 차단 해제 안내",
+                    body_html=(
+                        "<p>기간 만료로 계정 <strong>차단이 자동 해제</strong>되었습니다.</p>"
+                        "<p>이제 정상적으로 서비스를 이용하실 수 있습니다.</p>"
+                    ),
+                    is_read=False,
+                )
+                for row in target_rows
+            ]
+            if inbox_msgs:
+                session.add_all(inbox_msgs)
+                await session.commit()
+
+            # 6) 관리자 차단 자동 만료 (Story 10.3) — 분리 트랜잭션으로 처리해
             #    사용자 분기 commit 후 admin 분기가 실패해도 사용자 복원이 롤백되지 않게 한다.
             admin_result = await _expire_admin_blocks(actor_id)
 
@@ -204,5 +227,65 @@ async def _expire_admin_blocks(actor_id: int) -> dict[str, Any]:
                 )
             await session.commit()
             return result
+    finally:
+        await engine.dispose()
+
+
+async def _expire_login_locks_async() -> dict[str, Any]:
+    """login_locked_until <= now 인 사용자 잠금 기록 초기화 + 쪽지 발송.
+
+    분리 트랜잭션 — 계정 차단 만료 분기와 독립적으로 동작한다.
+    """
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            now = datetime.now(tz=timezone.utc)
+
+            target_rows = (
+                await session.execute(
+                    select(User.id).where(
+                        and_(
+                            User.login_locked_until.is_not(None),
+                            User.login_locked_until <= now,
+                        )
+                    )
+                )
+            ).all()
+
+            if not target_rows:
+                return {"expired_count": 0}
+
+            target_ids = [row.id for row in target_rows]
+
+            await session.execute(
+                update(User)
+                .where(User.id.in_(target_ids))
+                .values(login_locked_until=None, updated_at=now)
+            )
+
+            inbox_msgs = [
+                InboxMessage(
+                    user_id=uid,
+                    notice_id=None,
+                    popup_id=None,
+                    type="system",
+                    title="로그인 잠금 해제 안내",
+                    body_html=(
+                        "<p>잠금 기간이 만료되어 <strong>로그인 잠금이 자동 해제</strong>되었습니다.</p>"
+                        "<p>이제 정상적으로 로그인하실 수 있습니다.</p>"
+                    ),
+                    is_read=False,
+                )
+                for (uid,) in target_rows
+            ]
+            session.add_all(inbox_msgs)
+            await session.commit()
+
+            logger.info(
+                "anomaly.expire_login_locks.done",
+                expired_count=len(target_ids),
+            )
+            return {"expired_count": len(target_ids), "expired_ids": target_ids}
     finally:
         await engine.dispose()

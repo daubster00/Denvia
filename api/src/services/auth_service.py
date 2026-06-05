@@ -6,7 +6,7 @@ import random
 import secrets
 import string
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal, TypedDict
 
 import sentry_sdk
@@ -856,6 +856,16 @@ async def login_user(
                 await r.delete(stage_key)
                 await r.delete(lockout_key)
 
+                if user is not None:
+                    try:
+                        locked_until = datetime.now(tz=timezone.utc) + timedelta(seconds=_LOGIN_HARD_LOCK_TTL)
+                        await db.execute(
+                            update(User).where(User.id == user.id).values(login_locked_until=locked_until)
+                        )
+                        await db.commit()
+                    except Exception:
+                        await db.rollback()
+
                 logger.warning(
                     "auth.login.brute_force.stage2",
                     email=f"****{email[-4:]}",
@@ -909,6 +919,16 @@ async def login_user(
                 await r.set(lockout_key, "1", ex=lockout_seconds)
                 await r.set(stage_key, "1", ex=_LOGIN_STAGE_TTL)
                 await r.delete(fail_key)
+
+                if user is not None:
+                    try:
+                        locked_until = datetime.now(tz=timezone.utc) + timedelta(seconds=lockout_seconds)
+                        await db.execute(
+                            update(User).where(User.id == user.id).values(login_locked_until=locked_until)
+                        )
+                        await db.commit()
+                    except Exception:
+                        await db.rollback()
 
                 logger.warning(
                     "auth.login.brute_force.stage1",
@@ -986,6 +1006,7 @@ async def login_user(
 
     # Story 6.2: 로그인 성공 시 last_login_at 업데이트 (편차 2)
     user.last_login_at = datetime.now(tz=timezone.utc)
+    user.login_locked_until = None  # 로그인 성공 시 잠금 기록 초기화
     # 단일 세션(later wins) — 새 nonce 발급. 이전 쿠키는 sid mismatch 로 자동 무효화된다.
     # rotate_session=False 면 회전을 건너뛴다(관리자 콘솔 로그인은 별도 쿠키 사용 — 일반 쿠키 무효화 방지).
     if rotate_session:
@@ -1105,6 +1126,7 @@ async def request_password_reset(
         )
         user.password_hash = hash_password(temp_password)
         user.must_reset_password = True
+        user.login_locked_until = None  # 비번 재설정으로 잠금 기록 초기화
         user.updated_at = datetime.now(tz=timezone.utc)
 
         body = f"Denvia 임시 비밀번호: {temp_password} (로그인 후 즉시 변경됩니다)"

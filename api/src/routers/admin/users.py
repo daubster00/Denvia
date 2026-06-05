@@ -540,6 +540,9 @@ async def clear_login_lockout(
         email=user_row.email, redis_rl=redis_rl
     )
 
+    user_row.login_locked_until = None
+    await db.commit()
+
     if cleared.get("lockout") or cleared.get("hard_lock"):
         await inbox_service.send_system_message(
             db,
