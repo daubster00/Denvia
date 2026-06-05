@@ -7,8 +7,9 @@ WORKDIR /workspace/api
 # uv 설치
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# 의존성 복사 및 설치 (hatchling이 pyproject.readme 경로를 검증하므로 README.md도 포함)
-COPY api/pyproject.toml api/uv.lock api/README.md ./
+# 의존성 복사 및 설치 — README.md는 추적 제외(.gitignore)되어 빌드 컨텍스트에 없으므로
+# pyproject 의 readme 메타데이터를 제거하고 본 COPY에서도 빠짐.
+COPY api/pyproject.toml api/uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # 소스 복사
