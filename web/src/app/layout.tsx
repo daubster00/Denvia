@@ -93,6 +93,10 @@ export default function RootLayout({
     <html lang="ko" data-theme="light" suppressHydrationWarning>
       {/* Pretendard Variable — CDN Dynamic Subset (font-display: swap) */}
       <head>
+        <meta
+          name="naver-site-verification"
+          content="b4233b091f9c1e4e68d4e3c5debe9dd300d32ffa"
+        />
         <link
           rel="stylesheet"
           as="style"
