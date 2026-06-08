@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import random
 import secrets
 import string
 import uuid
@@ -432,8 +431,8 @@ async def send_sms_otp_flow(
                 detail={"code": "SMS_MAX_RETRIES_EXCEEDED", "message": "인증번호 발송 한도를 초과했습니다. 1시간 후 다시 시도해주세요."},
             )
 
-        # OTP 생성 및 저장
-        otp = "".join(random.choices(string.digits, k=6))
+        # OTP 생성 및 저장 — 비번 초기화/탈퇴 등 보안 경로용이므로 random 대신 secrets 사용.
+        otp = "".join(secrets.choice(string.digits) for _ in range(6))
         pipe = r.pipeline()
         pipe.set(otp_key, otp, ex=_OTP_TTL)
         # wrong-count 키도 초기화

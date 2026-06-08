@@ -28,7 +28,7 @@ from api.src.schemas.admin.rag import (
     RebuildTriggerResponse,
 )
 from api.src.services import rag_admin_service
-from api.src.utils.jwt import JWTDecodeError, SessionExpired, decode_session_jwt
+from api.src.utils.jwt import JWTDecodeError, SessionExpired, decode_admin_session_jwt
 
 router = APIRouter(
     prefix="/admin/rag",
@@ -38,14 +38,18 @@ router = APIRouter(
 
 
 def _admin_user_id_key(request: Request) -> str:
-    """레이트 리밋 키: IP 대신 관리자 user_id 기반 (AC-8)."""
-    cookie = request.cookies.get("denvia_session")
+    """레이트 리밋 키: IP 대신 관리자 user_id 기반 (AC-8).
+
+    다른 admin 라우터(anomaly·killswitch·payments 등)와 동일하게
+    `denvia_admin_session` + `decode_admin_session_jwt` 를 사용한다.
+    """
+    cookie = request.cookies.get("denvia_admin_session")
     if not cookie:
         return get_remote_address(request)
     try:
-        payload = decode_session_jwt(cookie)
+        payload = decode_admin_session_jwt(cookie)
         return f"admin:{payload['sub']}"
-    except (JWTDecodeError, SessionExpired, KeyError, Exception):
+    except (JWTDecodeError, SessionExpired, KeyError):
         return get_remote_address(request)
 
 

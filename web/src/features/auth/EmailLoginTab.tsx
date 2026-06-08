@@ -97,7 +97,9 @@ export function EmailLoginTab({ onSignup, onFindPassword, onFindId }: EmailLogin
           setUser(null);
           closePopup();
         } else if (err.code === "AUTH_TEMPORARILY_LOCKED" || err.code === "RATE_LIMITED") {
-          setServerError(err.message || "비밀번호 오류가 반복되어 10분간 로그인이 잠겼습니다. 잠시 후 다시 시도하거나 비밀번호 찾기를 이용하세요.");
+          // 게이트웨이/Slowapi의 일반 메시지("Too many requests")를 그대로 노출하면
+          // 사용자가 상황을 이해하기 어렵다. 두 코드 모두 동일한 락아웃 UX 로 통일.
+          setServerError("비밀번호 오류가 반복되어 10분간 로그인이 잠겼습니다. 잠시 후 다시 시도하거나 비밀번호 찾기를 이용하세요.");
           setOauthOnlyHint(null);
         } else if (
           err.code === "AUTH_ACCOUNT_OAUTH_ONLY" &&
