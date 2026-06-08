@@ -54,19 +54,22 @@ def test_synonyms_json_schema():
 
 
 def test_normalize_query_output():
-    """`normalize_query`가 str을 반환하고 입력을 변환하는지 확인."""
+    """`normalize_query(query, synonyms)`가 str을 반환하는지 확인."""
     from run_qa import normalize_query
 
-    result = normalize_query("치아교정")
+    synonyms = json.loads(SYNONYMS_PATH.read_text(encoding="utf-8"))
+    result = normalize_query("치아교정", synonyms)
     assert isinstance(result, str), "normalize_query는 str을 반환해야 함"
 
 
 def test_apply_scaling_rules_output():
-    """`apply_scaling_rules`가 dict을 반환하는지 확인 (인터페이스 고정)."""
+    """`apply_scaling_rules(text)` 는 변환된 str을 반환한다 (벤더 시그니처 고정)."""
     from run_qa import apply_scaling_rules
 
-    result = apply_scaling_rules("임플란트 비용")
-    assert isinstance(result, dict), "apply_scaling_rules는 dict을 반환해야 함"
+    result = apply_scaling_rules("치주 스케일링")
+    assert isinstance(result, str), "apply_scaling_rules는 str을 반환해야 함"
+    # '치주 스케일링' → '치주치석제거' 치환 확인 (벤더 의도 보존)
+    assert "치석제거" in result
 
 
 @NEEDS_OPENAI

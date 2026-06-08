@@ -123,11 +123,15 @@ async def test_mark_anomaly_reviewed_reviewed_idempotent():
     event.created_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
     db = MagicMock()
     db.get = AsyncMock(return_value=event)
+    exec_result = MagicMock()
+    exec_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=exec_result)
 
     result = await anomaly_service.mark_anomaly_reviewed(
         db, anomaly_id=1, actor_admin_id=99
     )
-    assert result["status"] == "reviewed"
+    assert result["event"]["status"] == "reviewed"
+    assert result["transitioned"] is False
     # flush 호출 안 됨 (멱등)
     db.flush.assert_not_called() if hasattr(db, "flush") else None
 
@@ -148,6 +152,9 @@ async def test_mark_anomaly_reviewed_new_to_reviewed():
     db = MagicMock()
     db.get = AsyncMock(return_value=event)
     db.flush = AsyncMock()
+    exec_result = MagicMock()
+    exec_result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=exec_result)
 
     result = await anomaly_service.mark_anomaly_reviewed(
         db, anomaly_id=1, actor_admin_id=99
@@ -155,7 +162,8 @@ async def test_mark_anomaly_reviewed_new_to_reviewed():
     assert event.status == "reviewed"
     assert event.reviewed_by_admin_id == 99
     assert event.reviewed_at is not None
-    assert result["status"] == "reviewed"
+    assert result["event"]["status"] == "reviewed"
+    assert result["transitioned"] is True
     db.flush.assert_awaited_once()
 
 

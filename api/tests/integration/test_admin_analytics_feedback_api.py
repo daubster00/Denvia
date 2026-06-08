@@ -441,7 +441,8 @@ class TestFeedbackDetailEndpoint:
     async def test_detail_404_when_missing(self):
         res = await self._call(qa_log_id=99999, row=None)
         assert res.status_code == 404
-        assert res.json()["detail"]["code"] == "ADMIN_FEEDBACK_QA_LOG_NOT_FOUND"
+        # 표준 에러 포맷 — main._http_exception_handler 가 detail 을 flat 으로 펼친다.
+        assert res.json()["code"] == "ADMIN_FEEDBACK_QA_LOG_NOT_FOUND"
 
     async def test_detail_rule_matched_empty_docs(self):
         """rule_matched=True 경로는 retrieved_docs=[]로 응답."""

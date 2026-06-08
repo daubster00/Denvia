@@ -84,7 +84,7 @@ class TestSupportInquiryEndpoint:
         app.dependency_overrides[get_current_user] = lambda: user
         app.dependency_overrides[get_session] = _stub_session()
 
-        async def _submit(db, user_id, subject, body):
+        async def _submit(db, user_id, inquiry_type, subject, body, attachments):
             return 88
 
         monkeypatch.setattr(

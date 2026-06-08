@@ -89,7 +89,9 @@ describe("SynonymGroupForm", () => {
       />,
     );
 
-    const chip = screen.getByText("큐링기").closest("span")!;
+    // chip 는 outer span(title 보유) 안에 chipText span 으로 텍스트가 들어간다.
+    // getByText → chipText span → closest("[title]") 로 outer chip span 확보.
+    const chip = screen.getByText("큐링기").closest("[title]")!;
     // 충돌 클래스는 .chipConflict — CSS modules는 해시되므로 title attribute로 확인
     expect(chip.getAttribute("title")).toContain("이미 그룹 '광중합기'");
   });

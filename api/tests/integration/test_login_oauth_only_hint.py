@@ -133,6 +133,9 @@ class TestOAuthOnlyHintEndpoint:
         user.role = "user"
         user.subscription_status = "free"
         user.withdrawn_at = None
+        # encode_session_jwt 가 session_id 로 사용하므로 명시적 None 지정 — MagicMock 인 채로
+        # 두면 JWT payload 가 MagicMock 을 머금어 JSON 직렬화에서 실패한다.
+        user.current_session_id = None
 
         with patch(
             "api.src.routers.auth.login_user",

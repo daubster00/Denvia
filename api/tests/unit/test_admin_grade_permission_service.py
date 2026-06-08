@@ -84,8 +84,11 @@ class TestGetMatrix:
 
 class TestUpsertPermission:
     def _mock_db_known_grade(self, grade_code: str = "operator") -> MagicMock:
-        """upsert_permission 은 _validate_grade_configurable 안에서 select(AdminGrade.code) 한 번,
-        이후 기존 셀 lookup select 한 번, 총 2번 execute."""
+        """upsert_permission 은 총 3번 execute:
+        1) _validate_grade_configurable 안에서 select(AdminGrade.code)
+        2) 기존 셀 lookup select(AdminGradePagePermission)
+        3) UPSERT pg_insert(...).on_conflict_do_update(...)
+        """
         db = MagicMock()
 
         # 첫 호출: 등급 존재 확인
@@ -96,7 +99,10 @@ class TestUpsertPermission:
         cell_result = MagicMock()
         cell_result.scalar_one_or_none = MagicMock(return_value=None)
 
-        db.execute = AsyncMock(side_effect=[exists_result, cell_result])
+        # 세 번째 호출: UPSERT — 결과는 사용되지 않으나 자리 채움
+        upsert_result = MagicMock()
+
+        db.execute = AsyncMock(side_effect=[exists_result, cell_result, upsert_result])
         db.flush = AsyncMock()
         return db
 

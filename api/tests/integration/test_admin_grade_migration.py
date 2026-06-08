@@ -31,19 +31,16 @@ DB_URL = os.environ.get(
 
 @pytest.mark.asyncio
 async def test_admin_grade_enum_타입_4값_존재():
+    """0057 — admin_grade 값은 pg_enum 이 아니라 admin_grades 테이블의 row 로 관리한다.
+    내장 등급 4종(master/operator/sub_operator/pending) 이 모두 존재해야 한다.
+    """
     engine = create_async_engine(DB_URL)
     async with engine.connect() as conn:
-        result = await conn.execute(
-            text(
-                "SELECT enumlabel FROM pg_enum e "
-                "JOIN pg_type t ON e.enumtypid = t.oid "
-                "WHERE t.typname = 'admin_grade_enum' "
-                "ORDER BY enumsortorder"
-            )
-        )
+        result = await conn.execute(text("SELECT code FROM admin_grades"))
         values = [row[0] for row in result.fetchall()]
     await engine.dispose()
-    assert set(values) == {"master", "operator", "sub_operator", "pending"}
+    # is_builtin 플래그 차이가 있을 수 있으나, 4종 코드 자체는 모두 row 로 존재해야 한다.
+    assert {"master", "operator", "sub_operator", "pending"} <= set(values)
 
 
 @pytest.mark.asyncio

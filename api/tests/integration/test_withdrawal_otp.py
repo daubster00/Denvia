@@ -88,10 +88,19 @@ class TestWithdrawSendOtp:
         app.dependency_overrides[get_current_user] = lambda: _social_user()
         app.dependency_overrides[get_session] = _stub_session()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            res = await client.post("/api/v1/me/withdraw/send-otp")
+        # 외부 Aligo 호출 차단 — 실제 SMS 발송은 mock 으로 대체.
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        fake_messaging = MagicMock()
+        fake_messaging.send_sms_otp = AsyncMock(return_value=None)
+
+        with patch(
+            "api.src.routers.me._get_messaging", return_value=fake_messaging
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                res = await client.post("/api/v1/me/withdraw/send-otp")
 
         assert res.status_code == 200
         body = res.json()
