@@ -48,7 +48,7 @@ beforeEach(() => {
 });
 
 describe("SignupsPage", () => {
-  it("기본 렌더 — 일 단위 활성, 시작일/종료일 노출, 차트 영역 표시", async () => {
+  it("기본 렌더 — 일 단위 활성, 기준일 노출, 차트 영역 표시", async () => {
     const { fetchSignups } = await import(
       "@/features/admin-dashboard/api/analytics"
     );
@@ -67,11 +67,11 @@ describe("SignupsPage", () => {
     await screen.findByText("50명");
     const dayBtn = screen.getByRole("button", { name: "일" });
     expect(dayBtn.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByLabelText("조회 시작일")).toBeTruthy();
-    expect(screen.getByLabelText("조회 종료일")).toBeTruthy();
+    // UI 변경 (단일 기준일) — 페이지가 from/to 범위 input 대신 기준일 1개를 노출.
+    expect(screen.getByLabelText("조회 기준일")).toBeTruthy();
   });
 
-  it("단위 토글(월) 클릭 → fetchSignups가 unit=month로 재호출 + 기본 범위 365일", async () => {
+  it("단위 토글(월) 클릭 → fetchSignups가 unit=month로 재호출 + 범위는 해당 월", async () => {
     const { fetchSignups } = await import(
       "@/features/admin-dashboard/api/analytics"
     );
@@ -99,16 +99,19 @@ describe("SignupsPage", () => {
       )?.[0];
       expect(lastCall).toBeDefined();
       expect(lastCall.unit).toBe("month");
+      // 단일 기준월 UI — 범위는 해당 월의 1일~말일(28~31일).
       const from = new Date(lastCall.from);
       const to = new Date(lastCall.to);
       const diffDays = Math.round(
         (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000),
       );
-      expect(diffDays).toBe(364);
+      expect(diffDays).toBeGreaterThanOrEqual(27);
+      expect(diffDays).toBeLessThanOrEqual(30);
+      expect(lastCall.from.endsWith("-01")).toBe(true);
     });
   });
 
-  it("시작일/종료일 input 변경 시 새 범위로 fetchSignups 재호출", async () => {
+  it("기준일 input 변경 시 새 범위로 fetchSignups 재호출", async () => {
     const { fetchSignups } = await import(
       "@/features/admin-dashboard/api/analytics"
     );
@@ -123,7 +126,8 @@ describe("SignupsPage", () => {
 
     await waitFor(() => expect(fetchSignups).toHaveBeenCalled());
 
-    fireEvent.change(screen.getByLabelText("조회 시작일"), {
+    // 단일 기준일 변경 — 페이지가 to=기준일 로 from/to 를 재계산해 다시 호출한다.
+    fireEvent.change(screen.getByLabelText("조회 기준일"), {
       target: { value: "2026-01-01" },
     });
 
@@ -131,7 +135,7 @@ describe("SignupsPage", () => {
       const lastCall = (fetchSignups as ReturnType<typeof vi.fn>).mock.calls.at(
         -1,
       )?.[0];
-      expect(lastCall?.from).toBe("2026-01-01");
+      expect(lastCall?.to).toBe("2026-01-01");
     });
   });
 

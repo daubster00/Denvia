@@ -186,8 +186,9 @@ class TestStreamQuotaFreeUser:
 
     @pytest.mark.asyncio
     async def test_delay_applied_sleep_called(self):
-        """runtime:free_delay=2 — asyncio.sleep(2) 호출 확인 (실제 대기 없이 mock)."""
+        """runtime:free_delay=2 — catch_up_to_deadline → asyncio.sleep 호출 확인."""
         user = _make_user(user_id=500, subscription_status="free")
+        user.anomaly_throttled_at = None  # anomaly throttle 우회 — runtime delay 만 검증
         quota_redis = FakeRedis(decode_responses=True)
         runtime_redis = FakeRedis(decode_responses=True)
         await runtime_redis.set("runtime:free_daily_quota", "10")
@@ -199,11 +200,37 @@ class TestStreamQuotaFreeUser:
         app.dependency_overrides[get_redis_quota] = lambda: quota_redis
         app.dependency_overrides[get_redis_runtime] = lambda: runtime_redis
 
-        with patch("api.src.services.qa_service.QAService.stream", _mock_stream_ok):
-            with patch("api.src.services.qa_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                    res = await client.post("/api/v1/qa/stream", json={"question_text": "질문"})
-                mock_sleep.assert_awaited_once_with(2)
+        # 실제 stream() 은 첫 토큰 emit 직전에 catch_up_to_deadline 을 호출한다.
+        # 본 테스트는 stream 로직 자체가 아니라 "runtime:free_delay → sleep 도달" 만 검증하므로,
+        # mock stream 이 동일하게 catch_up_to_deadline 을 호출하도록 한다.
+        from api.src.services.qa_service import catch_up_to_deadline
+
+        async def _stream_with_catchup(self, db, user, question_text, **kwargs):
+            pr = kwargs.get("preflight_result")
+            await catch_up_to_deadline(pr, user_id=user.id)
+            yield {"event": "token", "data": json.dumps({"delta": "답변"})}
+            yield {
+                "event": "done",
+                "data": json.dumps(
+                    {"qa_log_id": 1, "total_tokens": 5, "cost_usd": 0.0, "latency_ms": 10, "rule_matched": False}
+                ),
+            }
+
+        with patch("api.src.services.qa_service.QAService.stream", _stream_with_catchup):
+            with patch(
+                "api.src.services.qa_service.asyncio.sleep", new_callable=AsyncMock
+            ) as mock_sleep:
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    res = await client.post(
+                        "/api/v1/qa/stream", json={"question_text": "질문"}
+                    )
+                # remaining = deadline - perf_counter() 이므로 정확히 2초가 아니라
+                # ~2초 미만의 양의 값으로 호출된다.
+                assert mock_sleep.await_count >= 1
+                sleep_arg = mock_sleep.await_args[0][0]
+                assert 0 < sleep_arg <= 2.0
         assert res.status_code == 200
 
 

@@ -226,9 +226,15 @@ class TestAdminAnomalyPatch:
         return res
 
     async def test_mark_reviewed_success(self):
+        # 서비스 반환 시그니처: {"event": serialized, "transitioned": bool}
         with patch(
             "api.src.routers.admin.anomaly.anomaly_service.mark_anomaly_reviewed",
-            new=AsyncMock(return_value=_make_event(status="reviewed")),
+            new=AsyncMock(
+                return_value={
+                    "event": _make_event(status="reviewed"),
+                    "transitioned": True,
+                }
+            ),
         ) as svc:
             res = await self._call(1, {"status": "reviewed"})
         assert res.status_code == 200

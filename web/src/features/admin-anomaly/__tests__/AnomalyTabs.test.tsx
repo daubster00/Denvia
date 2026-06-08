@@ -19,9 +19,9 @@ describe("AnomalyTabs", () => {
       <AnomalyTabs activeType="rapid_followup_questions" onChange={() => {}} />,
     );
     const activeTab = screen.getByRole("tab", { name: "답변 직후 연속 질의" });
-    expect(activeTab).toHaveAttribute("aria-selected", "true");
+    expect(activeTab.getAttribute("aria-selected")).toBe("true");
     const inactive = screen.getByRole("tab", { name: "전체" });
-    expect(inactive).toHaveAttribute("aria-selected", "false");
+    expect(inactive.getAttribute("aria-selected")).toBe("false");
   });
 
   it("invokes onChange with the clicked type", () => {

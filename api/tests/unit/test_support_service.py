@@ -16,13 +16,21 @@ async def test_submit_inquiry_escapes_html_in_body() -> None:
     db.add = MagicMock(side_effect=lambda inq: captured.setdefault("inquiry", inq))
     db.commit = AsyncMock()
 
-    async def _refresh(inq):
-        inq.id = 88
+    async def _flush():
+        inq = captured.get("inquiry")
+        if inq is not None:
+            inq.id = 88
 
-    db.refresh = AsyncMock(side_effect=_refresh)
+    db.flush = AsyncMock(side_effect=_flush)
+    db.refresh = AsyncMock()
 
     inquiry_id = await support_service.submit_inquiry(
-        db, user_id=1, subject="결제 문의", body='<script>alert(1)</script>'
+        db,
+        user_id=1,
+        inquiry_type="billing",
+        subject="결제 문의",
+        body='<script>alert(1)</script>',
+        attachments=[],
     )
     assert inquiry_id == 88
     inq = captured["inquiry"]
@@ -44,13 +52,21 @@ async def test_submit_inquiry_preserves_korean_text() -> None:
     db.add = MagicMock(side_effect=lambda inq: captured.setdefault("inquiry", inq))
     db.commit = AsyncMock()
 
-    async def _refresh(inq):
-        inq.id = 1
+    async def _flush():
+        inq = captured.get("inquiry")
+        if inq is not None:
+            inq.id = 1
 
-    db.refresh = AsyncMock(side_effect=_refresh)
+    db.flush = AsyncMock(side_effect=_flush)
+    db.refresh = AsyncMock()
 
     await support_service.submit_inquiry(
-        db, user_id=42, subject="문의", body="안녕하세요. 결제가 두 번 청구된 것 같아요."
+        db,
+        user_id=42,
+        inquiry_type="other",
+        subject="문의",
+        body="안녕하세요. 결제가 두 번 청구된 것 같아요.",
+        attachments=[],
     )
     inq = captured["inquiry"]
     assert "안녕하세요" in inq.body

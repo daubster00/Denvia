@@ -46,19 +46,44 @@ def _make_admin(user_id: int = 1, grade: str = "master") -> MagicMock:
 
 
 class _DummySession:
-    """get_session override — execute/flush/commit 무력화."""
+    """get_session override — execute/flush/commit 무력화.
+
+    admin_grades 테이블 조회는 (operator, sub_operator) 2건을 흉내내고,
+    admin_grade_page_permissions 테이블 조회는 빈 결과로 fallback해서
+    엔드포인트가 ADMIN_PAGE_ROUTES × configurable 등급 매트릭스를 합성하도록 둔다.
+    """
 
     def __init__(self):
         self.commit = AsyncMock()
         self.flush = AsyncMock()
 
-    async def execute(self, *_a, **_kw):
-        # 매트릭스 GET 의 select(...) → 빈 결과로 fallback
+    @staticmethod
+    def _fake_grade_row(code: str, label: str):
+        row = MagicMock()
+        row.code = code
+        row.label = label
+        row.is_builtin = True
+        row.created_at = None
+        return row
+
+    async def execute(self, stmt, *_a, **_kw):
+        stmt_str = str(stmt).lower()
         scalars = MagicMock()
-        scalars.all = MagicMock(return_value=[])
         result = MagicMock()
+
+        if "admin_grades" in stmt_str:
+            rows = [
+                self._fake_grade_row("operator", "운영자"),
+                self._fake_grade_row("sub_operator", "부운영자"),
+            ]
+            scalars.all = MagicMock(return_value=rows)
+            # _validate_grade_configurable 의 select(AdminGrade.code).where(code == X)
+            result.scalar_one_or_none = MagicMock(return_value="sub_operator")
+        else:
+            scalars.all = MagicMock(return_value=[])
+            result.scalar_one_or_none = MagicMock(return_value=None)
+
         result.scalars = MagicMock(return_value=scalars)
-        result.scalar_one_or_none = MagicMock(return_value=None)
         return result
 
 
@@ -77,7 +102,7 @@ def client():
 
 
 @pytest.mark.asyncio
-async def test_GET_master_200_18행_반환(client):
+async def test_GET_master_200_rows_returned(client):
     ac, _t = client
     token = _make_admin_jwt(1)
     admin = _make_admin(1, "master")
@@ -90,8 +115,10 @@ async def test_GET_master_200_18행_반환(client):
     app.dependency_overrides.clear()
     assert res.status_code == 200, res.text
     body = res.json()
-    # 9개 페이지 × 2개 등급 = 18행
-    assert len(body["rows"]) == 18
+    # 매트릭스 = ADMIN_PAGE_ROUTES × configurable 등급 (operator + sub_operator)
+    from api.src.services.admin_grade_permission_service import ADMIN_PAGE_ROUTES
+
+    assert len(body["rows"]) == len(ADMIN_PAGE_ROUTES) * 2
     assert body["grades"] == ["operator", "sub_operator"]
 
 

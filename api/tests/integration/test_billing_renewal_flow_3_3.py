@@ -112,9 +112,9 @@ async def test_charge_renewal_e2e_success_db_state():
         "raw_response": {"status": "DONE"},
     })
 
+    # 2026-05-18: 자동 갱신 성공 알림(`_notify_renewal`)은 고객 요청으로 폐지됨.
     with patch("api.src.services.billing_service.get_pg_provider", return_value=mock_pg):
-        with patch("api.src.services.billing_service._notify_renewal", new=AsyncMock()):
-            result = await charge_renewal(sub.id, db)
+        result = await charge_renewal(sub.id, db)
 
     assert result["status"] == "success"
 

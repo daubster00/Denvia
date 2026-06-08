@@ -132,7 +132,8 @@ class TestExpireBlocks:
     async def test_single_target_inserts_audit_log(self):
         outcome = await self._run([_row(42, "blocked@x.com")])
         assert outcome["result"]["expired_count"] == 1
-        outcome["session"].commit.assert_awaited_once()
+        # 1) audit_log + 차단해제 직후 commit, 2) inbox 발송 후 commit — 총 2회.
+        assert outcome["session"].commit.await_count == 2
         added = outcome["session"].add.call_args_list
         assert len(added) == 1
         log = added[0].args[0]

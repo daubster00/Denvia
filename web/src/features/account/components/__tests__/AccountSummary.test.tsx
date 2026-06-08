@@ -111,7 +111,9 @@ describe("AccountSummary — Story 4.3 AC-2 분기", () => {
     await flushAsync();
 
     expect(screen.getByText("Pro — 무제한")).toBeDefined();
-    expect(screen.getByText(/250회/)).toBeDefined();
+    // "250회" 는 월 질문 카운트(250) + 남은 횟수(250) 양쪽에 노출되므로,
+    // 월 사용량 게이지의 고유 표기인 "250/500회" 로 검증한다.
+    expect(screen.getByText(/250\/500회/)).toBeDefined();
     expect(screen.queryByText(/오늘 사용량/)).toBeNull();
     expect(screen.queryByRole("link", { name: "구독하기" })).toBeNull();
   });
