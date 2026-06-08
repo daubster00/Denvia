@@ -1,6 +1,0 @@
-{
-  "montage-mcp-server": {
-    "type": "http",
-    "url": "https://montage.wanted.co.kr/mcp"
-  }
-}

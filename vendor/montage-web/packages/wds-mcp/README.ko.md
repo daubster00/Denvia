@@ -37,9 +37,3 @@ AI 코딩 어시스턴트에게 WDS 컴포넌트 문서, 디자인 토큰, 아�
   }
 }
 ```
-
-### Claude Code
-
-```bash
-claude mcp add montage-mcp-server -- npx -y @wanteddev/wds-mcp@latest
-```

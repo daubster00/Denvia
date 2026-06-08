@@ -67,9 +67,6 @@ api/data/faiss/
 # 루트 레벨 런타임 데이터 (api/data/faiss와 별개로 생성된 로컬 캐시)
 /data/
 
-# 사용자 로컬 launcher 스크립트
-launch-claude.bat
-
 # 관리자 지식 파일 업로드 (런타임 생성 — 디렉터리만 추적)
 api/data/uploads/
 !api/data/uploads/.gitkeep
@@ -82,15 +79,9 @@ RAG 코드/
 _bmad-output/
 _bmad-output*.zip
 
-# AI 개발 도구/흔적 (Claude, BMAD, Codex)
-# - 루트 CLAUDE.md 는 로컬 프로젝트 운영 노트로 디스크에는 유지하되 추적은 제외
-# - 벤더 디렉토리(vendor/)는 제3자 라이브러리 원본이라 예외로 둠
-.claude/
+# 로컬 개발 환경 설정·노트 (저장소에 커밋하지 않음, 벤더 디렉터리는 예외)
 _bmad/
-**/CLAUDE.md
-**/AGENTS.md
 !vendor/**
-.codex
 
 # 프로젝트 문서 (운영/아키텍처/ADR/런북 등 — 추적 제외)
 docs/

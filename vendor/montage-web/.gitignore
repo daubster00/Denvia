@@ -39,6 +39,3 @@ dist-ssr
 
 # Misc
 examples
-
-.claude/worktrees
-.claude/settings.local.json

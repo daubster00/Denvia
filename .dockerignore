@@ -17,7 +17,6 @@ vendor/montage-web/.github/
 vendor/montage-web/docs/
 vendor/montage-web/tests/
 vendor/montage-web/scripts/
-vendor/montage-web/.claude-plugin/
 vendor/montage-web/figma/
 
 # Git / env / IDE

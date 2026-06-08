@@ -5,7 +5,7 @@
 산출물:
     자료/Denvia_카카오_알림톡_메시지_안내서_v4.docx
 
-CLAUDE.md "고객 전달용 문서 작성 규칙" 준수 — SDT(content control), 폼 보호,
+고객 전달용 문서 작성 규칙 준수 — SDT(content control), 폼 보호,
 문서 보호, ActiveX 등 일체 사용하지 않음. 어떤 워드 버전에서도 자유 편집 가능.
 
 실행:

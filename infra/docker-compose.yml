@@ -21,7 +21,7 @@ services:
     depends_on:
       - api
     volumes:
-      # Dev: Windows/WSL/Claude/Codex/Docker all edit and run the same checkout.
+      # Dev: 호스트와 컨테이너가 같은 체크아웃을 공유.
       - ..:/workspace
       # Keep Linux dependency/build folders inside Docker volumes so Windows files do not mask them.
       - root_node_modules:/workspace/node_modules

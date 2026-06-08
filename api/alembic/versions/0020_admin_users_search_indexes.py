@@ -8,11 +8,10 @@ GIN trigram 인덱스를 사용해 p95 ≤ 1초(NFR-P5)를 충족하도록 다�
 3. idx_users_phone_trgm  : users.phone partial GIN trigram (phone IS NOT NULL일 때만)
 4. idx_billing_keys_card_last4 : billing_keys.card_last4 partial BTREE (is_active 만)
 
-NOTE 0020 번호 사유: 본 worktree(claude/flamboyant-curie-8c2a48)가 main 기반으로
-0019까지만 적용된 상태. Story 7.2가 별도 worktree(charming-gates-cbc53d)에서
-0020(popups deleted_at)을 만들었으나 main 머지 전이므로 본 스토리 마이그레이션은
-0020 으로 적용한다. 7.2 PR 머지 후 충돌이 발생하면 7.2 measurement-side에서
-번호 재배치 또는 분기 head 통합 처리.
+NOTE 0020 번호 사유: 작성 시점에 main 기준 0019까지만 적용된 상태였고,
+Story 7.2가 별도 분기에서 0020(popups deleted_at)을 만들었으나 main 머지 전이라
+본 스토리 마이그레이션은 0020 으로 적용. 7.2 머지 후 충돌 시 measurement-side
+에서 번호 재배치 또는 분기 head 통합 처리.
 
 down_revision='0019_payment_period_snapshot'.
 

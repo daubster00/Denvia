@@ -37,9 +37,3 @@ Add the following to your `.cursor/mcp.json`:
   }
 }
 ```
-
-### Claude Code
-
-```bash
-claude mcp add montage-mcp-server -- npx -y @wanteddev/wds-mcp@latest
-```
