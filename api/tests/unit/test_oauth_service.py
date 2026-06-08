@@ -99,6 +99,8 @@ def _user_mock(id=10, email="u@example.com", phone="01011112222", password_hash=
     u.phone = phone
     u.password_hash = password_hash
     u.withdrawn_at = None
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

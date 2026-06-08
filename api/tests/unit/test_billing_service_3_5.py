@@ -20,6 +20,8 @@ def _make_user(user_id: int = 10, phone: str = "010-1234-5678") -> MagicMock:
     u.phone = phone
     u.subscription_status = "pro"
     u.withdrawn_at = None
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

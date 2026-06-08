@@ -26,6 +26,8 @@ def _user(user_id: int = 42, sub_status: str = "free") -> MagicMock:
     u.subscription_status = sub_status
     u.withdrawn_at = None
     u.updated_at = datetime.now(tz=timezone.utc)
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

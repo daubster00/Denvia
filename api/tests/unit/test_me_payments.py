@@ -17,6 +17,8 @@ def _make_user(user_id: int = 1, email: str = "user@example.com") -> MagicMock:
     u = MagicMock()
     u.id = user_id
     u.email = email
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

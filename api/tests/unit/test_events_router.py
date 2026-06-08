@@ -17,6 +17,8 @@ def _make_user(user_id: int = 42) -> MagicMock:
     u = MagicMock(spec=User)
     u.id = user_id
     u.subscription_status = "pro"
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

@@ -88,6 +88,8 @@ def _make_inquiry_row(subscription_status: str = "free"):
     row.status = "open"
     row.created_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
     row.resolved_at = None
+    row.current_session_id = None
+    row.admin_grade = "master"
     return row
 
 

@@ -22,6 +22,8 @@ def _make_user(subscription_status: str = "free") -> MagicMock:
     u.id = 1
     u.phone = "01012345678"
     u.subscription_status = subscription_status
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 
@@ -37,6 +39,8 @@ def _make_billing_key(customer_key: str = "denvia_cust_uuid") -> MagicMock:
     bk.card_last4 = "1234"
     bk.card_company = "신한"
     bk.is_active = True
+    bk.current_session_id = None
+    bk.admin_grade = "master"
     return bk
 
 

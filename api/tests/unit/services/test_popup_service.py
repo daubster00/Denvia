@@ -25,6 +25,8 @@ from api.src.services import popup_service
 def _admin_mock(user_id: int = 99):
     admin = MagicMock()
     admin.id = user_id
+    admin.current_session_id = None
+    admin.admin_grade = "master"
     return admin
 
 

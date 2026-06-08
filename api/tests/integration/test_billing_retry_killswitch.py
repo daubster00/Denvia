@@ -35,6 +35,8 @@ def _make_payment(payment_id: int = 200, attempt_count: int = 1) -> MagicMock:
     p.retry_task_id = None
     p.failure_reason = "first failure"
     p.provider_order_id = "renewal-60-orig"
+    p.current_session_id = None
+    p.admin_grade = "master"
     return p
 
 
@@ -48,6 +50,8 @@ def _make_subscription(sub_id: int = 60) -> MagicMock:
     sub.next_charge_at = now - timedelta(days=1)
     sub.canceled_at = None
     sub.cancel_reason = None
+    sub.current_session_id = None
+    sub.admin_grade = "master"
     return sub
 
 
@@ -60,6 +64,8 @@ def _make_billing_key():
     bk.customer_key = "cust_kill"
     bk.billing_key_encrypted = encrypt_billing_key("plain_kill")
     bk.is_active = True
+    bk.current_session_id = None
+    bk.admin_grade = "master"
     return bk
 
 

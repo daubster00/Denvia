@@ -45,6 +45,8 @@ def _make_user(email: str, phone: str, password: str | None = "password123") -> 
     user.must_reset_password = False
     user.withdrawn_at = None
     user.updated_at = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

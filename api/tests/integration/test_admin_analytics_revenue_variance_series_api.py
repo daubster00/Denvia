@@ -31,6 +31,8 @@ def _admin_user() -> MagicMock:
     u.segment = None
     u.withdrawn_at = None
     u.must_reset_password = False
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

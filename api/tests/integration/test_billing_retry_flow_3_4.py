@@ -52,6 +52,8 @@ def _make_subscription(sub_id: int = 50, user_id: int = 10) -> MagicMock:
     sub.next_charge_at = now - timedelta(days=1)
     sub.canceled_at = None
     sub.cancel_reason = None
+    sub.current_session_id = None
+    sub.admin_grade = "master"
     return sub
 
 
@@ -64,6 +66,8 @@ def _make_billing_key(user_id: int = 10) -> MagicMock:
     bk.customer_key = "cust_3_4_e2e"
     bk.billing_key_encrypted = encrypt_billing_key("plain_3_4")
     bk.is_active = True
+    bk.current_session_id = None
+    bk.admin_grade = "master"
     return bk
 
 

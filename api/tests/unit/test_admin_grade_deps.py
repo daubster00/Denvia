@@ -46,6 +46,7 @@ def _make_admin_user(grade: str | None = "operator") -> MagicMock:
     user.subscription_status = "free"
     user.withdrawn_at = None
     user.admin_grade = grade
+    user.current_session_id = None
     return user
 
 

@@ -20,6 +20,8 @@ def _make_admin(admin_id: int = 99) -> MagicMock:
     a = MagicMock(spec=User)
     a.id = admin_id
     a.email = "admin@example.com"
+    a.current_session_id = None
+    a.admin_grade = "master"
     return a
 
 
@@ -34,6 +36,8 @@ def _make_dm_row(message_id: int = 10, user_id: int = 7) -> MagicMock:
     msg.created_at = datetime(2026, 5, 26, tzinfo=timezone.utc)
     msg.deleted_at = None
     msg.type = "admin_dm"
+    msg.current_session_id = None
+    msg.admin_grade = "master"
     return msg
 
 

@@ -25,6 +25,8 @@ def _social_user(phone: str | None = "01012345678") -> MagicMock:
     u.subscription_status = "free"
     u.withdrawn_at = None
     u.updated_at = datetime.now(tz=timezone.utc)
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 
@@ -37,6 +39,8 @@ def _email_user() -> MagicMock:
     u.subscription_status = "free"
     u.withdrawn_at = None
     u.updated_at = datetime.now(tz=timezone.utc)
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

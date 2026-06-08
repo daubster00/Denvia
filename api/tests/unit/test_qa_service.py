@@ -13,6 +13,8 @@ from api.src.services.qa_service import QAService, _ECHO_ANSWER
 def _make_user(user_id: int = 1) -> User:
     user = MagicMock(spec=User)
     user.id = user_id
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

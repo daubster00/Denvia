@@ -40,6 +40,8 @@ def mock_user():
     user.must_reset_password = False
     # Story 1.7: is_social 분기용. 자체 가입자(이메일 비밀번호) 기본.
     user.password_hash = "$argon2id$dummy"
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 
@@ -56,6 +58,8 @@ def mock_social_user():
     user.withdrawn_at = None
     user.must_reset_password = False
     user.password_hash = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

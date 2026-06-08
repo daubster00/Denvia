@@ -45,6 +45,8 @@ def _make_oauth_only_user(email="social@denvia.com", providers=("naver",)):
     user.subscription_status = "free"
     user.password_hash = None
     user.withdrawn_at = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

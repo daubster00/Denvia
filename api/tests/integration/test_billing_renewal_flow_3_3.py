@@ -31,6 +31,8 @@ def _make_subscription(sub_id: int = 1, user_id: int = 10, status: str = "active
     now = _now_utc()
     sub.current_period_end = now - timedelta(days=1)
     sub.next_charge_at = now - timedelta(days=1)
+    sub.current_session_id = None
+    sub.admin_grade = "master"
     return sub
 
 
@@ -43,6 +45,8 @@ def _make_billing_key(user_id: int = 10) -> MagicMock:
     bk.customer_key = "denvia_cust_test_uuid"
     bk.billing_key_encrypted = encrypt_billing_key("bk_plain_test")
     bk.is_active = True
+    bk.current_session_id = None
+    bk.admin_grade = "master"
     return bk
 
 

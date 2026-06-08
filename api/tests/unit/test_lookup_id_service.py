@@ -57,6 +57,8 @@ def _make_user(phone: str, password_hash: str | None = "somehash") -> MagicMock:
     user.phone = phone
     user.password_hash = password_hash
     user.withdrawn_at = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

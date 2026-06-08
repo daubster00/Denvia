@@ -60,6 +60,8 @@ def _admin_user_mock(user_id: int):
     user.years_of_experience = None
     user.withdrawn_at = None
     user.must_reset_password = False
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 
@@ -73,6 +75,8 @@ def _normal_user_mock(user_id: int):
     user.years_of_experience = None
     user.withdrawn_at = None
     user.must_reset_password = False
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

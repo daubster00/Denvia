@@ -25,12 +25,27 @@ DB_SYNC_URL = os.environ.get(
 
 @pytest.fixture(scope="module")
 def run_migrations():
-    """alembic upgrade head를 실행한다."""
+    """alembic upgrade head를 실행한다.
+
+    teardown 시 0057_admin_grades_dynamic downgrade가 built_in=false 행 존재로 거부되므로
+    downgrade 전에 admin_grades 의 커스텀 행을 일괄 삭제한다.
+    """
+    from sqlalchemy import create_engine
+
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", DB_SYNC_URL)
     command.upgrade(alembic_cfg, "head")
     yield
-    # 테스트 후 롤백 (선택적)
+    # 0057 downgrade 가드 우회 — 운영 데이터가 아닌 테스트 fixture 이므로 안전.
+    sync_engine = create_engine(DB_SYNC_URL)
+    try:
+        with sync_engine.begin() as conn:
+            conn.execute(text("DELETE FROM admin_grades WHERE built_in = false"))
+    except Exception:
+        # admin_grades 가 아직 없는 상태(이전 다운그레이드 실패 잔재)면 통과.
+        pass
+    finally:
+        sync_engine.dispose()
     command.downgrade(alembic_cfg, "base")
 
 
@@ -52,20 +67,26 @@ async def test_users_table_exists(run_migrations):
 
 @pytest.mark.asyncio
 async def test_users_partial_unique_indexes_exist(run_migrations):
-    """partial UNIQUE index (uq_users_email, uq_users_phone)가 존재하는지 확인한다."""
+    """partial UNIQUE index 가 존재하는지 확인한다.
+
+    user/admin 분리(2026-05-28) 이후 phone unique 는 두 부분 인덱스로 분리됐다:
+    - uq_users_phone_admin (role='admin' 일 때)
+    - uq_users_phone_nonadmin (role!='admin' 일 때)
+    """
     engine = create_async_engine(DB_URL)
     async with engine.connect() as conn:
         result = await conn.execute(
             text(
                 "SELECT indexname FROM pg_indexes "
                 "WHERE tablename='users' "
-                "AND indexname IN ('uq_users_email', 'uq_users_phone')"
+                "AND indexname IN ('uq_users_email', 'uq_users_phone_admin', 'uq_users_phone_nonadmin')"
             )
         )
         indexes = {row[0] for row in result.fetchall()}
     await engine.dispose()
     assert "uq_users_email" in indexes, "uq_users_email 인덱스가 존재해야 함"
-    assert "uq_users_phone" in indexes, "uq_users_phone 인덱스가 존재해야 함"
+    assert "uq_users_phone_admin" in indexes, "uq_users_phone_admin 인덱스가 존재해야 함"
+    assert "uq_users_phone_nonadmin" in indexes, "uq_users_phone_nonadmin 인덱스가 존재해야 함"
 
 
 @pytest.mark.asyncio
@@ -389,7 +410,9 @@ async def test_0007_user_quota_override_columns(run_migrations):
     assert rows["daily_quota_override"][0] == "YES", "daily_quota_override는 nullable이어야 함"
     assert rows["free_delay_override"][0] == "YES", "free_delay_override는 nullable이어야 함"
     assert "int" in rows["daily_quota_override"][1].lower(), "daily_quota_override는 integer 타입이어야 함"
-    assert "int" in rows["free_delay_override"][1].lower(), "free_delay_override는 integer 타입이어야 함"
+    # free_delay_override 는 NUMERIC(4,1) 로 변경됨 (소수 초 단위 지연 지원, 2026-05 마이그레이션).
+    assert rows["free_delay_override"][1].lower() in ("integer", "numeric"), \
+        f"free_delay_override는 integer/numeric 이어야 함 (got {rows['free_delay_override'][1]})"
 
 
 @pytest.mark.asyncio
