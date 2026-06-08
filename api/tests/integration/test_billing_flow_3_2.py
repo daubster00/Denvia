@@ -31,6 +31,8 @@ def _make_user(subscription_status: str = "free") -> MagicMock:
     u.phone = "01012345678"
     u.subscription_status = subscription_status
     u.role = "user"
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

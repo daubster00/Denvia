@@ -19,6 +19,7 @@ vi.mock("@/features/auth/api", () => ({
 
 vi.mock("@/features/inbox/api", () => ({
   fetchUnreadCount: vi.fn(() => Promise.resolve({ unread_count: 0 })),
+  fetchInboxPreview: vi.fn(() => Promise.resolve({ items: [], unread_count: 0 })),
 }));
 
 function wrapper({ children }: { children: ReactNode }) {

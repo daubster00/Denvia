@@ -38,13 +38,20 @@ def _make_db(log_id: int = 1):
     db.refresh = _fake_refresh
     db.add = MagicMock()
 
+    # killswitch_service.get_active_modes 첫 가드 — 활성 모드 없음.
+    _ks_result = MagicMock()
+    _ks_result.scalars.return_value.all.return_value = []
+    _ks_result.scalar_one_or_none.return_value = None
+    _ks_result.scalar_one.return_value = 0
+    db.execute = AsyncMock(return_value=_ks_result)
+
     async def _gen():
         yield db
 
     return _gen
 
 
-async def _mock_stream_ok(self, db, user, question_text):
+async def _mock_stream_ok(self, db, user, question_text, **kwargs):
     yield {"event": "token", "data": json.dumps({"delta": "답변"})}
     yield {"event": "done", "data": json.dumps({"qa_log_id": 1, "total_tokens": 5, "cost_usd": 0.0, "latency_ms": 10, "rule_matched": False})}
 

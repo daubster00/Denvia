@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { AnomalyTable } from "../components/AnomalyTable";
 import type {
   AnomalyEventItem,
   AnomalyListResponse,
 } from "../api/anomaly";
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
 
 function makeEvent(
   overrides: Partial<AnomalyEventItem> = {},
@@ -48,14 +55,15 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
-    expect(screen.getByText("발생일시")).toBeInTheDocument();
-    expect(screen.getByText("분류")).toBeInTheDocument();
-    expect(screen.getByText("대상 사용자")).toBeInTheDocument();
-    expect(screen.getByText("IP")).toBeInTheDocument();
-    expect(screen.getByText("상태")).toBeInTheDocument();
-    expect(screen.getByText("상세")).toBeInTheDocument();
-    expect(screen.getByTestId("anomaly-detail-1")).toBeInTheDocument();
+    expect(screen.getByText("발생일시")).toBeTruthy();
+    expect(screen.getByText("분류")).toBeTruthy();
+    expect(screen.getByText("대상 사용자")).toBeTruthy();
+    expect(screen.getByText("IP")).toBeTruthy();
+    expect(screen.getByText("상태")).toBeTruthy();
+    expect(screen.getByText("상세")).toBeTruthy();
+    expect(screen.getByTestId("anomaly-detail-1")).toBeTruthy();
   });
 
   it("invokes onShowDetail with the row item when 상세보기 clicked", () => {
@@ -72,6 +80,7 @@ describe("AnomalyTable", () => {
         onShowDetail={onShowDetail}
         onRetry={noop}
       />,
+      { wrapper },
     );
     fireEvent.click(screen.getByTestId("anomaly-detail-1"));
     expect(onShowDetail).toHaveBeenCalledWith(event);
@@ -89,8 +98,9 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
-    expect(screen.getByText("이상 이벤트가 없습니다.")).toBeInTheDocument();
+    expect(screen.getByText("이상 이벤트가 없습니다.")).toBeTruthy();
   });
 
   it("렌더링: 차단X + 자동제한X + status=new → '검토필요'", () => {
@@ -105,6 +115,7 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
     const el = screen.getByTestId("anomaly-status-needs-review");
     expect(el).toBeDefined();
@@ -123,6 +134,7 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
     const el = screen.getByTestId("anomaly-status-auto-throttle");
     expect(el).toBeDefined();
@@ -141,6 +153,7 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
     const el = screen.getByTestId("anomaly-status-blocked");
     expect(el).toBeDefined();
@@ -165,6 +178,7 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
     const el = screen.getByTestId("anomaly-status-blocked-throttled");
     expect(el).toBeDefined();
@@ -183,6 +197,7 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={noop}
       />,
+      { wrapper },
     );
     const el = screen.getByTestId("anomaly-status-resolved");
     expect(el).toBeDefined();
@@ -202,6 +217,7 @@ describe("AnomalyTable", () => {
         onShowDetail={noop}
         onRetry={onRetry}
       />,
+      { wrapper },
     );
     fireEvent.click(screen.getByText("다시 시도"));
     expect(onRetry).toHaveBeenCalled();

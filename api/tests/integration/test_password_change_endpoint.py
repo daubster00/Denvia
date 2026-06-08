@@ -34,6 +34,8 @@ def mock_user():
     user.password_hash = hash_password("temp1234")
     user.must_reset_password = True
     user.updated_at = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

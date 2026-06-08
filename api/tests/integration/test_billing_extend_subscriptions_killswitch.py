@@ -52,6 +52,8 @@ def _make_subscription(sub_id: int, user_id: int, status: str = "active"):
     now = datetime.now(UTC)
     sub.current_period_end = now + timedelta(days=10)
     sub.next_charge_at = now + timedelta(days=10)
+    sub.current_session_id = None
+    sub.admin_grade = "master"
     return sub
 
 

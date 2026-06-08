@@ -65,6 +65,8 @@ def _make_subscription(sub_id: int = 50, status: str = "active") -> MagicMock:
     sub.next_charge_at = _NOW + timedelta(days=20)
     sub.canceled_at = None
     sub.cancel_reason = None
+    sub.current_session_id = None
+    sub.admin_grade = "master"
     return sub
 
 

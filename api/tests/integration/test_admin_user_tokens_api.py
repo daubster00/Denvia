@@ -59,6 +59,8 @@ def _make_admin():
     user.segment = None
     user.withdrawn_at = None
     user.must_reset_password = False
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 
@@ -78,6 +80,8 @@ def _make_user_obj(user_id: int, email: str, segment: str | None = None, withdra
     u.email = email
     u.segment = segment
     u.withdrawn_at = MagicMock() if withdrawn else None
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

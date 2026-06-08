@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { RebuildBanner } from "../RebuildBanner";
 import { useAdminEventsStore } from "@/stores/admin-events-store";
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
 
 // cancelRebuild mock
 vi.mock("@/features/admin-rag/api/knowledge", () => ({
@@ -58,13 +65,13 @@ afterEach(() => {
 
 describe("RebuildBanner", () => {
   it("rebuildProgress null → 배너 미렌더", () => {
-    render(<RebuildBanner />);
+    render(<RebuildBanner />, { wrapper });
     expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("progress=45, stage=embedding → 메시지 렌더", () => {
     act(() => setProgress(45, "embedding"));
-    render(<RebuildBanner />);
+    render(<RebuildBanner />, { wrapper });
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.getByText(/재빌드 중 \(45%\)/)).toBeTruthy();
     expect(screen.getByText(/embedding stage/)).toBeTruthy();
@@ -72,7 +79,7 @@ describe("RebuildBanner", () => {
 
   it("[취소] 클릭 → ConfirmDialog 열림", () => {
     act(() => setProgress(45, "embedding"));
-    render(<RebuildBanner />);
+    render(<RebuildBanner />, { wrapper });
     fireEvent.click(screen.getByRole("button", { name: "취소" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
@@ -80,7 +87,7 @@ describe("RebuildBanner", () => {
   it("ConfirmDialog confirm → cancelRebuild 호출 + 배너 사라짐", async () => {
     const { cancelRebuild } = await import("@/features/admin-rag/api/knowledge");
     act(() => setProgress(45, "embedding"));
-    render(<RebuildBanner />);
+    render(<RebuildBanner />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "취소" }));
     await act(async () => {
@@ -94,7 +101,7 @@ describe("RebuildBanner", () => {
 
   it("[숨기기] 클릭 → 배너 사라짐 + sessionStorage 세팅", () => {
     act(() => setProgress(45, "embedding"));
-    render(<RebuildBanner />);
+    render(<RebuildBanner />, { wrapper });
     fireEvent.click(screen.getByRole("button", { name: "숨기기" }));
     expect(screen.queryByRole("status")).toBeNull();
     expect(sessionStorage.getItem("rebuild_banner_hidden")).toBe("1");
@@ -102,12 +109,12 @@ describe("RebuildBanner", () => {
 
   it("progress=100, status=success → Toast + 배너 사라짐", async () => {
     act(() => setProgress(45, "embedding"));
-    const { rerender } = render(<RebuildBanner />);
+    const { rerender } = render(<RebuildBanner />, { wrapper });
 
     // wrap in act so useEffect (setToastMsg + setRebuildProgress(null)) fires before assertion
     await act(async () => {
       setProgress(100, "done", "success");
-      rerender(<RebuildBanner />);
+      rerender(<RebuildBanner />, { wrapper });
     });
 
     expect(screen.getByRole("alert")).toBeTruthy();
@@ -117,12 +124,12 @@ describe("RebuildBanner", () => {
 
   it("stage=failed → Toast + 배너 사라짐", async () => {
     act(() => setProgress(45, "embedding"));
-    const { rerender } = render(<RebuildBanner />);
+    const { rerender } = render(<RebuildBanner />, { wrapper });
 
     // wrap in act so useEffect (setToastMsg + setRebuildProgress(null)) fires before assertion
     await act(async () => {
       setProgress(0, "failed", "failed", "디스크 오류");
-      rerender(<RebuildBanner />);
+      rerender(<RebuildBanner />, { wrapper });
     });
 
     expect(screen.getByRole("alert")).toBeTruthy();

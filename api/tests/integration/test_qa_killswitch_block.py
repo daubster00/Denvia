@@ -35,6 +35,8 @@ def _make_user(role: str = "user", subscription_status: str = "free"):
     user.must_reset_password = False
     user.daily_quota_override = None
     user.free_delay_override = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

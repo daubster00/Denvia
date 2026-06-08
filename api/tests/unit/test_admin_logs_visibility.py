@@ -29,6 +29,7 @@ def _admin(user_id: int, grade: str | None) -> MagicMock:
     u.role = "admin"
     u.withdrawn_at = None
     u.admin_grade = grade
+    u.current_session_id = None
     return u
 
 

@@ -48,6 +48,8 @@ def _make_user(role: str = "admin"):
     user.years_of_experience = None
     user.withdrawn_at = None
     user.must_reset_password = False
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

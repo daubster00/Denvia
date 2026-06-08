@@ -30,6 +30,7 @@ def test_anomaly_event_type_enum_values():
         "repeated_question",
         "recovery_abuse",
         "rapid_followup_questions",
+        "sms_abuse",
     }
 
 

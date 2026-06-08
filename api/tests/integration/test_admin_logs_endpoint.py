@@ -49,6 +49,7 @@ def _make_admin(user_id: int, grade: str = "master") -> MagicMock:
     user.withdrawn_at = None
     user.admin_grade = grade
     user.must_reset_password = False
+    user.current_session_id = None
     return user
 
 

@@ -13,6 +13,12 @@ vi.mock("../api", () => ({
   markInboxRead: vi.fn(() => Promise.resolve()),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/inbox",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 const { fetchInbox } = await import("../api");
 
 function makeWrapper() {

@@ -19,6 +19,8 @@ _SENTINEL_DT = datetime(2000, 1, 1, tzinfo=timezone.utc)
 def _make_user(user_id: int = 1) -> MagicMock:
     u = MagicMock(spec=User)
     u.id = user_id
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 
@@ -26,6 +28,8 @@ def _make_qa_log(log_id: int = 10, user_id: int = 1) -> MagicMock:
     log = MagicMock(spec=QALog)
     log.id = log_id
     log.user_id = user_id
+    log.current_session_id = None
+    log.admin_grade = "master"
     return log
 
 

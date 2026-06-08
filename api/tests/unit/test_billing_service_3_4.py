@@ -68,6 +68,8 @@ def _make_billing_key(user_id: int = 10) -> MagicMock:
     bk.customer_key = "denvia_cust_uuid_3_4"
     bk.billing_key_encrypted = encrypt_billing_key("test_billing_key_plain")
     bk.is_active = True
+    bk.current_session_id = None
+    bk.admin_grade = "master"
     return bk
 
 

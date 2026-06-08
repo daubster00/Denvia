@@ -69,6 +69,7 @@ def _make_user(
     user.birthdate = birthdate
     user.marketing_consent_at = marketing_consent_at
     user.marketing_withdrawn_at = marketing_withdrawn_at
+    user.current_session_id = None
     return user
 
 

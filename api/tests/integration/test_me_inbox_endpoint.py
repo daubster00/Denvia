@@ -26,6 +26,8 @@ def _make_user(user_id: int = 1, segment: str | None = None) -> MagicMock:
     u.id = user_id
     u.segment = segment
     u.email = "user@example.com"
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

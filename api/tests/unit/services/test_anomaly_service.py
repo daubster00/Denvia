@@ -211,6 +211,7 @@ def test_anomaly_types_constant():
         "repeated_question",
         "recovery_abuse",
         "rapid_followup_questions",
+        "sms_abuse",
     )
 
 

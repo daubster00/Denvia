@@ -29,6 +29,7 @@ def _make_admin(user_id: int = 1, grade: str = "master") -> MagicMock:
     u = MagicMock()
     u.id = user_id
     u.admin_grade = grade
+    u.current_session_id = None
     return u
 
 

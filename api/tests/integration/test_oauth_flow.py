@@ -27,6 +27,8 @@ def _user_mock(id=7, email="oa@example.com"):
     u.role = "user"
     u.subscription_status = "free"
     u.withdrawn_at = None
+    u.current_session_id = None
+    u.admin_grade = "master"
     return u
 
 

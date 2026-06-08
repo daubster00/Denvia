@@ -21,6 +21,8 @@ def _make_user(role: str = "admin") -> MagicMock:
     user.subscription_status = "free"
     user.password_hash = hash_password("password123")
     user.withdrawn_at = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

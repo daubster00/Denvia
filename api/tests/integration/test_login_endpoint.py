@@ -16,6 +16,8 @@ def _make_user(sub_status: str = "free") -> MagicMock:
     user.subscription_status = sub_status
     user.password_hash = hash_password("password123")
     user.withdrawn_at = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

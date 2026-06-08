@@ -40,6 +40,8 @@ def _make_user(user_id: int = 1, subscription_status: str = "pro") -> User:
     user = MagicMock(spec=User)
     user.id = user_id
     user.subscription_status = subscription_status
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

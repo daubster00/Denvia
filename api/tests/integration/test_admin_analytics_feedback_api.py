@@ -55,6 +55,8 @@ def _make_admin():
     user.segment = None
     user.withdrawn_at = None
     user.must_reset_password = False
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 

@@ -26,11 +26,17 @@ def _make_user(user_id: int = 1, subscription_status: str = "admin") -> MagicMoc
     user.subscription_status = subscription_status
     user.daily_quota_override = None
     user.free_delay_override = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 
 def _make_db(log_id: int = 1):
-    """AsyncGenerator를 반환하는 DB 세션 목 (FastAPI Depends 호환)."""
+    """AsyncGenerator를 반환하는 DB 세션 목 (FastAPI Depends 호환).
+
+    killswitch_service.get_active_modes 가 첫 가드로 호출되므로
+    db.execute() → result.scalars().all() 체인이 빈 리스트를 반환하도록 명시한다.
+    """
     db = AsyncMock()
 
     async def _fake_refresh(obj):
@@ -38,6 +44,13 @@ def _make_db(log_id: int = 1):
 
     db.refresh = _fake_refresh
     db.add = MagicMock()
+
+    # killswitch_service 기본 응답: 활성 모드 없음.
+    _ks_result = MagicMock()
+    _ks_result.scalars.return_value.all.return_value = []
+    _ks_result.scalar_one_or_none.return_value = None
+    _ks_result.scalar_one.return_value = 0
+    db.execute = AsyncMock(return_value=_ks_result)
 
     async def _gen():
         yield db
@@ -52,6 +65,8 @@ def _make_admin_user(user_id: int = 1) -> MagicMock:
     user.subscription_status = "admin"
     user.daily_quota_override = None
     user.free_delay_override = None
+    user.current_session_id = None
+    user.admin_grade = "master"
     return user
 
 
@@ -92,7 +107,7 @@ class TestQAStreamEndpoint:
         db_gen = _make_db()
         redis_mock = _make_redis_mock()
 
-        async def _mock_stream(self, db, user, question_text):
+        async def _mock_stream(self, db, user, question_text, **kwargs):
             yield {"event": "token", "data": json.dumps({"delta": "답변"})}
             yield {"event": "done", "data": json.dumps({"qa_log_id": 1, "total_tokens": 5, "cost_usd": 0.0, "latency_ms": 100, "rule_matched": False})}
 
@@ -118,7 +133,7 @@ class TestQAStreamEndpoint:
         db_gen = _make_db()
         redis_mock = _make_redis_mock()
 
-        async def _mock_stream(self, db, user, question_text):
+        async def _mock_stream(self, db, user, question_text, **kwargs):
             yield {"event": "token", "data": json.dumps({"delta": "치료"})}
             yield {"event": "token", "data": json.dumps({"delta": "방법"})}
             yield {"event": "done", "data": json.dumps({"qa_log_id": 7, "total_tokens": 10, "cost_usd": 0.001, "latency_ms": 200, "rule_matched": False})}
@@ -147,7 +162,7 @@ class TestQAStreamEndpoint:
         db_gen = _make_db(log_id=20)
         redis_mock = _make_redis_mock()
 
-        async def _mock_stream(self, db, user, question_text):
+        async def _mock_stream(self, db, user, question_text, **kwargs):
             yield {"event": "rule_matched", "data": json.dumps({"procedure_count": 1})}
             yield {"event": "token", "data": json.dumps({"delta": "장애인가산 300% 적용."})}
             yield {"event": "done", "data": json.dumps({"qa_log_id": 20, "total_tokens": 0, "cost_usd": 0.0, "latency_ms": 50, "rule_matched": True})}

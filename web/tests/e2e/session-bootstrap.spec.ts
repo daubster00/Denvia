@@ -23,7 +23,7 @@ test.describe("세션 Bootstrap — 비로그인 랜딩 정상 경로", () => {
     // 팝업이 자동으로 열리지 않아야 함 (비로그인 랜딩 정상 경로)
     await expect(page.getByRole("dialog")).not.toBeVisible();
 
-    // 랜딩 페이지는 정상 렌더
-    await expect(page.getByText("Denvia")).toBeVisible();
+    // 랜딩 페이지는 정상 렌더 (로고 링크가 unique anchor).
+    await expect(page.getByRole("link", { name: /Denvia 홈/ })).toBeVisible();
   });
 });
