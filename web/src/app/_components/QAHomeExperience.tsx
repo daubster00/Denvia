@@ -20,26 +20,29 @@ export function AuthenticatedQAExperience() {
   const [inputValue, setInputValue] = useState("");
   const messages = useQAStore((s) => s.messages);
   const clearMessages = useQAStore((s) => s.clearMessages);
-  const stream = useQAStream();
-  const lastUserTextRef = useRef<string>("");
   // 홈(/)에서 보낸 질문은 /chat 으로 이동이 끝난 다음 스트림을 시작한다.
   // router.push + stream.submit 을 동시에 시작하면 라우팅 도중 도착한 첫 토큰이
-  // 화면에 반영되지 않는 race 가 있었다(10:23 사용자 사례). pathname 이 "/chat"
-  // 으로 실제 갱신된 시점에 useEffect 가 자동으로 stream.submit 을 호출한다.
-  const pendingHomeTextRef = useRef<string | null>(null);
+  // 화면에 반영되지 않는 race 가 있었다(10:23 사용자 사례).
+  // 페이지 라우팅(/ → /chat)으로 페이지 컴포넌트가 unmount/remount 되므로 useRef
+  // 는 소실된다. zustand store(sessionStorage 영속)에 보관해야 살아남는다.
+  const pendingHomeQuestion = useQAStore((s) => s.pendingHomeQuestion);
+  const setPendingHomeQuestion = useQAStore((s) => s.setPendingHomeQuestion);
+  const stream = useQAStream();
+  const lastUserTextRef = useRef<string>("");
   const { data: quotaData } = useQuota();
 
   const handleReset = useCallback(() => {
     stream.abort();
     clearMessages();
+    setPendingHomeQuestion(null);
     void postClientEvent("qa.conversation.reset");
-  }, [stream, clearMessages]);
+  }, [stream, clearMessages, setPendingHomeQuestion]);
 
   async function handleSubmit(text: string) {
     lastUserTextRef.current = text;
     setInputValue("");
     if (pathname === "/") {
-      pendingHomeTextRef.current = text;
+      setPendingHomeQuestion(text);
       router.push("/chat");
       return;
     }
@@ -48,11 +51,11 @@ export function AuthenticatedQAExperience() {
 
   useEffect(() => {
     if (pathname !== "/chat") return;
-    const pending = pendingHomeTextRef.current;
-    if (!pending) return;
-    pendingHomeTextRef.current = null;
-    void stream.submit(pending);
-  }, [pathname, stream]);
+    if (!pendingHomeQuestion) return;
+    const text = pendingHomeQuestion;
+    setPendingHomeQuestion(null);
+    void stream.submit(text);
+  }, [pathname, pendingHomeQuestion, setPendingHomeQuestion, stream]);
 
   const isStreaming = messages.some(
     (m) => m.role === "assistant" && m.status === "pending"
