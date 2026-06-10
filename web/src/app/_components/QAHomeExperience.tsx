@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "@/components/layout/TopNav";
@@ -22,6 +22,11 @@ export function AuthenticatedQAExperience() {
   const clearMessages = useQAStore((s) => s.clearMessages);
   const stream = useQAStream();
   const lastUserTextRef = useRef<string>("");
+  // 홈(/)에서 보낸 질문은 /chat 으로 이동이 끝난 다음 스트림을 시작한다.
+  // router.push + stream.submit 을 동시에 시작하면 라우팅 도중 도착한 첫 토큰이
+  // 화면에 반영되지 않는 race 가 있었다(10:23 사용자 사례). pathname 이 "/chat"
+  // 으로 실제 갱신된 시점에 useEffect 가 자동으로 stream.submit 을 호출한다.
+  const pendingHomeTextRef = useRef<string | null>(null);
   const { data: quotaData } = useQuota();
 
   const handleReset = useCallback(() => {
@@ -34,10 +39,20 @@ export function AuthenticatedQAExperience() {
     lastUserTextRef.current = text;
     setInputValue("");
     if (pathname === "/") {
+      pendingHomeTextRef.current = text;
       router.push("/chat");
+      return;
     }
     await stream.submit(text);
   }
+
+  useEffect(() => {
+    if (pathname !== "/chat") return;
+    const pending = pendingHomeTextRef.current;
+    if (!pending) return;
+    pendingHomeTextRef.current = null;
+    void stream.submit(pending);
+  }, [pathname, stream]);
 
   const isStreaming = messages.some(
     (m) => m.role === "assistant" && m.status === "pending"
