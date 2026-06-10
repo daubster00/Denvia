@@ -16,6 +16,10 @@ export interface QAMessage {
 
 interface QAStore {
   messages: QAMessage[];
+  // 홈(/)에서 보낸 질문을 /chat 으로 라우팅이 끝난 다음 stream 으로 흘려보내기 위한 대기 슬롯.
+  // 컴포넌트 useRef 는 페이지 라우팅(/ → /chat) 시 unmount 로 소실되므로 store 에 보관한다.
+  pendingHomeQuestion: string | null;
+  setPendingHomeQuestion: (q: string | null) => void;
   addMessage: (msg: QAMessage) => void;
   updateMessage: (id: string, patch: Partial<QAMessage>) => void;
   clearMessages: () => void;
@@ -31,6 +35,8 @@ export const useQAStore = create<QAStore>()(
   persist(
     (set) => ({
       messages: [],
+      pendingHomeQuestion: null,
+      setPendingHomeQuestion: (q) => set({ pendingHomeQuestion: q }),
       addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
       updateMessage: (id, patch) =>
         set((s) => ({
