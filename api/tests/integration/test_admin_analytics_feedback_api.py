@@ -379,9 +379,14 @@ class TestFeedbackDetailEndpoint:
         qa_log_id: int = 1001,
         retrieved_docs=None,
         normalized_query: str | None = "임플란트 보철물 종류",
+        prompt_text: str | None = None,
         rule_matched: bool = False,
         answer_text: str | None = "임플란트 보철물은 …",
         status: str | None = "ok",
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        cost_usd=None,
+        latency_ms: int | None = None,
     ):
         from datetime import datetime, timezone, timedelta
 
@@ -390,9 +395,14 @@ class TestFeedbackDetailEndpoint:
         row.question_text = "임플란트 보철물 선택 기준은?"
         row.normalized_query = normalized_query
         row.retrieved_docs = retrieved_docs
+        row.prompt_text = prompt_text
         row.answer_text = answer_text
         row.rule_matched = rule_matched
         row.status = status
+        row.input_tokens = input_tokens
+        row.output_tokens = output_tokens
+        row.cost_usd = cost_usd
+        row.latency_ms = latency_ms
         kst = timezone(timedelta(hours=9))
         row.created_at = datetime(2026, 4, 15, 10, 23, tzinfo=kst)
         return row

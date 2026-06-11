@@ -218,3 +218,105 @@ class TestBudgetCurrentMonthEndpoint:
         data = res.json()
         assert data["status"] == "normal"
         assert data["percent"] == pytest.approx(12.34, abs=0.01)
+
+
+@pytest.mark.asyncio
+class TestBudgetCurrentMonthYmParam:
+    """`/current-month?ym=YYYY-MM` — 과거 월 조회 옵션."""
+
+    async def test_과거월_조회_성공_is_past_month_true(self):
+        from api.src.services.budget_service import CurrentMonthSnapshot
+        token = _make_admin_jwt()
+        user = _make_user(role="admin")
+
+        snap = CurrentMonthSnapshot(
+            year_month="2026-05",
+            monthly_limit_usd=Decimal("100.00"),
+            spent_usd=Decimal("42.50"),
+            percent=42.5,
+            status="normal",
+        )
+
+        async def fake_snapshot(session, ym=None):
+            assert ym == "2026-05"
+            return snap
+
+        async def fake_modes(session):
+            return set()
+
+        session = MagicMock()
+        session.commit = AsyncMock()
+
+        async def gen():
+            yield session
+
+        with (
+            patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)),
+            patch("api.src.routers.admin.budget.get_current_month_snapshot", new=AsyncMock(side_effect=fake_snapshot)),
+            patch("api.src.routers.admin.budget.get_active_modes", new=AsyncMock(side_effect=fake_modes)),
+        ):
+            app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.get(
+                    "/api/v1/admin/budget/current-month?ym=2026-05",
+                    cookies={"denvia_admin_session": token},
+                )
+            app.dependency_overrides.clear()
+
+        assert res.status_code == 200
+        data = res.json()
+        assert data["year_month"] == "2026-05"
+        assert data["is_past_month"] is True
+        # 과거 월은 killswitch 마스킹 — 현재 상태 false로 응답.
+        assert data["killswitch_active"] is False
+        assert data["killswitch_mode"] is None
+        # KRW 환산: 42.50 * 1400 = 59500
+        assert data["spent_krw"] == 59500
+
+    async def test_미래월_조회_422(self):
+        token = _make_admin_jwt()
+        user = _make_user(role="admin")
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                # 9999-12는 확실히 미래
+                res = await client.get(
+                    "/api/v1/admin/budget/current-month?ym=9999-12",
+                    cookies={"denvia_admin_session": token},
+                )
+        assert res.status_code == 422
+
+    async def test_ym_형식_불량_422(self):
+        token = _make_admin_jwt()
+        user = _make_user(role="admin")
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                # 13월
+                res_bad_month = await client.get(
+                    "/api/v1/admin/budget/current-month?ym=2026-13",
+                    cookies={"denvia_admin_session": token},
+                )
+                # 자유 문자열
+                res_garbage = await client.get(
+                    "/api/v1/admin/budget/current-month?ym=hello",
+                    cookies={"denvia_admin_session": token},
+                )
+        assert res_bad_month.status_code == 422
+        assert res_garbage.status_code == 422
+
+    async def test_ym_없으면_현재월_is_past_month_false(self):
+        """ym 파라미터 없으면 기존 동작 — 현재 월, is_past_month=false."""
+        token = _make_admin_jwt()
+        user = _make_user(role="admin")
+        gen = _mock_db_with_budget(modes=[])
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
+            app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.get(
+                    "/api/v1/admin/budget/current-month",
+                    cookies={"denvia_admin_session": token},
+                )
+            app.dependency_overrides.clear()
+        assert res.status_code == 200
+        assert res.json()["is_past_month"] is False

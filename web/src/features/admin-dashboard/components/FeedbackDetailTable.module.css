@@ -67,11 +67,11 @@
 }
 
 .colQuestion {
-  width: 34%;
+  width: 26%;
 }
 
 .colAnswer {
-  width: 24%;
+  width: 20%;
 }
 
 .colRating {
@@ -79,11 +79,19 @@
 }
 
 .colSegment {
-  width: 18%;
+  width: 14%;
 }
 
 .colDate {
-  width: 14%;
+  width: 12%;
+}
+
+.colReviewStatus {
+  width: 9%;
+}
+
+.colReviewAction {
+  width: 9%;
 }
 
 .row {
@@ -125,7 +133,9 @@
 .thAnswer,
 .thRating,
 .thSegment,
-.thDate {
+.thDate,
+.thReviewStatus,
+.thReviewAction {
   width: auto;
 }
 
@@ -161,6 +171,63 @@
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.statusPending,
+.statusReviewed {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.statusPending {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.statusReviewed {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.reviewBtn,
+.reviewBtnUndo {
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.reviewBtn {
+  background: #7c3aed;
+  color: #ffffff;
+  border: 1px solid #7c3aed;
+}
+
+.reviewBtn:hover:not(:disabled) {
+  background: #6d28d9;
+  border-color: #6d28d9;
+}
+
+.reviewBtnUndo {
+  background: #ffffff;
+  color: #6d28d9;
+  border: 1px solid #c4b5fd;
+}
+
+.reviewBtnUndo:hover:not(:disabled) {
+  background: #f5f3ff;
+}
+
+.reviewBtn:disabled,
+.reviewBtnUndo:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .accountLink {

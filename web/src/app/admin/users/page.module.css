@@ -30,3 +30,10 @@
   font-size: 14px;
   color: #64748b;
 }
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

@@ -291,10 +291,14 @@ async def stream_rag_answer(
     """RAG 체인을 streaming으로 실행해 토큰 단위로 yield한다.
 
     asyncio.to_thread + Queue 패턴 사용 (Story 2.1 패턴과 동일).
-    on_complete(usage, full_text, docs) 콜백은 스트림 종료 시 qa_logs UPDATE용.
+    on_complete(usage, full_text, docs, prompt_text) 콜백은 스트림 종료 시
+    qa_logs UPDATE용.
       - docs: list[dict] — RetrievalQA가 top-k로 가져온 문서들의 직렬화.
               관리자 감사 용도(qa_logs.retrieved_docs)로만 저장하며,
               SSE 응답이나 사용자 노출에는 절대 사용하지 않는다 (ADR-0002 보강).
+      - prompt_text: str | None — LLM에 실제로 전달된 최종 프롬프트(템플릿 +
+              질문 + top-k 컨텍스트 치환 완료). on_llm_start 콜백이 받는
+              prompts[0] 그대로. 관리자 질문 상세 패널 감사 전용.
 
     return_source_documents=True 로 두지만, 결과 dict 의 'result' 필드만
     토큰 스트림으로 흘리고 'source_documents' 는 콜백으로만 전달한다.
@@ -327,6 +331,9 @@ async def stream_rag_answer(
     accumulated: list[str] = []
     usage_holder: list[TokenUsage] = []
     docs_holder: list[list[dict]] = []
+    # on_llm_start 가 한 번 채운다. RetrievalQA(stuff) 는 단일 LLM 호출이므로
+    # 첫 번째 prompts[0] 이 곧 "템플릿 + 질문 + 컨텍스트가 모두 치환된" 최종 입력.
+    prompt_holder: list[str] = []
     exc_holder: list[BaseException] = []
     first_token_perf: list[float] = []
 
@@ -336,6 +343,17 @@ async def stream_rag_answer(
             from langchain_core.callbacks.base import BaseCallbackHandler
 
             class _QueueCallbackHandler(BaseCallbackHandler):
+                def on_llm_start(
+                    self, serialized, prompts, **kwargs
+                ) -> None:
+                    # LangChain RetrievalQA(stuff) 는 chain.invoke 당 LLM 1회 호출.
+                    # prompts 는 list[str] — 인덱스 0 이 우리가 보낼 최종 프롬프트.
+                    if prompts and not prompt_holder:
+                        try:
+                            prompt_holder.append(str(prompts[0]))
+                        except Exception:
+                            pass
+
                 def on_llm_new_token(self, token: str, **kwargs) -> None:
                     if not first_token_perf:
                         first_token_perf.append(time.perf_counter())
@@ -407,6 +425,7 @@ async def stream_rag_answer(
     full_text = "".join(accumulated)
     usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
     docs = docs_holder[0] if docs_holder else []
+    prompt_text = prompt_holder[0] if prompt_holder else None
 
     # 진단용: stream_rag_answer 진입부터 OpenAI 첫 토큰 도착까지의 elapsed.
     # runtime 로드 시간과 분리해서 본다(= retriever + LLM TTFT).
@@ -420,7 +439,7 @@ async def stream_rag_answer(
             total_tokens=usage.total_tokens,
         )
 
-    on_complete(usage, full_text, docs)
+    on_complete(usage, full_text, docs, prompt_text)
 
 
 async def warmup_once() -> dict:

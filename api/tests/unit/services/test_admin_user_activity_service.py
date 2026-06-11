@@ -23,6 +23,7 @@ def _make_qa_log_row(
     question_text: str = "임플란트 비용?",
     normalized_query: str | None = "임플란트 수가",
     retrieved_docs: list | None = None,
+    prompt_text: str | None = None,
     answer_text: str | None = "보험 청구 가능 코드는 ...",
     rule_matched: bool = False,
     status: str | None = "completed",
@@ -33,6 +34,7 @@ def _make_qa_log_row(
     row.question_text = question_text
     row.normalized_query = normalized_query
     row.retrieved_docs = retrieved_docs
+    row.prompt_text = prompt_text
     row.answer_text = answer_text
     row.rule_matched = rule_matched
     row.status = status

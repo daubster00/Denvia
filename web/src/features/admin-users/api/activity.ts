@@ -29,6 +29,11 @@ export interface UserQALogDetail {
   question_text: string;
   normalized_query: string | null;
   retrieved_docs: RetrievedDocItem[];
+  /**
+   * LLM 에 실제로 들어간 최종 프롬프트 (템플릿 + 질문 + 컨텍스트 치환 완료).
+   * 룰 경로 / 0062 마이그레이션 이전 행 / 스트림 중단 행은 null.
+   */
+  prompt_text: string | null;
   answer_text: string | null;
   rule_matched: boolean;
   status: string | null;

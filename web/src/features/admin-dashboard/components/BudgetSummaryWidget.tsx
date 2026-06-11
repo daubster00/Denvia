@@ -22,7 +22,8 @@ export function BudgetSummaryWidget() {
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: fetchBudgetCurrentMonth,
+    // queryFn에 함수를 직접 넘기면 React Query가 context를 자동 주입함 — 래핑 필수.
+    queryFn: () => fetchBudgetCurrentMonth(),
     refetchInterval: 60_000,
   });
 

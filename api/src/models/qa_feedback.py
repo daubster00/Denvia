@@ -1,4 +1,8 @@
-"""QAFeedback SQLAlchemy ORM 모델 — Story 2.1 질의 피드백 테이블."""
+"""QAFeedback SQLAlchemy ORM 모델 — Story 2.1 질의 피드백 테이블.
+
+reviewed_at NULL = 미검토 / NOT NULL = 검토완료 (migration 0062).
+원본 rating(good/bad)은 그대로 보존하고 검토 상태는 별도 컬럼으로 표현한다.
+"""
 
 from datetime import datetime, timezone
 
@@ -21,6 +25,17 @@ class QAFeedback(Base):
     rating: Mapped[str] = mapped_column(String(4), nullable=False)
     change_count: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, server_default="0", default=0
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

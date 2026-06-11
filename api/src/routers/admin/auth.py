@@ -298,6 +298,49 @@ async def admin_login(
             },
         )
 
+    # Story 10.3 — admin_blocked_until 가드. block 페이지에서 동료 operator를 차단해도
+    # 그 계정으로 그대로 admin 로그인이 통과되던 회귀(QA-v3 C5)를 막는다.
+    # 만료 시각이 지났으면 자동 통과 — Celery Beat의 `_expire_admin_blocks` 가 일괄 해제
+    # 처리하지만, 그 사이에도 만료된 차단을 들고 거절하지 않도록 시각 기준으로 판정.
+    blocked_until = getattr(user, "admin_blocked_until", None)
+    if blocked_until is not None:
+        now_utc = datetime.now(timezone.utc)
+        # naive datetime(UTC 컬럼) 호환 — tz 정보가 없으면 UTC 로 간주.
+        blocked_until_aware = (
+            blocked_until if blocked_until.tzinfo is not None
+            else blocked_until.replace(tzinfo=timezone.utc)
+        )
+        if blocked_until_aware > now_utc:
+            try:
+                db.add(
+                    AuditLog(
+                        actor_user_id=user.id,
+                        action="admin.auth.blocked_login_attempt",
+                        target_type="user",
+                        target_id=user.id,
+                        ip=ip,
+                        ua=ua,
+                    )
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                logger.error("admin.auth.blocked_audit_failed", exc_info=True)
+            logger.warning(
+                "admin.auth.blocked_login_attempt",
+                user_id=user.id,
+                blocked_until=blocked_until_aware.isoformat(),
+                ip=ip,
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "ADMIN_ACCOUNT_BLOCKED",
+                    "message": "차단된 관리자 계정입니다. 운영자에게 문의하세요.",
+                    "blocked_until": blocked_until_aware.isoformat(),
+                },
+            )
+
     # Story 10.2 — pending 등급은 운영자 승인 전이므로 비밀번호가 맞아도 세션을 발급하지 않는다.
     # audit_logs 미들웨어는 4xx에 INSERT하지 않으므로 여기서 수동으로 기록한다(NFR-O2 이상행동 탐지 대상).
     if getattr(user, "admin_grade", None) == "pending":

@@ -12,7 +12,7 @@ GET /api/v1/admin/users/{user_id} (상세 Drawer 단건 조회) 두 endpoint의
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -45,6 +45,18 @@ class UserSearchItem(BaseModel):
     pro_since: datetime | None = Field(default=None, description="Epic 3 결제 흐름이 채울 수 있는 시점에 보강")
     card_last4: str | None = None
     card_company: str | None = None
+    # 회원가입 선택 입력 — 마이페이지 회원정보 수정과 SSOT.
+    # 관리자 상세에서 가입 시 받은 부가정보를 한 화면에 모아 보여주기 위해 노출한다.
+    name: str | None = None
+    birthdate: date | None = None
+    gender: Literal["male", "female"] | None = None
+    postcode: str | None = None
+    address_road: str | None = None
+    address_detail: str | None = None
+    marketing_consent_at: datetime | None = Field(
+        default=None,
+        description="마케팅 정보 수신 동의 시각. NULL=미동의 또는 철회 상태.",
+    )
 
 
 class UserSearchListResponse(BaseModel):

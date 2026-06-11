@@ -82,6 +82,25 @@ export function AnswerDetailDrawer({ item, onClose }: AnswerDetailDrawerProps) {
             </p>
           </section>
 
+          <section className={styles.section} aria-labelledby="prompt-label">
+            <h3 id="prompt-label" className={styles.sectionLabel}>
+              LLM 에 실제로 전달된 프롬프트
+            </h3>
+            {detailQuery.isLoading ? (
+              <p className={styles.promptEmpty}>불러오는 중…</p>
+            ) : detail?.prompt_text ? (
+              <pre className={styles.promptBlock}>{detail.prompt_text}</pre>
+            ) : detail?.rule_matched ? (
+              <p className={styles.promptEmpty}>
+                룰 매칭 경로 — LLM 호출 없이 응답되어 프롬프트가 없습니다.
+              </p>
+            ) : (
+              <p className={styles.promptEmpty}>
+                프롬프트 기록이 없습니다 (본 기능 도입 이전 질의이거나 스트림이 중단됨).
+              </p>
+            )}
+          </section>
+
           <section className={styles.section} aria-labelledby="topk-label">
             <h3 id="topk-label" className={styles.sectionLabel}>
               top-k 검색 문서{detail ? ` (${detail.retrieved_docs.length}건)` : ""}

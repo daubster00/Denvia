@@ -2,16 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@wanteddev/wds";
 import {
   type SearchFilters,
   SearchFilterBar,
 } from "@/features/admin-users/components/SearchFilterBar";
 import { UserSearchTable } from "@/features/admin-users/components/UserSearchTable";
 import { useUsersSearch } from "@/features/admin-users/hooks/useUsersSearch";
-import type {
-  Segment,
-  SubscriptionStatus,
+import {
+  downloadUsersExcel,
+  type Segment,
+  type SubscriptionStatus,
 } from "@/features/admin-users/api/users";
+import { useToastStore } from "@/stores/toast-store";
 import styles from "./page.module.css";
 
 const DEFAULT_FILTERS: SearchFilters = {
@@ -65,6 +68,8 @@ export default function AdminUsersPage() {
 
   const [filters, setFilters] = useState<SearchFilters>(initialFilters);
   const [page, setPage] = useState(1);
+  const [isExporting, setExporting] = useState(false);
+  const showToast = useToastStore((s) => s.show);
 
   const dateRangeValid =
     !filters.created_from ||
@@ -93,6 +98,29 @@ export default function AdminUsersPage() {
     setPage(1);
   }
 
+  async function handleExportExcel() {
+    if (isExporting) return;
+    setExporting(true);
+    try {
+      await downloadUsersExcel({
+        q: filters.q || undefined,
+        segment: filters.segment ?? undefined,
+        subscription_status: filters.subscription_status ?? undefined,
+        blocked: filters.blocked ?? undefined,
+        withdrawn: filters.withdrawn ?? undefined,
+        created_from:
+          dateRangeValid && filters.created_from ? filters.created_from : undefined,
+        created_to:
+          dateRangeValid && filters.created_to ? filters.created_to : undefined,
+      });
+      showToast("엑셀 파일을 내려받았습니다.", 2500);
+    } catch {
+      showToast("엑셀 다운로드에 실패했습니다.", 3000);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <section className={styles.page} aria-labelledby="admin-users-title">
       <header className={styles.header}>
@@ -103,6 +131,17 @@ export default function AdminUsersPage() {
           <p className={styles.caption}>
             이메일·휴대폰·카드 뒷4자리로 통합 검색하여 사용자 상세를 확인합니다.
           </p>
+        </div>
+        <div className={styles.headerActions}>
+          <Button
+            variant="outlined"
+            color="primary"
+            size="medium"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+          >
+            {isExporting ? "준비 중..." : "엑셀 다운로드"}
+          </Button>
         </div>
       </header>
 

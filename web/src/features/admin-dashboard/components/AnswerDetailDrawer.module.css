@@ -230,3 +230,26 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.promptBlock {
+  margin: 4px 0 0;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.promptEmpty {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+}

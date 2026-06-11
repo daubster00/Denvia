@@ -365,7 +365,19 @@ async def get_subscriber_counts(
 # Story 5.4 — 피드백 분석 (GOOD/BAD 비율 + 시계열 + 리스트)
 # =============================================================================
 
-RatingFilter = Literal["good", "bad", "all"]
+RatingFilter = Literal["good", "bad", "reviewed", "all"]
+
+
+def _feedback_category_expr():
+    """qa_feedback row → 화면 카테고리.
+
+    reviewed_at IS NOT NULL 이면 '검토완료', 그 외에는 원본 rating.
+    KPI/차트/필터 어디서나 동일하게 사용하기 위한 SSOT 표현식.
+    """
+    return case(
+        (QAFeedback.reviewed_at.is_not(None), "reviewed"),
+        else_=QAFeedback.rating,
+    )
 
 
 def _kst_datetime(d: date) -> datetime:
@@ -410,24 +422,28 @@ async def get_feedback_summary(
     end_exclusive_kst: datetime,
     q_like: str | None = None,
 ) -> dict[str, int | float | None]:
+    """카테고리별 카운트. 검토완료 처리된 행은 GOOD/BAD에서 빠지고 reviewed로 집계."""
     conds = _feedback_conditions(start_kst, end_exclusive_kst, q_like)
+    category = _feedback_category_expr().label("category")
     rows = (await session.execute(
-        select(QAFeedback.rating, func.count(QAFeedback.id))
+        select(category, func.count(QAFeedback.id))
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
         .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
         .where(or_(QALog.user_id.is_(None), User.role != "admin"))
-        .group_by(QAFeedback.rating)
+        .group_by(category)
     )).all()
-    counts: dict[str, int] = {"good": 0, "bad": 0}
-    for rating, n in rows:
-        if rating in counts:
-            counts[rating] = int(n)
-    total = counts["good"] + counts["bad"]
+    counts: dict[str, int] = {"good": 0, "bad": 0, "reviewed": 0}
+    for cat, n in rows:
+        if cat in counts:
+            counts[cat] = int(n)
+    # good_ratio는 '아직 미검토 상태 한정' GOOD/BAD 사이의 비율.
+    pending_total = counts["good"] + counts["bad"]
     return {
         "good_count": counts["good"],
         "bad_count": counts["bad"],
-        "good_ratio": round(counts["good"] / total, 3) if total else None,
+        "reviewed_count": counts["reviewed"],
+        "good_ratio": round(counts["good"] / pending_total, 3) if pending_total else None,
     }
 
 
@@ -453,28 +469,29 @@ async def get_feedback_series(
             func.timezone("Asia/Seoul", func.date_trunc("month", QAFeedback.created_at))
         )
 
+    category = _feedback_category_expr()
     rows = (await session.execute(
         select(
             trunc_expr.label("bucket"),
-            QAFeedback.rating,
+            category.label("category"),
             func.count(QAFeedback.id).label("cnt"),
         )
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
         .outerjoin(User, QALog.user_id == User.id)
         .where(*conds)
         .where(or_(QALog.user_id.is_(None), User.role != "admin"))
-        .group_by("bucket", QAFeedback.rating)
+        .group_by("bucket", "category")
         .order_by("bucket")
     )).all()
 
     raw: dict[date, dict[str, int]] = {}
-    for bucket, rating, cnt in rows:
+    for bucket, cat, cnt in rows:
         if isinstance(bucket, datetime):
             bucket = bucket.date()
         if bucket not in raw:
-            raw[bucket] = {"good": 0, "bad": 0}
-        if rating in ("good", "bad"):
-            raw[bucket][rating] = int(cnt)
+            raw[bucket] = {"good": 0, "bad": 0, "reviewed": 0}
+        if cat in ("good", "bad", "reviewed"):
+            raw[bucket][cat] = int(cnt)
 
     # 빈 버킷 채우기
     from_date = start_kst.date()
@@ -482,13 +499,28 @@ async def get_feedback_series(
     all_starts = _bucket_starts(from_date, to_date, unit if unit != "month" else "month")  # type: ignore[arg-type]
     result = []
     for bs in all_starts:
-        counts = raw.get(bs, {"good": 0, "bad": 0})
+        counts = raw.get(bs, {"good": 0, "bad": 0, "reviewed": 0})
         result.append({
             "bucket_start": bs.isoformat(),
             "good": counts["good"],
             "bad": counts["bad"],
+            "reviewed": counts["reviewed"],
         })
     return result
+
+
+def _apply_rating_filter(conds: list, rating_filter: RatingFilter) -> None:
+    """rating_filter에 따라 WHERE 조건을 in-place 확장.
+
+    - 'good'/'bad': 미검토(reviewed_at IS NULL) 행만 해당 rating으로 필터.
+    - 'reviewed':   검토완료(reviewed_at IS NOT NULL) 행 전부.
+    - 'all':        조건 추가 없음.
+    """
+    if rating_filter == "reviewed":
+        conds.append(QAFeedback.reviewed_at.is_not(None))
+    elif rating_filter in ("good", "bad"):
+        conds.append(QAFeedback.reviewed_at.is_(None))
+        conds.append(QAFeedback.rating == rating_filter)
 
 
 async def get_feedback_items_total(
@@ -499,8 +531,7 @@ async def get_feedback_items_total(
     q_like: str | None = None,
 ) -> int:
     conds = _feedback_conditions(start_kst, end_exclusive_kst, q_like)
-    if rating_filter != "all":
-        conds.append(QAFeedback.rating == rating_filter)
+    _apply_rating_filter(conds, rating_filter)
     total = (await session.execute(
         select(func.count(QAFeedback.id))
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
@@ -521,8 +552,7 @@ async def get_feedback_items(
     q_like: str | None = None,
 ) -> list[dict]:
     conds = _feedback_conditions(start_kst, end_exclusive_kst, q_like)
-    if rating_filter != "all":
-        conds.append(QAFeedback.rating == rating_filter)
+    _apply_rating_filter(conds, rating_filter)
 
     rows = (await session.execute(
         select(
@@ -534,6 +564,7 @@ async def get_feedback_items(
             QALog.user_id,
             User.email,
             QAFeedback.created_at,
+            QAFeedback.reviewed_at,
         )
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
         .outerjoin(User, QALog.user_id == User.id)
@@ -554,11 +585,18 @@ async def get_feedback_items(
         user_id,
         email,
         created_at,
+        reviewed_at,
     ) in rows:
         if created_at.tzinfo is None:
             from datetime import timezone
             created_at = created_at.replace(tzinfo=timezone.utc)
         kst_dt = created_at.astimezone(KST)
+        reviewed_iso: str | None = None
+        if reviewed_at is not None:
+            if reviewed_at.tzinfo is None:
+                from datetime import timezone
+                reviewed_at = reviewed_at.replace(tzinfo=timezone.utc)
+            reviewed_iso = reviewed_at.astimezone(KST).isoformat()
         result.append({
             "qa_log_id": qa_log_id,
             "question_text": question_text,
@@ -568,6 +606,7 @@ async def get_feedback_items(
             "user_id": user_id,
             "email": email,
             "created_at": kst_dt.isoformat(),
+            "reviewed_at": reviewed_iso,
         })
     return result
 
@@ -582,8 +621,7 @@ async def get_feedback_export_rows(
 ) -> tuple[list[dict], bool]:
     """엑셀 export용 전체 행. (rows, truncated) 반환."""
     conds = _feedback_conditions(start_kst, end_exclusive_kst, q_like)
-    if rating_filter != "all":
-        conds.append(QAFeedback.rating == rating_filter)
+    _apply_rating_filter(conds, rating_filter)
 
     rows = (await session.execute(
         select(
@@ -595,6 +633,7 @@ async def get_feedback_export_rows(
             QALog.user_id,
             User.email,
             QAFeedback.created_at,
+            QAFeedback.reviewed_at,
         )
         .join(QALog, QAFeedback.qa_log_id == QALog.id)
         .outerjoin(User, QALog.user_id == User.id)
@@ -617,22 +656,66 @@ async def get_feedback_export_rows(
         user_id,
         email,
         created_at,
+        reviewed_at,
     ) in rows:
         if created_at.tzinfo is None:
             from datetime import timezone
             created_at = created_at.replace(tzinfo=timezone.utc)
         kst_dt = created_at.astimezone(KST)
+        reviewed_kst_str = ""
+        category = "reviewed" if reviewed_at is not None else rating
+        if reviewed_at is not None:
+            if reviewed_at.tzinfo is None:
+                from datetime import timezone
+                reviewed_at = reviewed_at.replace(tzinfo=timezone.utc)
+            reviewed_kst_str = reviewed_at.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
         result.append({
             "qa_log_id": qa_log_id,
             "question_text": question_text,
             "answer_text": answer_text,
             "rating": rating,
+            "category": category,
             "segment": segment,
             "user_id": user_id,
             "email": email,
             "created_at_kst": kst_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "reviewed_at_kst": reviewed_kst_str,
         })
     return result, truncated
+
+
+async def set_feedback_reviewed(
+    session: AsyncSession,
+    qa_log_id: int,
+    reviewed: bool,
+    actor_user_id: int,
+) -> dict:
+    """qa_log_id 의 모든 피드백 행을 검토완료/미검토로 토글.
+
+    한 qa_log_id 당 보통 1행이지만 change_count 변동으로 중복이 있을 수 있어
+    전체에 일괄 적용한다. 존재하지 않으면 None 반환.
+    """
+    from datetime import timezone as _tz
+    rows = (await session.execute(
+        select(QAFeedback).where(QAFeedback.qa_log_id == qa_log_id)
+    )).scalars().all()
+    if not rows:
+        return {"updated": 0, "reviewed_at": None, "reviewed_by_user_id": None}
+    now_utc = datetime.now(_tz.utc)
+    for r in rows:
+        if reviewed:
+            r.reviewed_at = now_utc
+            r.reviewed_by_user_id = actor_user_id
+        else:
+            r.reviewed_at = None
+            r.reviewed_by_user_id = None
+        r.updated_at = now_utc
+    await session.flush()
+    return {
+        "updated": len(rows),
+        "reviewed_at": now_utc.astimezone(KST).isoformat() if reviewed else None,
+        "reviewed_by_user_id": actor_user_id if reviewed else None,
+    }
 
 
 # =============================================================================

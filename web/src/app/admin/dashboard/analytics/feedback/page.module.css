@@ -224,6 +224,16 @@
   padding: 20px;
 }
 
+.reviewError {
+  margin: 0;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 14px;
+}
+
 @media (max-width: 767px) {
   .page {
     padding: 16px 16px 32px;

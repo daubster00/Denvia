@@ -2,7 +2,7 @@
 
 from datetime import date
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import re
 
 
@@ -82,7 +82,8 @@ class SignupRequest(BaseModel):
     """이메일 회원가입 요청.
 
     필수: email, password, phone, phone_verification_token.
-    선택: name, birthdate, gender, postcode, address_road, address_detail.
+    선택: name, birthdate, gender, postcode, address_road, address_detail,
+          segment, years_of_experience.
     선택 필드의 검증 규칙은 ProfileUpdateRequest와 동일하게 유지(SSOT).
     """
 
@@ -97,6 +98,11 @@ class SignupRequest(BaseModel):
     postcode: str | None = None
     address_road: str | None = None
     address_detail: str | None = None
+    # 가입 단계에서 segment 를 함께 받을 수 있도록 허용(2026-06-09 SSOT 갱신).
+    # 누락 시 /me/segment 로 후속 설정 — 기존 2단계 흐름과 호환.
+    # 분석/타게팅 깨짐 회귀(QA-v3 P1) 차단을 위해 가입 페이로드 매핑을 복구한다.
+    segment: Literal["doctor", "hygienist", "student_other"] | None = None
+    years_of_experience: int | None = None
 
     @field_validator("phone")
     @classmethod
@@ -145,6 +151,25 @@ class SignupRequest(BaseModel):
         if v.year < 1900 or v > today:
             raise ValueError("생년월일이 올바르지 않습니다.")
         return v
+
+    @field_validator("years_of_experience")
+    @classmethod
+    def _years_range(cls, v: int | None) -> int | None:
+        if v is not None and not (1 <= v <= 50):
+            raise ValueError("연차는 1~50 사이여야 합니다.")
+        return v
+
+    @model_validator(mode="after")
+    def _segment_years_consistency(self) -> "SignupRequest":
+        if self.segment is None:
+            # segment 미지정 — years 동봉도 의미 없으므로 무시한다(라우터에서 None 처리).
+            return self
+        needs_years = self.segment in ("doctor", "hygienist")
+        if needs_years and self.years_of_experience is None:
+            raise ValueError("치과의사/위생사는 연차 입력이 필요합니다.")
+        if not needs_years and self.years_of_experience is not None:
+            raise ValueError("학생·기타는 연차를 입력할 수 없습니다.")
+        return self
 
 
 # ── Segment ───────────────────────────────────────────────────────────────────

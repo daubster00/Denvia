@@ -157,11 +157,18 @@ def _serialize_user(
         ),
         anomaly_throttled_at=user.anomaly_throttled_at,
         created_at=user.created_at,
-        last_login_at=None,  # Story 6.2 채움
+        last_login_at=user.last_login_at,
         withdrawn_at=user.withdrawn_at,
         pro_since=None,  # Story 6.2-followup
         card_last4=card_last4,
         card_company=card_company,
+        name=user.name,
+        birthdate=user.birthdate,
+        gender=user.gender,  # type: ignore[arg-type]
+        postcode=user.postcode,
+        address_road=user.address_road,
+        address_detail=user.address_detail,
+        marketing_consent_at=user.marketing_consent_at,
     )
 
 
@@ -338,4 +345,163 @@ async def get_user_detail(db: AsyncSession, user_id: int) -> UserDetailResponse:
     )
 
 
-__all__ = ["search_users", "get_user_detail"]
+# ── 고객 기본정보 엑셀 내보내기 ────────────────────────────────────────────────
+# 관리자 페이지 "고객관리" 헤더의 [엑셀 다운로드] 버튼이 호출한다.
+# 현재 검색 필터를 그대로 적용해 같은 결과를 1장의 시트로 내려준다.
+# PII 보호를 위해 응답 바이트는 메모리에 stream BytesIO 로만 보관한다.
+
+_EXPORT_HEADERS: list[tuple[str, str]] = [
+    ("user_id", "고객번호"),
+    ("email", "이메일"),
+    ("phone", "휴대폰"),
+    ("name", "이름"),
+    ("gender", "성별"),
+    ("birthdate", "생년월일"),
+    ("postcode", "우편번호"),
+    ("address_road", "도로명주소"),
+    ("address_detail", "상세주소"),
+    ("segment", "가입유형"),
+    ("years_of_experience", "연차"),
+    ("subscription_status", "구독상태"),
+    ("marketing_consent", "마케팅 수신동의"),
+    ("created_at", "가입일"),
+    ("last_login_at", "최근 로그인"),
+    ("withdrawn_at", "탈퇴일"),
+]
+
+_SEGMENT_LABEL_KO = {
+    "doctor": "치과의사",
+    "hygienist": "치과위생사",
+    "student_other": "학생/기타",
+}
+
+_SUBSCRIPTION_LABEL_KO = {
+    "free": "무료",
+    "pro": "Pro",
+    "blocked": "차단",
+}
+
+_GENDER_LABEL_KO = {"male": "남", "female": "여"}
+
+
+def _format_kst_datetime(value: datetime | None) -> str:
+    """엑셀 셀 출력용 KST 시각 포매팅 — None이면 빈 문자열."""
+    if value is None:
+        return ""
+    try:
+        return value.astimezone(_KST).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return value.isoformat()
+
+
+def _user_row_for_export(user: User) -> list[Any]:
+    """User ORM 1행 → 엑셀 cell 값 리스트(헤더 순서 일치)."""
+    return [
+        user.id,
+        user.email or "",
+        user.phone or "",
+        user.name or "",
+        _GENDER_LABEL_KO.get(user.gender or "", user.gender or ""),
+        user.birthdate.strftime("%Y-%m-%d") if user.birthdate else "",
+        user.postcode or "",
+        user.address_road or "",
+        user.address_detail or "",
+        _SEGMENT_LABEL_KO.get(user.segment or "", user.segment or ""),
+        user.years_of_experience if user.years_of_experience is not None else "",
+        _SUBSCRIPTION_LABEL_KO.get(
+            user.subscription_status, user.subscription_status
+        ),
+        "동의" if user.marketing_consent_at is not None else "미동의",
+        _format_kst_datetime(user.created_at),
+        _format_kst_datetime(user.last_login_at),
+        _format_kst_datetime(user.withdrawn_at),
+    ]
+
+
+async def export_users_xlsx(
+    db: AsyncSession,
+    *,
+    q: str | None = None,
+    segment: Literal["doctor", "hygienist", "student_other"] | None = None,
+    subscription_status: Literal["free", "pro", "blocked"] | None = None,
+    blocked: bool | None = None,
+    withdrawn: bool | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+) -> tuple[bytes, int]:
+    """검색 조건과 동일한 결과를 xlsx 바이트로 직렬화한다.
+
+    반환값: (xlsx 바이트, 행 수). 페이지네이션은 적용하지 않고 조건에 맞는 전체를
+    한 번에 내려준다(관리자 운영용 일괄 내려받기). 너무 많을 경우 검색 필터로
+    줄이도록 안내(프론트). 정렬 키는 search_users 와 동일하게 유지한다.
+    """
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    conditions: list[Any] = [User.role != "admin"]
+    if segment is not None:
+        conditions.append(User.segment == segment)
+    if subscription_status is not None:
+        conditions.append(User.subscription_status == subscription_status)
+    if blocked is True:
+        conditions.append(User.subscription_status == "blocked")
+    elif blocked is False:
+        conditions.append(User.subscription_status != "blocked")
+    if withdrawn is True:
+        conditions.append(User.withdrawn_at.is_not(None))
+    elif withdrawn is False:
+        conditions.append(User.withdrawn_at.is_(None))
+
+    start_dt, end_dt = _kst_created_range(created_from, created_to)
+    if start_dt is not None:
+        conditions.append(User.created_at >= start_dt)
+    if end_dt is not None:
+        conditions.append(User.created_at < end_dt)
+
+    or_clause = _build_or_clause((q or "").strip() or None)
+    if or_clause is not None:
+        conditions.append(or_clause)
+
+    blocked_first = case((User.subscription_status == "blocked", 0), else_=1)
+    withdrawn_last = case((User.withdrawn_at.is_(None), 0), else_=1)
+
+    stmt = (
+        select(User)
+        .where(*conditions)
+        .order_by(blocked_first.asc(), withdrawn_last.asc(), User.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "고객 기본정보"
+
+    header_fill = PatternFill("solid", fgColor="F1F5F9")
+    header_font = Font(bold=True, color="0F172A")
+    center = Alignment(horizontal="center", vertical="center")
+
+    for col_idx, (_, label) in enumerate(_EXPORT_HEADERS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+
+    for r, user in enumerate(rows, start=2):
+        for c, value in enumerate(_user_row_for_export(user), start=1):
+            ws.cell(row=r, column=c, value=value)
+
+    # 헤더 폭 자동 — 한글은 글자당 약 1.6배 폭 가산.
+    for col_idx, (_, label) in enumerate(_EXPORT_HEADERS, start=1):
+        column_letter = ws.cell(row=1, column=col_idx).column_letter
+        ws.column_dimensions[column_letter].width = max(12, len(label) * 2 + 2)
+
+    ws.freeze_panes = "A2"
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), len(rows)
+
+
+__all__ = ["search_users", "get_user_detail", "export_users_xlsx"]

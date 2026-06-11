@@ -30,7 +30,8 @@ def run_migrations():
     alembic_cfg.set_main_option("sqlalchemy.url", DB_SYNC_URL)
     command.upgrade(alembic_cfg, "head")
     yield
-    command.downgrade(alembic_cfg, "base")
+    # 0057 admin_grades_dynamic 이후 downgrade base 는 운영 데이터 가드와 충돌한다.
+    # 본 fixture 는 격리 DB(예: denvia_test) 사용을 전제로 한다.
 
 
 @pytest.mark.asyncio

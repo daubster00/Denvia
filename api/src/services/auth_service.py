@@ -33,7 +33,13 @@ from api.src.services import anomaly_service
 from api.src.settings import REDIS_DB_OTP, REDIS_DB_RATE_LIMIT, REDIS_DB_RUNTIME_CONFIG
 from api.src.utils.argon2 import hash_password, verify_password
 from api.src.utils.jwt import encode_session_jwt
+from api.src.utils.korean_time import now_kst as _now_kst
 from api.src.utils.mask import mask_email
+
+
+def _now_kst_year() -> int:
+    """가입 시점의 KST 연도 — experience_last_increment_year 가드값으로 사용."""
+    return _now_kst().year
 
 logger = structlog.get_logger(__name__)
 
@@ -557,11 +563,15 @@ async def signup_user(
     postcode: str | None = None,
     address_road: str | None = None,
     address_detail: str | None = None,
+    segment: Literal["doctor", "hygienist", "student_other"] | None = None,
+    years_of_experience: int | None = None,
 ) -> User:
     """회원가입 처리.
 
-    선택 입력(name/birthdate/gender/postcode/address_road/address_detail)은 None이면
-    저장하지 않는다. 검증·정규화는 호출 측 Pydantic 스키마에서 수행.
+    선택 입력(name/birthdate/gender/postcode/address_road/address_detail/segment/
+    years_of_experience)은 None이면 저장하지 않는다. 검증·정규화는 호출 측 Pydantic
+    스키마에서 수행. segment 가 주어지면 가입 시점에 컬럼에 저장되어 분석/타게팅
+    스냅샷이 첫 응답부터 반영된다(QA-v3 P1 회귀 차단).
 
     Returns:
         생성된 User 객체
@@ -634,6 +644,13 @@ async def signup_user(
         postcode=postcode,
         address_road=address_road,
         address_detail=address_detail,
+        segment=segment,
+        years_of_experience=years_of_experience,
+        # 매년 1월 1일 +1 가산 배치(/me/segment 와 동일 정책) — segment+years 가 함께
+        # 가입에서 들어오면 가입년도를 가드값으로 기록해 같은 해 중복 증가를 막는다.
+        experience_last_increment_year=(
+            _now_kst_year() if years_of_experience is not None else None
+        ),
         created_at=now,
         updated_at=now,
     )

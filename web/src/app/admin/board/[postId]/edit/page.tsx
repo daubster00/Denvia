@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Option, Select } from "@wanteddev/wds";
@@ -9,6 +9,7 @@ import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import {
   BoardApiError,
   BoardCategory,
+  BoardPostDetail,
   BoardPostFormInput,
   fetchBoardMeta,
   fetchBoardPost,
@@ -24,7 +25,6 @@ export default function EditBoardPostPage(
   const { postId: postIdStr } = use(props.params);
   const postId = Number(postIdStr);
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   const metaQuery = useQuery({
     queryKey: ["admin-board", "meta"],
@@ -38,36 +38,7 @@ export default function EditBoardPostPage(
     enabled: !Number.isNaN(postId),
   });
 
-  const [category, setCategory] = useState<BoardCategory | "">("");
-  const [title, setTitle] = useState("");
-  const [contentHtml, setContentHtml] = useState("");
-  const [initialised, setInitialised] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (postQuery.data && !initialised) {
-      setCategory(postQuery.data.category);
-      setTitle(postQuery.data.title);
-      setContentHtml(postQuery.data.content_html);
-      setInitialised(true);
-    }
-  }, [postQuery.data, initialised]);
-
-  const updateMut = useMutation({
-    mutationFn: (input: BoardPostFormInput) => updateBoardPost(postId, input),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["admin-board", "posts"] });
-      queryClient.setQueryData(["admin-board", "post", postId], data);
-      router.replace(`/admin/board/${postId}`);
-    },
-    onError: (err: unknown) => {
-      setErrorMsg(
-        err instanceof BoardApiError ? err.message : "수정에 실패했습니다.",
-      );
-    },
-  });
-
-  if (postQuery.isLoading || !initialised) {
+  if (postQuery.isLoading) {
     return <div className={styles.page}>불러오는 중…</div>;
   }
   if (postQuery.isError || !postQuery.data) {
@@ -97,6 +68,46 @@ export default function EditBoardPostPage(
       </div>
     );
   }
+
+  return (
+    <EditForm
+      postId={postId}
+      post={postQuery.data}
+      categories={metaQuery.data?.categories ?? []}
+    />
+  );
+}
+
+function EditForm({
+  postId,
+  post,
+  categories,
+}: {
+  postId: number;
+  post: BoardPostDetail;
+  categories: { key: BoardCategory; label: string }[];
+}) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const [category, setCategory] = useState<BoardCategory | "">(post.category);
+  const [title, setTitle] = useState(post.title);
+  const [contentHtml, setContentHtml] = useState(post.content_html);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const updateMut = useMutation({
+    mutationFn: (input: BoardPostFormInput) => updateBoardPost(postId, input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-board", "posts"] });
+      queryClient.setQueryData(["admin-board", "post", postId], data);
+      router.replace(`/admin/board/${postId}`);
+    },
+    onError: (err: unknown) => {
+      setErrorMsg(
+        err instanceof BoardApiError ? err.message : "수정에 실패했습니다.",
+      );
+    },
+  });
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +150,7 @@ export default function EditBoardPostPage(
             placeholder="선택해주세요"
             width="100%"
           >
-            {metaQuery.data?.categories.map((c) => (
+            {categories.map((c) => (
               <Option key={c.key} value={c.key}>
                 {c.label}
               </Option>

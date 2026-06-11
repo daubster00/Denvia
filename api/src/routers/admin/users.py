@@ -16,7 +16,7 @@ from datetime import date
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,6 +168,80 @@ async def list_users(
     )
 
     return result
+
+
+@router.get("/export.xlsx")
+@limiter.limit("10/minute", key_func=_admin_user_id_key)
+async def export_users_xlsx_route(
+    request: Request,
+    q: str | None = Query(None, min_length=1, max_length=100),
+    segment: Literal["doctor", "hygienist", "student_other"] | None = Query(None),
+    subscription_status: Literal["free", "pro", "blocked"] | None = Query(None),
+    blocked: bool | None = Query(None),
+    withdrawn: bool | None = Query(None),
+    created_from: date | None = Query(None),
+    created_to: date | None = Query(None),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """현재 검색 조건 그대로 적용된 고객 기본정보 엑셀(xlsx) 내려받기.
+
+    페이지네이션 미적용 — 조건에 맞는 전체를 1장의 시트로. 결과가 너무 많으면
+    검색·필터로 좁힌 뒤 다시 다운로드한다. 응답은 octet-stream + xlsx mime.
+    파일명은 YYYYMMDD_HHMM 의 KST 시각을 포함해 캐시 충돌을 피한다.
+    """
+    if created_from is not None and created_to is not None and created_from > created_to:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "ADMIN_USERS_INVALID_DATE_RANGE",
+                "message": "가입일 시작이 종료보다 늦을 수 없습니다.",
+            },
+        )
+
+    body, row_count = await admin_user_service.export_users_xlsx(
+        db,
+        q=q,
+        segment=segment,
+        subscription_status=subscription_status,
+        blocked=blocked,
+        withdrawn=withdrawn,
+        created_from=created_from,
+        created_to=created_to,
+    )
+
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZI
+
+    now_kst = _dt.now(tz=_ZI("Asia/Seoul"))
+    filename = f"denvia_users_{now_kst.strftime('%Y%m%d_%H%M')}.xlsx"
+
+    logger.info(
+        "admin.users.exported",
+        actor_user_id=admin.id,
+        row_count=row_count,
+        filters={
+            "segment": segment,
+            "subscription_status": subscription_status,
+            "blocked": blocked,
+            "withdrawn": withdrawn,
+            "created_from": created_from.isoformat() if created_from else None,
+            "created_to": created_to.isoformat() if created_to else None,
+            "q_length": len(q or ""),
+        },
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+
+    return Response(
+        content=body,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse)
