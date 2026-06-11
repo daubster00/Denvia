@@ -45,7 +45,7 @@ _MARKER_END = "\x03"
 # 이 set에 등록된 동의어는 완전 일치만 허용하고, 어미 부분매칭을 차단함
 _PARTIAL_MATCH_BLACKLIST = frozenset([
     "실", "봉합", "인상", "힐링", "아테로", "바브드", "바버드",
-    "잇몸", "충치", "뿌리", "세팅", "셋팅",
+    "잇몸", "충치", "뿌리", "세팅", "셋팅", "덴처", "덴쳐", "클라스",
 ])
 
 
@@ -177,7 +177,7 @@ def apply_scaling_rules(text):
         r'(치주)\s*(sc|s\.c|s/c|스케일링|스켈링)',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
-     # 🔥 전악
+    # 🔥 전악
     text = re.sub(
         r'(전악)\s*(sc|s\.c|s/c|스케일링|스켈링)',
         r'\1치석제거', text, flags=re.IGNORECASE
@@ -187,19 +187,29 @@ def apply_scaling_rules(text):
         r'(부분)\s*(sc|s\.c|s/c|스케일링|스켈링)',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
+    # 🔥 건강/의료 보험 SC → 공백 정리만 (치환 없음, 다음 룰들이 처리)
+    text = re.sub(
+        r'(건강|의료)(보험)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'\1 \2\3', text, flags=re.IGNORECASE
+    )
+    # 🔥 연1회 보험/급여 SC → 연1회치석제거
+    text = re.sub(
+        r'(연\s*1\s*회)\s*(보험|급여)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'\1치석제거', text, flags=re.IGNORECASE
+    )
     # 🔥 연1회
     text = re.sub(
         r'(연\s*1\s*회)\s*(sc|s\.c|s/c|스케일링|스켈링)',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
-    # 🔥 보험/급여 → 연1회치석제거
+    # 🔥 보험/급여 → 연1회치석제거 (단, "비보험"/"비급여"는 제외)
     text = re.sub(
-        r'(보험|급여)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(?<!비)(보험|급여)\s*(sc|s\.c|s/c|스케일링|스켈링)',
         r'연1회치석제거', text, flags=re.IGNORECASE
     )
-    # 🔥 기본 (나머지 sc 제외, 단독 스케일링/스켈링/s.c/s/c만)
+    # 🔥 기본 (단독 스케일링/스켈링/s.c/s/c/sc → 치석제거)
     text = re.sub(
-        r'(스케일링|스켈링|s\.c|s/c)',
+        r'(스케일링|스켈링|s\.c|s/c|sc)',
         '치석제거', text, flags=re.IGNORECASE
     )
     return text
@@ -232,11 +242,9 @@ def normalize_query(query, synonyms):
     for syn in sorted(symbol_syns, key=len, reverse=True):
         key = symbol_syns[syn]
         pattern = re.escape(syn)
-        # [수정] 뒤쪽 경계: 한글이 바로 붙어도 매칭되도록 변경
-        # "c/f했어요" → "근관충전했어요" 가능
-        # 단, 영문/숫자가 바로 붙으면 차단 (오매칭 방지)
+        # 영문/숫자가 바로 붙으면 차단 (오매칭 방지), 한글 경계는 두지 않음
         bounded_pattern = (
-            r'(?<![a-zA-Z가-힣0-9])'
+            r'(?<![a-zA-Z0-9])'
             + pattern
             + r'(?![a-zA-Z0-9])'
         )
@@ -262,6 +270,7 @@ def normalize_query(query, synonyms):
     # ========================================
     token_pattern = re.compile(
         r'(' + re.escape(_MARKER_START) + r'.*?' + re.escape(_MARKER_END) + r')'
+        r'|(#[a-zA-Z0-9]+)'
         r'|([가-힣a-zA-Z0-9]+)'
         r'|([^\s가-힣a-zA-Z0-9' + re.escape(_MARKER_START) + re.escape(_MARKER_END) + r'])'
     )
@@ -269,11 +278,14 @@ def normalize_query(query, synonyms):
     tokens = token_pattern.findall(query)
     normalized_tokens = []
 
-    for marker_group, word_group, symbol_group in tokens:
+    for marker_group, tooth_group, word_group, symbol_group in tokens:
         if marker_group:
             # 마커 제거하고 치환된 결과만 추가
             value = marker_group.replace(_MARKER_START, '').replace(_MARKER_END, '')
             normalized_tokens.append(value)
+        elif tooth_group:
+            # 치식 번호 (#11, #i26 등) — 동의어 치환 없이 보존
+            normalized_tokens.append(tooth_group)
         elif symbol_group:
             normalized_tokens.append(symbol_group)
         elif word_group:
@@ -312,6 +324,7 @@ PATTERNS = {
     "즉일충전처치": r"즉일\s*충전\s*처치(?:시행|했|진행|실시)?",
     "당일발수근충": r"당일\s*발수\s*근충(?:시행|했|진행|실시)?",
     "치수절단": r"치수\s*절단(?:시행|했|진행|실시)?",
+    "치수절단술": r"치수\s*절단술(?:시행|했|진행|실시)?",
     "발수": r"발수(?:시행|했|진행|실시)?",
     "근관세척": r"근관\s*세척(?:시행|했|진행|실시)?",
     "근관확대": r"근관\s*확대(?:시행|했|진행|실시)?",
@@ -417,7 +430,7 @@ PATTERNS = {
 DISABILITY_AVAILABLE = [
     "보통처치", "치아진정처치", "치아파절편제거", "치수복조",
     "지각과민처치(간단)", "지각과민처치(복잡)", "지각과민처치",
-    "근관와동형성", "즉일충전처치", "당일발수근충", "치수절단",
+    "근관와동형성", "즉일충전처치", "당일발수근충", "치수절단술",
     "발수", "근관세척", "근관확대", "근관성형", "근관충전", "근관치료",
     "충전처치", "gi충전", "충전물연마", "러버댐", "와동형성",
     "파절기구제거", "응급근관처치",
@@ -426,7 +439,7 @@ DISABILITY_AVAILABLE = [
     "금속재포스트제거", "포스트제거",
     "광중합형복합레진", "보험레진",
     "수술후처치(간단)", "수술후처치",
-    "치주치료후처치(간단)", "치주치료후처치(복잡)", "치주후처치",
+    "치주치료후처치(간단)", "치주치료후처치(복잡)", "치주후처치", "치주치료후처치",
     "치면세마", "치석제거", "치근활택술",
     "순열수술후보호장치", "상고정장치술", "고정장치제거",
     "교합조정", "수술용스플린트",
@@ -452,7 +465,7 @@ DISABILITY_AVAILABLE = [
     "치은측방변위판만술", "치간변위판막술", "치은이식술",
     "치근절제술", "치관확장술", "치관분리술",
     "틀니조직면개조", "틀니수리", "틀니조정", "클라스프수리",
-    "자가치아유래골이식술",
+    "자가치아유래골이식술", "치수절단",
 ]
 
 TEMPLATE_OK = """장애인가산 적용이 가능한 뇌병변 장애인, 지적장애인, 정신장애인, 자폐성 장애인이 치과에 내원하여 {procedures}를 진행한 경우 {procedures}는 장애인가산적용되는 행위임으로 해당 행위에 대한 행위료는 300%가산이 적용돼요. 이때 시각장애인,청각장애인,지체장애인은 장애인 가산적용 불가능합니다~  """

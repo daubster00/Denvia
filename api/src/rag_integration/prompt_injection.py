@@ -59,9 +59,15 @@ def build_prompt_with_overrides(
         elif base_override.enabled:
             parts.append(base_override.content)
 
+        # 브릿지 모듈이 활성화되면 치식_위치/치면_방향 블록은 주입하지 않는다.
+        # (vendor build_prompt_template과 동일한 동작 — 브릿지 본문의 자체 표기 규칙과 충돌 방지)
+        bridge_active = _match_keywords(query, PROMPT_MODULES["브릿지"]["keywords"])
+
         injected: list[str] = []
         for module_name, module_data in PROMPT_MODULES.items():
             if not _match_keywords(query, module_data["keywords"]):
+                continue
+            if bridge_active and module_name in ("치식_위치", "치면_방향"):
                 continue
 
             override = overrides.get(module_name)
