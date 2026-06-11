@@ -154,6 +154,7 @@ async def get_user_qa_log_detail(
         question_text=row.question_text or "",
         normalized_query=row.normalized_query,
         retrieved_docs=docs,
+        prompt_text=row.prompt_text,
         answer_text=row.answer_text,
         rule_matched=bool(row.rule_matched),
         status=row.status,

@@ -123,6 +123,8 @@ async def signup(
         postcode=body.postcode,
         address_road=body.address_road,
         address_detail=body.address_detail,
+        segment=body.segment,
+        years_of_experience=body.years_of_experience,
     )
     await db.commit()
 
@@ -190,6 +192,30 @@ async def login(
         expected_role="user",
     )
     await db.commit()
+
+    # Story 6.5 — concurrent_ip_login 자동 탐지 hook (QA-v3 K2 회귀 차단).
+    # 기존엔 OAuth 콜백 진입점에만 연결돼, 일반 이메일 로그인으로 같은 IP에서 N명을
+    # 두드려도 탐지가 0건이었다. 동일한 SSOT 헬퍼를 password 로그인 성공 직후 호출한다.
+    try:
+        from api.src.services import anomaly_service as _anomaly_service
+        from api.src.services.auth_service import _make_redis_rl as _make_rl
+
+        async with _make_rl(settings.redis_url) as r:
+            await _anomaly_service.check_concurrent_ip_login(
+                ip=ip,
+                user_id=user.id,
+                ua=ua,
+                redis_rl=r,
+                db=db,
+                redis_pubsub=r,
+            )
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+    except Exception:
+        # 탐지 실패는 silent — 로그인 자체는 성공시킨다(이상탐지는 best-effort).
+        logger.exception("auth.login.concurrent_ip_hook_failed")
 
     token = encode_session_jwt(
         user_id=user.id,

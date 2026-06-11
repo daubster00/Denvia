@@ -84,3 +84,93 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.periodBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.unitToggle {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(56px, 88px));
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.unitButton,
+.unitButtonActive {
+  background: #ffffff;
+  border: 0;
+  border-right: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.unitButton:last-child,
+.unitButtonActive:last-child {
+  border-right: 0;
+}
+
+.unitButtonActive {
+  background: #7c3aed;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.unitButton:hover {
+  background: #f9fafb;
+}
+
+.unitButton:focus-visible,
+.unitButtonActive:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: -2px;
+}
+
+.dateRange {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dateLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.dateLabelText {
+  font-weight: 500;
+}
+
+.dateInput {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.dateInput:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 1px;
+}
+
+@media (max-width: 767px) {
+  .unitToggle {
+    grid-template-columns: repeat(4, 1fr);
+    width: 100%;
+  }
+}

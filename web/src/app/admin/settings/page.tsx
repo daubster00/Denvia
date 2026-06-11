@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchBudgetCurrentMonth,
   updateMonthlyBudgetLimit,
+  type BudgetCurrentMonth,
 } from "@/features/admin-dashboard/api/budget";
 import {
   fetchChatModelConfig,
   updateChatModelConfig,
   type ChatModelConfig,
 } from "@/features/admin-dashboard/api/chatModel";
-import { fetchForexConfig } from "@/features/admin-dashboard/api/forex";
+import {
+  fetchForexConfig,
+  type ForexConfig,
+} from "@/features/admin-dashboard/api/forex";
 import { formatKRW, usdToKrwInt } from "@/lib/format-currency";
 import styles from "./page.module.css";
 
@@ -72,10 +76,10 @@ function getModelDescription(model: string) {
 }
 
 export default function SettingsPage() {
-  const qc = useQueryClient();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin", "budget", "current"],
-    queryFn: fetchBudgetCurrentMonth,
+    // queryFn에 함수를 직접 넘기면 React Query가 context를 자동 주입함 — 래핑 필수.
+    queryFn: () => fetchBudgetCurrentMonth(),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -93,74 +97,6 @@ export default function SettingsPage() {
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
-
-  const [modelDraft, setModelDraft] = useState<string>("");
-  const [modelSavedMessage, setModelSavedMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (modelQuery.data) {
-      setModelDraft((prev) => (prev === "" ? modelQuery.data!.chat_model : prev));
-    }
-  }, [modelQuery.data]);
-
-  const modelMutation = useMutation({
-    mutationFn: (value: string) => updateChatModelConfig(value),
-    onSuccess: (updated: ChatModelConfig) => {
-      qc.setQueryData(["admin", "runtime-config", "chat-model"], updated);
-      setModelDraft(updated.chat_model);
-      setModelSavedMessage("AI 모델이 변경되었습니다.");
-      window.setTimeout(() => setModelSavedMessage(null), 2500);
-    },
-  });
-
-  const [draft, setDraft] = useState<string>("");
-  const [savedMessage, setSavedMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (data) {
-      setDraft((prev) =>
-        prev === "" ? Number(data.monthly_limit_usd).toFixed(2) : prev,
-      );
-    }
-  }, [data]);
-
-  const mutation = useMutation({
-    mutationFn: (value: number) => updateMonthlyBudgetLimit(value),
-    onSuccess: (updated) => {
-      qc.setQueryData(["admin", "budget", "current"], updated);
-      qc.invalidateQueries({ queryKey: ["admin", "budget"] });
-      setDraft(Number(updated.monthly_limit_usd).toFixed(2));
-      setSavedMessage("저장되었습니다.");
-      window.setTimeout(() => setSavedMessage(null), 2500);
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavedMessage(null);
-    const parsed = Number(draft);
-    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 999_999.99) {
-      return;
-    }
-    mutation.mutate(Number(parsed.toFixed(2)));
-  };
-
-  const currentLimit = data ? Number(data.monthly_limit_usd) : 0;
-  const spent = data ? Number(data.spent_usd) : 0;
-  const usdToKrw = data?.usd_to_krw ?? 1400;
-  const currentLimitKrw = data?.monthly_limit_krw ?? 0;
-  const spentKrw = data?.spent_krw ?? 0;
-  const percent = data?.percent ?? 0;
-  const draftNumber = Number(draft);
-  const draftKrwPreview = Number.isFinite(draftNumber) && draftNumber > 0
-    ? usdToKrwInt(draftNumber, usdToKrw)
-    : 0;
-  const isDraftValid =
-    Number.isFinite(draftNumber) && draftNumber > 0 && draftNumber <= 999_999.99;
-  const isDirty =
-    data != null &&
-    isDraftValid &&
-    Number(draftNumber.toFixed(2)) !== Number(currentLimit.toFixed(2));
 
   return (
     <section className={styles.page}>
@@ -192,113 +128,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {data && (
-        <section
-          id="monthly-budget"
-          className={styles.card}
-          aria-labelledby="monthly-budget-title"
-        >
-          <h2 id="monthly-budget-title" className={styles.cardTitle}>
-            월 예산 한도
-          </h2>
-
-          <dl className={styles.summary}>
-            <div className={styles.summaryRow}>
-              <dt>대상 월</dt>
-              <dd>{data.year_month}</dd>
-            </div>
-            <div className={styles.summaryRow}>
-              <dt>현재 한도</dt>
-              <dd>
-                {formatKRW(currentLimitKrw)}{" "}
-                <span className={styles.unitNote}>
-                  (USD ${currentLimit.toFixed(2)} · 환율 ₩{usdToKrw.toLocaleString("ko-KR")}/$)
-                </span>
-                <div className={styles.forexMeta}>
-                  {forexQuery.data?.source === "auto" ? (
-                    <span className={styles.forexMetaTag}>자동 갱신</span>
-                  ) : (
-                    <span
-                      className={`${styles.forexMetaTag} ${styles.forexMetaTagFallback}`}
-                    >
-                      기본값 사용 중
-                    </span>
-                  )}
-                  <span>
-                    한국수출입은행 매일 09:00 KST 자동 반영
-                    {forexQuery.data?.updated_at
-                      ? ` · 최근 갱신 ${formatKstFromIso(forexQuery.data.updated_at)}`
-                      : ""}
-                    {forexQuery.data?.search_date
-                      ? ` · 기준 영업일 ${forexQuery.data.search_date}`
-                      : ""}
-                  </span>
-                </div>
-              </dd>
-            </div>
-            <div className={styles.summaryRow}>
-              <dt>이미 사용한 금액</dt>
-              <dd>
-                {formatKRW(spentKrw)} ({percent.toFixed(1)}%)
-              </dd>
-            </div>
-          </dl>
-
-          <form className={styles.form} onSubmit={handleSubmit} noValidate>
-            <label className={styles.fieldLabel} htmlFor="monthly-limit-input">
-              새 한도 (USD 기준)
-            </label>
-            <div className={styles.fieldRow}>
-              <span className={styles.unitPrefix} aria-hidden="true">
-                $
-              </span>
-              <input
-                id="monthly-limit-input"
-                type="number"
-                min="0.01"
-                step="0.01"
-                max="999999.99"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                className={styles.input}
-                aria-describedby="monthly-limit-help"
-                required
-              />
-              <button
-                type="submit"
-                className={styles.saveBtn}
-                disabled={
-                  mutation.isPending || !isDraftValid || !isDirty
-                }
-              >
-                {mutation.isPending ? "저장 중…" : "저장"}
-              </button>
-            </div>
-            <p id="monthly-limit-help" className={styles.fieldHint}>
-              0.01 이상 999,999.99 이하의 USD 금액을 입력하세요. OpenAI 청구가 USD라 입력 단위는 달러로 유지합니다.
-              {isDraftValid && draftKrwPreview > 0 ? (
-                <>
-                  {" "}예상 한도: <strong>{formatKRW(draftKrwPreview)}</strong> (환율 ₩
-                  {usdToKrw.toLocaleString("ko-KR")}/$ 적용)
-                </>
-              ) : null}
-            </p>
-
-            {mutation.isError && (
-              <p className={styles.errorText} role="alert">
-                {(mutation.error as Error)?.message ??
-                  "저장에 실패했습니다."}
-              </p>
-            )}
-
-            {savedMessage && (
-              <p className={styles.successText} role="status">
-                {savedMessage}
-              </p>
-            )}
-          </form>
-        </section>
-      )}
+      {data && <BudgetForm budget={data} forex={forexQuery.data ?? null} />}
 
       <section
         id="chat-model"
@@ -332,100 +162,274 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {modelQuery.data && (
-          <form
-            className={styles.form}
-            onSubmit={(e) => {
-              e.preventDefault();
-              setModelSavedMessage(null);
-              if (
-                !modelDraft ||
-                modelDraft === modelQuery.data!.chat_model ||
-                !modelQuery.data!.allowed_models.includes(modelDraft)
-              ) {
-                return;
-              }
-              modelMutation.mutate(modelDraft);
-            }}
-            noValidate
-          >
-            <dl className={styles.summary}>
-              <div className={styles.summaryRow}>
-                <dt>현재 모델</dt>
-                <dd>{modelQuery.data.chat_model}</dd>
-              </div>
-              <div className={styles.summaryRow}>
-                <dt>기본값</dt>
-                <dd>{modelQuery.data.default_model}</dd>
-              </div>
-            </dl>
-
-            <label className={styles.fieldLabel} htmlFor="chat-model-select">
-              사용할 모델
-            </label>
-            <div className={styles.fieldRow}>
-              <select
-                id="chat-model-select"
-                className={styles.select}
-                value={modelDraft}
-                onChange={(e) => setModelDraft(e.target.value)}
-                aria-describedby="chat-model-help"
-              >
-                {modelQuery.data.allowed_models.map((m) => (
-                  <option key={m} value={m}>
-                    {getModelDescription(m).title}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className={styles.saveBtn}
-                disabled={
-                  modelMutation.isPending ||
-                  !modelDraft ||
-                  modelDraft === modelQuery.data.chat_model
-                }
-              >
-                {modelMutation.isPending ? "저장 중…" : "저장"}
-              </button>
-            </div>
-            <p id="chat-model-help" className={styles.fieldHint}>
-              인수자가 튜닝한 기본값은 {modelQuery.data.default_model} 입니다.
-              변경 전 아래 안내를 확인하세요.
-            </p>
-
-            {modelDraft && (
-              <dl className={styles.modelInfo}>
-                <div className={styles.summaryRow}>
-                  <dt>응답 속도</dt>
-                  <dd>{getModelDescription(modelDraft).speed}</dd>
-                </div>
-                <div className={styles.summaryRow}>
-                  <dt>답변 특성</dt>
-                  <dd>{getModelDescription(modelDraft).quality}</dd>
-                </div>
-                <div className={styles.summaryRow}>
-                  <dt>주의</dt>
-                  <dd>{getModelDescription(modelDraft).note}</dd>
-                </div>
-              </dl>
-            )}
-
-            {modelMutation.isError && (
-              <p className={styles.errorText} role="alert">
-                {(modelMutation.error as Error)?.message ??
-                  "AI 모델 변경에 실패했습니다."}
-              </p>
-            )}
-
-            {modelSavedMessage && (
-              <p className={styles.successText} role="status">
-                {modelSavedMessage}
-              </p>
-            )}
-          </form>
-        )}
+        {modelQuery.data && <ModelForm config={modelQuery.data} />}
       </section>
     </section>
+  );
+}
+
+function BudgetForm({
+  budget,
+  forex,
+}: {
+  budget: BudgetCurrentMonth;
+  forex: ForexConfig | null;
+}) {
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState<string>(
+    Number(budget.monthly_limit_usd).toFixed(2),
+  );
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: (value: number) => updateMonthlyBudgetLimit(value),
+    onSuccess: (updated) => {
+      qc.setQueryData(["admin", "budget", "current"], updated);
+      qc.invalidateQueries({ queryKey: ["admin", "budget"] });
+      setDraft(Number(updated.monthly_limit_usd).toFixed(2));
+      setSavedMessage("저장되었습니다.");
+      window.setTimeout(() => setSavedMessage(null), 2500);
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavedMessage(null);
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 999_999.99) {
+      return;
+    }
+    mutation.mutate(Number(parsed.toFixed(2)));
+  };
+
+  const currentLimit = Number(budget.monthly_limit_usd);
+  const usdToKrw = budget.usd_to_krw ?? 1400;
+  const currentLimitKrw = budget.monthly_limit_krw ?? 0;
+  const spentKrw = budget.spent_krw ?? 0;
+  const percent = budget.percent ?? 0;
+  const draftNumber = Number(draft);
+  const draftKrwPreview =
+    Number.isFinite(draftNumber) && draftNumber > 0
+      ? usdToKrwInt(draftNumber, usdToKrw)
+      : 0;
+  const isDraftValid =
+    Number.isFinite(draftNumber) && draftNumber > 0 && draftNumber <= 999_999.99;
+  const isDirty =
+    isDraftValid &&
+    Number(draftNumber.toFixed(2)) !== Number(currentLimit.toFixed(2));
+
+  return (
+    <section
+      id="monthly-budget"
+      className={styles.card}
+      aria-labelledby="monthly-budget-title"
+    >
+      <h2 id="monthly-budget-title" className={styles.cardTitle}>
+        월 예산 한도
+      </h2>
+
+      <dl className={styles.summary}>
+        <div className={styles.summaryRow}>
+          <dt>대상 월</dt>
+          <dd>{budget.year_month}</dd>
+        </div>
+        <div className={styles.summaryRow}>
+          <dt>현재 한도</dt>
+          <dd>
+            {formatKRW(currentLimitKrw)}{" "}
+            <span className={styles.unitNote}>
+              (USD ${currentLimit.toFixed(2)} · 환율 ₩{usdToKrw.toLocaleString("ko-KR")}/$)
+            </span>
+            <div className={styles.forexMeta}>
+              {forex?.source === "auto" ? (
+                <span className={styles.forexMetaTag}>자동 갱신</span>
+              ) : (
+                <span
+                  className={`${styles.forexMetaTag} ${styles.forexMetaTagFallback}`}
+                >
+                  기본값 사용 중
+                </span>
+              )}
+              <span>
+                한국수출입은행 매일 09:00 KST 자동 반영
+                {forex?.updated_at
+                  ? ` · 최근 갱신 ${formatKstFromIso(forex.updated_at)}`
+                  : ""}
+                {forex?.search_date
+                  ? ` · 기준 영업일 ${forex.search_date}`
+                  : ""}
+              </span>
+            </div>
+          </dd>
+        </div>
+        <div className={styles.summaryRow}>
+          <dt>이미 사용한 금액</dt>
+          <dd>
+            {formatKRW(spentKrw)} ({percent.toFixed(1)}%)
+          </dd>
+        </div>
+      </dl>
+
+      <form className={styles.form} onSubmit={handleSubmit} noValidate>
+        <label className={styles.fieldLabel} htmlFor="monthly-limit-input">
+          새 한도 (USD 기준)
+        </label>
+        <div className={styles.fieldRow}>
+          <span className={styles.unitPrefix} aria-hidden="true">
+            $
+          </span>
+          <input
+            id="monthly-limit-input"
+            type="number"
+            min="0.01"
+            step="0.01"
+            max="999999.99"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className={styles.input}
+            aria-describedby="monthly-limit-help"
+            required
+          />
+          <button
+            type="submit"
+            className={styles.saveBtn}
+            disabled={mutation.isPending || !isDraftValid || !isDirty}
+          >
+            {mutation.isPending ? "저장 중…" : "저장"}
+          </button>
+        </div>
+        <p id="monthly-limit-help" className={styles.fieldHint}>
+          0.01 이상 999,999.99 이하의 USD 금액을 입력하세요. OpenAI 청구가 USD라 입력 단위는 달러로 유지합니다.
+          {isDraftValid && draftKrwPreview > 0 ? (
+            <>
+              {" "}예상 한도: <strong>{formatKRW(draftKrwPreview)}</strong> (환율 ₩
+              {usdToKrw.toLocaleString("ko-KR")}/$ 적용)
+            </>
+          ) : null}
+        </p>
+
+        {mutation.isError && (
+          <p className={styles.errorText} role="alert">
+            {(mutation.error as Error)?.message ?? "저장에 실패했습니다."}
+          </p>
+        )}
+
+        {savedMessage && (
+          <p className={styles.successText} role="status">
+            {savedMessage}
+          </p>
+        )}
+      </form>
+    </section>
+  );
+}
+
+function ModelForm({ config }: { config: ChatModelConfig }) {
+  const qc = useQueryClient();
+  const [modelDraft, setModelDraft] = useState<string>(config.chat_model);
+  const [modelSavedMessage, setModelSavedMessage] = useState<string | null>(null);
+
+  const modelMutation = useMutation({
+    mutationFn: (value: string) => updateChatModelConfig(value),
+    onSuccess: (updated: ChatModelConfig) => {
+      qc.setQueryData(["admin", "runtime-config", "chat-model"], updated);
+      setModelDraft(updated.chat_model);
+      setModelSavedMessage("AI 모델이 변경되었습니다.");
+      window.setTimeout(() => setModelSavedMessage(null), 2500);
+    },
+  });
+
+  return (
+    <form
+      className={styles.form}
+      onSubmit={(e) => {
+        e.preventDefault();
+        setModelSavedMessage(null);
+        if (
+          !modelDraft ||
+          modelDraft === config.chat_model ||
+          !config.allowed_models.includes(modelDraft)
+        ) {
+          return;
+        }
+        modelMutation.mutate(modelDraft);
+      }}
+      noValidate
+    >
+      <dl className={styles.summary}>
+        <div className={styles.summaryRow}>
+          <dt>현재 모델</dt>
+          <dd>{config.chat_model}</dd>
+        </div>
+        <div className={styles.summaryRow}>
+          <dt>기본값</dt>
+          <dd>{config.default_model}</dd>
+        </div>
+      </dl>
+
+      <label className={styles.fieldLabel} htmlFor="chat-model-select">
+        사용할 모델
+      </label>
+      <div className={styles.fieldRow}>
+        <select
+          id="chat-model-select"
+          className={styles.select}
+          value={modelDraft}
+          onChange={(e) => setModelDraft(e.target.value)}
+          aria-describedby="chat-model-help"
+        >
+          {config.allowed_models.map((m) => (
+            <option key={m} value={m}>
+              {getModelDescription(m).title}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          className={styles.saveBtn}
+          disabled={
+            modelMutation.isPending ||
+            !modelDraft ||
+            modelDraft === config.chat_model
+          }
+        >
+          {modelMutation.isPending ? "저장 중…" : "저장"}
+        </button>
+      </div>
+      <p id="chat-model-help" className={styles.fieldHint}>
+        인수자가 튜닝한 기본값은 {config.default_model} 입니다.
+        변경 전 아래 안내를 확인하세요.
+      </p>
+
+      {modelDraft && (
+        <dl className={styles.modelInfo}>
+          <div className={styles.summaryRow}>
+            <dt>응답 속도</dt>
+            <dd>{getModelDescription(modelDraft).speed}</dd>
+          </div>
+          <div className={styles.summaryRow}>
+            <dt>답변 특성</dt>
+            <dd>{getModelDescription(modelDraft).quality}</dd>
+          </div>
+          <div className={styles.summaryRow}>
+            <dt>주의</dt>
+            <dd>{getModelDescription(modelDraft).note}</dd>
+          </div>
+        </dl>
+      )}
+
+      {modelMutation.isError && (
+        <p className={styles.errorText} role="alert">
+          {(modelMutation.error as Error)?.message ??
+            "AI 모델 변경에 실패했습니다."}
+        </p>
+      )}
+
+      {modelSavedMessage && (
+        <p className={styles.successText} role="status">
+          {modelSavedMessage}
+        </p>
+      )}
+    </form>
   );
 }

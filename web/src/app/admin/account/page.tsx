@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   changeAdminPassword,
@@ -136,15 +136,12 @@ function ProfileEditCard({ profile, onUpdated }: ProfileEditCardProps) {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    setEmail(profile.email);
-    setPhone(profile.phone ? formatPhoneDisplay(profile.phone) : "");
-    setName(profile.name ?? "");
-  }, [profile.email, profile.phone, profile.name]);
-
   const mutation = useMutation({
     mutationFn: updateAdminProfile,
     onSuccess: (updated) => {
+      setEmail(updated.email);
+      setPhone(updated.phone ? formatPhoneDisplay(updated.phone) : "");
+      setName(updated.name ?? "");
       setSavedMessage("저장되었습니다.");
       setErrorMessage(null);
       onUpdated(updated);

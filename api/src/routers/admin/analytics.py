@@ -48,6 +48,7 @@ from api.src.services.analytics_service import (
     get_access_buckets,
     get_signups_buckets,
     get_subscriber_counts,
+    set_feedback_reviewed,
 )
 from api.src.services import runtime_config_service
 from api.src.services.budget_service import KST, kst_month_bounds
@@ -342,12 +343,13 @@ async def access_stats(
 # Story 5.4 — 피드백 분석
 # =============================================================================
 
-RatingFilterParam = Literal["good", "bad", "all"]
+RatingFilterParam = Literal["good", "bad", "reviewed", "all"]
 
 
 class FeedbackSummary(BaseModel):
     good_count: int
     bad_count: int
+    reviewed_count: int = 0
     good_ratio: float | None
 
 
@@ -355,6 +357,7 @@ class FeedbackSeriesItem(BaseModel):
     bucket_start: str
     good: int
     bad: int
+    reviewed: int = 0
 
 
 class FeedbackItem(BaseModel):
@@ -366,6 +369,7 @@ class FeedbackItem(BaseModel):
     user_id: int | None = None
     email: str | None = None
     created_at: str
+    reviewed_at: str | None = None
 
 
 class FeedbackResponse(BaseModel):
@@ -482,7 +486,7 @@ class FeedbackDetail(BaseModel):
     """피드백 단건 상세 — Drawer '상세보기' 응답.
 
     관리자 감사용으로만 노출되며, SSE 사용자 응답에는 등장하지 않는
-    ``normalized_query``, ``retrieved_docs``(top-k)를 포함한다.
+    ``normalized_query``, ``retrieved_docs``(top-k), ``prompt_text``(LLM 실제 입력)를 포함한다.
     비회원 피드백도 조회 가능하므로 user_id 교차 검증 없이 qa_log_id 단독으로 조회한다.
     """
 
@@ -490,9 +494,16 @@ class FeedbackDetail(BaseModel):
     question_text: str
     normalized_query: str | None = None
     retrieved_docs: list[FeedbackRetrievedDocItem] = Field(default_factory=list)
+    # LLM 에 실제 들어간 최종 프롬프트(템플릿 + 질문 + top-k 컨텍스트 치환 완료).
+    # 룰 경로 / 마이그레이션 이전 행 / 스트림 중단 행은 None.
+    prompt_text: str | None = None
     answer_text: str | None = None
     rule_matched: bool = False
     status: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: Decimal | None = None
+    latency_ms: int | None = None
     created_at: str
 
 
@@ -524,10 +535,12 @@ async def feedback_export(
         "질문",
         "답변",
         "피드백",
+        "상태",  # good/bad/reviewed (검토완료 시 'reviewed')
         "계정(이메일)",
         "user_id",
         "가입유형",
         "제출일시(KST)",
+        "검토완료일시(KST)",
     ])
     for row in rows:
         ws.append([
@@ -535,10 +548,12 @@ async def feedback_export(
             row["question_text"],
             row["answer_text"] or "",
             row["rating"],
+            row.get("category") or row["rating"],
             row.get("email") or "",
             row.get("user_id") if row.get("user_id") is not None else "",
             row["segment"] or "",
             row["created_at_kst"],
+            row.get("reviewed_at_kst") or "",
         ])
 
     buf = io.BytesIO()
@@ -561,6 +576,72 @@ async def feedback_export(
         headers["X-Truncated"] = "true"
 
     return StreamingResponse(buf, media_type=content_type, headers=headers)
+
+
+class FeedbackReviewRequest(BaseModel):
+    reviewed: bool
+
+
+class FeedbackReviewResponse(BaseModel):
+    qa_log_id: int
+    reviewed: bool
+    reviewed_at: str | None
+    reviewed_by_user_id: int | None
+
+
+@router.post(
+    "/feedback/{qa_log_id}/review",
+    response_model=FeedbackReviewResponse,
+)
+async def feedback_set_reviewed(
+    qa_log_id: int,
+    body: FeedbackReviewRequest,
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> FeedbackReviewResponse:
+    """피드백 단건을 '검토완료'/'미검토'로 토글.
+
+    같은 qa_log_id로 여러 행이 있으면(예: 사용자가 GOOD↔BAD 토글한 경우)
+    전부 동일 상태로 일괄 갱신한다.
+    """
+    qa_log_exists = (
+        await db.execute(select(QALog.id).where(QALog.id == qa_log_id))
+    ).scalar_one_or_none()
+    if qa_log_exists is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_FEEDBACK_QA_LOG_NOT_FOUND",
+                "message": "질의 기록을 찾을 수 없습니다.",
+            },
+        )
+
+    result = await set_feedback_reviewed(
+        db, qa_log_id=qa_log_id, reviewed=body.reviewed, actor_user_id=actor.id
+    )
+    if result["updated"] == 0:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_FEEDBACK_NOT_FOUND",
+                "message": "피드백 기록을 찾을 수 없습니다.",
+            },
+        )
+
+    await db.commit()
+    logger.info(
+        "admin.analytics.feedback.review_toggled",
+        actor_user_id=actor.id,
+        qa_log_id=qa_log_id,
+        reviewed=body.reviewed,
+        rows=result["updated"],
+    )
+    return FeedbackReviewResponse(
+        qa_log_id=qa_log_id,
+        reviewed=body.reviewed,
+        reviewed_at=result["reviewed_at"],
+        reviewed_by_user_id=result["reviewed_by_user_id"],
+    )
 
 
 @router.get("/feedback/{qa_log_id}", response_model=FeedbackDetail)
@@ -611,9 +692,14 @@ async def feedback_detail(
         question_text=row.question_text or "",
         normalized_query=row.normalized_query,
         retrieved_docs=docs,
+        prompt_text=row.prompt_text,
         answer_text=row.answer_text,
         rule_matched=bool(row.rule_matched),
         status=row.status,
+        input_tokens=row.input_tokens,
+        output_tokens=row.output_tokens,
+        cost_usd=row.cost_usd,
+        latency_ms=row.latency_ms,
         created_at=row.created_at.isoformat() if row.created_at else "",
     )
 

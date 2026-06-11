@@ -12,12 +12,21 @@ export interface BudgetCurrentMonth {
   status: "normal" | "warning" | "critical";
   killswitch_active: boolean;
   killswitch_mode: "auto_free_only" | "manual_total" | null;
+  // 지나간 달을 조회한 경우 true — 게이지/킬스위치 라벨 톤 변경에 사용.
+  is_past_month: boolean;
 }
 
-export async function fetchBudgetCurrentMonth(): Promise<BudgetCurrentMonth> {
-  const res = await fetch(`${API_BASE}/api/v1/admin/budget/current-month`, {
-    credentials: "include",
-  });
+export async function fetchBudgetCurrentMonth(
+  ym?: string,
+): Promise<BudgetCurrentMonth> {
+  // React Query가 queryFn에 QueryFunctionContext를 자동 주입하기 때문에
+  // queryFn 자리에 이 함수를 직접 넘기면 ym에 객체가 들어올 수 있다.
+  // 문자열일 때만 ?ym=…을 붙여 422를 막는다.
+  const url =
+    typeof ym === "string" && ym.length > 0
+      ? `${API_BASE}/api/v1/admin/budget/current-month?ym=${encodeURIComponent(ym)}`
+      : `${API_BASE}/api/v1/admin/budget/current-month`;
+  const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw new Error(`budget fetch failed: ${res.status}`);
   return res.json() as Promise<BudgetCurrentMonth>;
 }

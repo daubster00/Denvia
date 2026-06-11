@@ -32,6 +32,13 @@ const KST_DATETIME = new Intl.DateTimeFormat("ko-KR", {
   minute: "2-digit",
 });
 
+const KST_DATE = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
   try {
@@ -39,6 +46,36 @@ function formatDateTime(value: string | null): string {
   } catch {
     return value;
   }
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  try {
+    // birthdate 는 YYYY-MM-DD 문자열 — Date 파싱 시 UTC 0시로 해석되어 KST 변환이 어긋날 수 있어 그대로 표시.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    return KST_DATE.format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function formatGender(value: string | null | undefined): string {
+  if (value === "male") return "남";
+  if (value === "female") return "여";
+  return "—";
+}
+
+function formatAddress(
+  postcode: string | null | undefined,
+  road: string | null | undefined,
+  detail: string | null | undefined,
+): string {
+  const parts = [
+    postcode ? `(${postcode})` : "",
+    road ?? "",
+    detail ?? "",
+  ].filter((s) => s);
+  return parts.length ? parts.join(" ") : "—";
 }
 
 export function UserDetailView({
@@ -142,6 +179,51 @@ export function UserDetailView({
                 </dd>
               </div>
             ) : null}
+          </dl>
+        </section>
+
+        <section
+          className={styles.section}
+          aria-labelledby="extra-info-title"
+        >
+          <h2 id="extra-info-title" className={styles.sectionTitle}>
+            추가 정보
+          </h2>
+          <dl className={styles.infoList}>
+            <div className={styles.infoRow}>
+              <dt>이름</dt>
+              <dd>{user.name ?? "—"}</dd>
+            </div>
+            <div className={styles.infoRow}>
+              <dt>성별</dt>
+              <dd>{formatGender(user.gender)}</dd>
+            </div>
+            <div className={styles.infoRow}>
+              <dt>생년월일</dt>
+              <dd>{formatDate(user.birthdate)}</dd>
+            </div>
+            <div className={styles.infoRow}>
+              <dt>주소</dt>
+              <dd>
+                {formatAddress(
+                  user.postcode,
+                  user.address_road,
+                  user.address_detail,
+                )}
+              </dd>
+            </div>
+            <div className={styles.infoRow}>
+              <dt>마케팅 수신</dt>
+              <dd>
+                {user.marketing_consent_at
+                  ? `동의 (${formatDateTime(user.marketing_consent_at)})`
+                  : "미동의"}
+              </dd>
+            </div>
+            <div className={styles.infoRow}>
+              <dt>최근 로그인</dt>
+              <dd>{formatDateTime(user.last_login_at)}</dd>
+            </div>
           </dl>
         </section>
 

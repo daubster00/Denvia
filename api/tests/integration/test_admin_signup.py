@@ -33,6 +33,9 @@ def _make_user(
     user.subscription_status = "free"
     user.password_hash = hash_password(password)
     user.withdrawn_at = None
+    # 명시적 None — admin_blocked_until 가드(routers/admin/auth.py)가 MagicMock 자동
+    # 속성을 datetime 으로 비교하다 TypeError 를 던지지 않도록 한다.
+    user.admin_blocked_until = None
     return user
 
 

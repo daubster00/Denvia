@@ -23,6 +23,9 @@ def _make_user(role: str = "admin") -> MagicMock:
     user.withdrawn_at = None
     user.current_session_id = None
     user.admin_grade = "master"
+    # 명시적 None — production User 모델의 디폴트와 동일. MagicMock 자동 속성으로
+    # 떨어지면 admin_blocked_until 가드가 datetime 비교 시 TypeError 를 던진다.
+    user.admin_blocked_until = None
     return user
 
 

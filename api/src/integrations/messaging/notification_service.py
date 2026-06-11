@@ -282,6 +282,10 @@ class NotificationService:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         try:
             async with self._session_factory() as session:
+                # 0002 의 idempotency 인덱스는 partial UNIQUE INDEX
+                # (`WHERE user_id IS NOT NULL`). `constraint=...` 는 실제 CONSTRAINT 만
+                # 인식하므로 `UndefinedObject` 로 항상 실패한다 — 컬럼 + index_where 로 명시.
+                # QA-v3 G4 회귀: queue 행 0개로 발송 silent drop.
                 stmt = (
                     pg_insert(NotificationQueue)
                     .values(
@@ -296,7 +300,8 @@ class NotificationService:
                         created_at=now,
                     )
                     .on_conflict_do_nothing(
-                        constraint="uq_notification_queue_idempotency",
+                        index_elements=["user_id", "template_code", "idempotency_key"],
+                        index_where=NotificationQueue.user_id.is_not(None),
                     )
                 )
                 await session.execute(stmt)

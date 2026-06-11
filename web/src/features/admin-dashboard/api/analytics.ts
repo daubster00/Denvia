@@ -171,6 +171,7 @@ export async function fetchAccess(
 export interface FeedbackSummary {
   good_count: number;
   bad_count: number;
+  reviewed_count: number;
   good_ratio: number | null;
 }
 
@@ -178,6 +179,7 @@ export interface FeedbackSeriesItem {
   bucket_start: string;
   good: number;
   bad: number;
+  reviewed: number;
 }
 
 export interface FeedbackItem {
@@ -189,6 +191,7 @@ export interface FeedbackItem {
   user_id: number | null;
   email: string | null;
   created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface FeedbackResponse {
@@ -208,7 +211,7 @@ export interface FetchFeedbackParams {
   unit?: "day" | "week" | "month";
   from?: string;
   to?: string;
-  rating_filter?: "good" | "bad" | "all";
+  rating_filter?: "good" | "bad" | "reviewed" | "all";
   page?: number;
   per_page?: number;
   q?: string;
@@ -243,9 +246,18 @@ export interface FeedbackDetail {
   question_text: string;
   normalized_query: string | null;
   retrieved_docs: FeedbackRetrievedDoc[];
+  /**
+   * LLM 에 실제로 들어간 최종 프롬프트 (템플릿 + 질문 + top-k 컨텍스트 치환 완료).
+   * 룰 경로 / 0062 마이그레이션 이전 행 / 스트림 중단 행은 null.
+   */
+  prompt_text: string | null;
   answer_text: string | null;
   rule_matched: boolean;
   status: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_usd: string | null;
+  latency_ms: number | null;
   created_at: string;
 }
 
@@ -258,6 +270,31 @@ export async function fetchFeedbackDetail(
   );
   if (!res.ok) throw new Error(`feedback detail fetch failed: ${res.status}`);
   return res.json() as Promise<FeedbackDetail>;
+}
+
+export interface FeedbackReviewResponse {
+  qa_log_id: number;
+  reviewed: boolean;
+  reviewed_at: string | null;
+  reviewed_by_user_id: number | null;
+}
+
+export async function setFeedbackReviewed(
+  qaLogId: number,
+  reviewed: boolean
+): Promise<FeedbackReviewResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/feedback/${qaLogId}/review`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewed }),
+    }
+  );
+  if (!res.ok)
+    throw new Error(`feedback review toggle failed: ${res.status}`);
+  return res.json() as Promise<FeedbackReviewResponse>;
 }
 
 export async function fetchFeedbackExport(

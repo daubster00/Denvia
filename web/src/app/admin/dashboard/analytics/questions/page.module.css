@@ -354,10 +354,11 @@
 
 .detailDrawer {
   position: relative;
-  width: min(520px, 100vw);
+  width: min(720px, 100vw);
   height: 100vh;
   background: #ffffff;
-  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
   display: flex;
   flex-direction: column;
   animation: detailSlideIn 200ms ease-out;
@@ -396,128 +397,183 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #eef2f7;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .detailTitle {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   color: #0f172a;
   margin: 0;
 }
 
 .detailClose {
+  appearance: none;
   background: transparent;
-  border: 0;
-  font-size: 18px;
-  line-height: 1;
+  border: none;
   color: #6b7280;
+  font-size: 22px;
+  line-height: 1;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
+  padding: 4px 8px;
 }
 
 .detailClose:hover {
-  background: #f3f4f6;
   color: #111827;
 }
 
 .detailBody {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px 16px 18px;
+  gap: 20px;
+  padding: 20px;
   overflow-y: auto;
 }
 
-.detailField {
+.detailSection {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.detailFieldLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin: 0;
-}
-
-.detailFieldValue {
-  font-size: 14px;
-  color: #0f172a;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.5;
-}
-
-.detailFieldValueMuted {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0;
-  font-style: italic;
-}
-
-.detailDocList {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.detailDoc {
-  background: #f9fafb;
-  border: 1px solid #eef2f7;
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.detailDocHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.detailDocRank {
-  font-size: 11px;
+.detailSectionTitle {
+  font-size: 12px;
   font-weight: 700;
-  color: #5b21b6;
-  background: #ede9fe;
-  border-radius: 999px;
-  padding: 2px 8px;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0;
 }
 
-.detailDocMeta {
-  font-size: 11px;
+.detailSectionHint {
+  font-size: 12px;
   color: #6b7280;
   margin: 0;
-  word-break: break-word;
 }
 
-.detailDocContent {
-  font-size: 13px;
-  color: #1f2937;
+.detailBlockText {
   margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #111827;
   white-space: pre-wrap;
   word-break: break-word;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.detailDiffBlock {
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+}
+
+.detailAnswerBlock {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+}
+
+.detailPromptBlock {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
   line-height: 1.55;
+  color: #0f172a;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .detailEmpty {
-  font-size: 13px;
-  color: #94a3b8;
-  font-style: italic;
   margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.detailLoading {
+  padding: 32px 0;
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.detailDocList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detailDocCard {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detailDocHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.detailDocIndex {
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.detailDocMetaList {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+}
+
+.detailDocMetaItem {
+  font-size: 11px;
+  background: #f3f4f6;
+  color: #374151;
+  padding: 2px 8px;
+  border-radius: 999px;
+  word-break: break-all;
+}
+
+.detailDocContent {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detailMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  font-size: 12.5px;
+  color: #374151;
+}
+
+.detailMetaLabel {
+  color: #6b7280;
+  margin-right: 6px;
 }
 
 .tableRow {

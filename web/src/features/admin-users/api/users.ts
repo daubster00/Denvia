@@ -9,6 +9,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type SubscriptionStatus = "free" | "pro" | "blocked";
 export type Segment = "doctor" | "hygienist" | "student_other";
+export type Gender = "male" | "female";
 
 export interface UserSearchItem {
   user_id: number;
@@ -29,6 +30,15 @@ export interface UserSearchItem {
   pro_since: string | null;
   card_last4: string | null;
   card_company: string | null;
+  /** 회원가입 선택 입력 — 마이페이지 회원정보 수정과 SSOT. */
+  name?: string | null;
+  birthdate?: string | null;
+  gender?: Gender | null;
+  postcode?: string | null;
+  address_road?: string | null;
+  address_detail?: string | null;
+  /** 마케팅 정보 수신 동의 시각. null=미동의 또는 철회. */
+  marketing_consent_at?: string | null;
 }
 
 export interface UserSearchListResponse {
@@ -129,6 +139,50 @@ export async function fetchUserDetail(
     throw new Error(`admin user detail fetch failed: ${res.status}`);
   }
   return res.json() as Promise<UserDetailResponse>;
+}
+
+/**
+ * 현재 검색 필터를 그대로 적용해 고객 기본정보 엑셀(xlsx)을 내려받는다.
+ * 응답을 Blob 으로 받아 임시 <a download> 로 트리거 — 새 창 이동/리프레시 없음.
+ * 파일명은 서버의 Content-Disposition 헤더를 우선 사용한다.
+ */
+export async function downloadUsersExcel(
+  params: FetchUsersParams = {},
+): Promise<void> {
+  const query = new URLSearchParams();
+  const trimmedQ = params.q?.trim();
+  if (trimmedQ) query.set("q", trimmedQ);
+  if (params.segment) query.set("segment", params.segment);
+  if (params.subscription_status)
+    query.set("subscription_status", params.subscription_status);
+  if (params.blocked !== undefined) query.set("blocked", String(params.blocked));
+  if (params.withdrawn !== undefined)
+    query.set("withdrawn", String(params.withdrawn));
+  if (params.created_from) query.set("created_from", params.created_from);
+  if (params.created_to) query.set("created_to", params.created_to);
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/users/export.xlsx?${query.toString()}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) {
+    throw new Error(`admin users export failed: ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition") ?? "";
+  // RFC 5987 quoted filename — 따옴표·세미콜론 사이의 값만 추출.
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = match?.[1] ?? `denvia_users_${Date.now()}.xlsx`;
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 // Story 6.2 — PATCH /api/v1/admin/users/{user_id}

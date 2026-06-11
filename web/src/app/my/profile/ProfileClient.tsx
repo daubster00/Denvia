@@ -54,39 +54,43 @@ export function ProfileClient() {
   const router = useRouter();
   const user = useSessionStore((s) => s.user);
   const openPopup = useSessionStore((s) => s.openPopup);
-  const showToast = useToastStore((s) => s.show);
-  const qc = useQueryClient();
 
   const { data, isLoading, isError } = useProfile();
 
-  const [name, setName] = useState("");
-  const [postcode, setPostcode] = useState("");
-  const [addressRoad, setAddressRoad] = useState("");
-  const [addressDetail, setAddressDetail] = useState("");
-  const [gender, setGender] = useState<Gender | "">("");
-  const [birthdate, setBirthdate] = useState("");
-  const [pwChangeOpen, setPwChangeOpen] = useState(false);
-  const [pwInitOpen, setPwInitOpen] = useState(false);
-
-  // 서버 데이터가 도착하면 폼 초기값 설정
-  useEffect(() => {
-    if (data) {
-      setName(data.name ?? "");
-      setPostcode(data.postcode ?? "");
-      setAddressRoad(data.address_road ?? "");
-      setAddressDetail(data.address_detail ?? "");
-      setGender(data.gender ?? "");
-      setBirthdate(data.birthdate ?? "");
-    }
-  }, [data]);
-
-  // 세션 가드 — /my/page.tsx와 동일
   useEffect(() => {
     if (!isLoading && isError && user == null) {
       openPopup("email");
       router.replace("/?login=required");
     }
   }, [isLoading, isError, user, openPopup, router]);
+
+  if (isLoading || !data) {
+    return (
+      <>
+        <TopNav />
+        <main className={styles.container}>
+          <p className={styles.loading}>불러오는 중...</p>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  return <ProfileForm profile={data} />;
+}
+
+function ProfileForm({ profile }: { profile: ProfileResponse }) {
+  const showToast = useToastStore((s) => s.show);
+  const qc = useQueryClient();
+
+  const [name, setName] = useState(profile.name ?? "");
+  const [postcode, setPostcode] = useState(profile.postcode ?? "");
+  const [addressRoad, setAddressRoad] = useState(profile.address_road ?? "");
+  const [addressDetail, setAddressDetail] = useState(profile.address_detail ?? "");
+  const [gender, setGender] = useState<Gender | "">(profile.gender ?? "");
+  const [birthdate, setBirthdate] = useState(profile.birthdate ?? "");
+  const [pwChangeOpen, setPwChangeOpen] = useState(false);
+  const [pwInitOpen, setPwInitOpen] = useState(false);
 
   const basicInfoMutation = useMutation({
     mutationFn: (payload: ProfileUpdatePayload) => updateProfile(payload),
@@ -100,7 +104,6 @@ export function ProfileClient() {
     },
   });
 
-  // 마케팅 동의 토글은 별도 mutation — 즉시 저장 + 별도 토스트로 의미를 분리.
   const marketingMutation = useMutation({
     mutationFn: (next: boolean) => updateProfile({ marketing_consent: next }),
     onSuccess: (_data, next) => {
@@ -117,20 +120,6 @@ export function ProfileClient() {
       showToast(msg, 4000);
     },
   });
-
-  if (isLoading || !data) {
-    return (
-      <>
-        <TopNav />
-        <main className={styles.container}>
-          <p className={styles.loading}>불러오는 중...</p>
-        </main>
-        <Footer />
-      </>
-    );
-  }
-
-  const profile: ProfileResponse = data;
 
   const dirty =
     name !== (profile.name ?? "") ||

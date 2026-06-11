@@ -35,9 +35,18 @@ async def _seed_redis_runtime() -> None:
 
 
 async def _insert_admin_if_missing(
-    session, *, email: str, password: str, phone: str | None
+    session,
+    *,
+    email: str,
+    password: str,
+    phone: str | None,
+    admin_grade: str = "operator",
 ) -> None:
-    """이메일 단일 기준 멱등 INSERT — 동일 이메일 admin 이 있으면 skip."""
+    """이메일 단일 기준 멱등 INSERT — 동일 이메일 admin 이 있으면 skip.
+
+    admin_grade 는 0061 의 CHECK 제약(`ck_users_active_admin_grade_required`)을 만족해야 한다.
+    기본값 operator — 마스터 시드는 호출 측에서 'master' 로 명시.
+    """
     result = await session.execute(
         text("SELECT id FROM users WHERE email = :email LIMIT 1"),
         {"email": email},
@@ -56,28 +65,36 @@ async def _insert_admin_if_missing(
             """
             INSERT INTO users
               (email, password_hash, phone, role, subscription_status,
-               phone_verified, must_reset_password, created_at, updated_at)
+               phone_verified, must_reset_password, admin_grade,
+               created_at, updated_at)
             VALUES
               (:email, :password_hash, :phone, 'admin', 'free',
-               false, false, :now, :now)
+               false, false, :admin_grade, :now, :now)
             """
         ),
         {
             "email": email,
             "password_hash": password_hash,
             "phone": phone,
+            "admin_grade": admin_grade,
             "now": now,
         },
     )
     await session.commit()
-    print(f"[seed_admin] admin 계정 생성 완료: {email}")
+    print(f"[seed_admin] admin 계정 생성 완료: {email} (grade={admin_grade})")
 
 
 async def seed_admin() -> None:
+    # 운영 진입용 관리자 — DENVIA_ADMIN_EMAIL 환경에 따라 가변(dev: admin@denvia.local).
     admin_email = os.environ.get("DENVIA_ADMIN_EMAIL", settings.denvia_admin_email)
     admin_password = os.environ.get(
         "DENVIA_ADMIN_INITIAL_PASSWORD", settings.denvia_admin_initial_password
     )
+
+    # 관리자 알림톡 단일 수신 계정 — admin_recipient.ADMIN_RECIPIENT_EMAIL 과 동기.
+    # 운영 진입 이메일과 분리해 dev/local 환경에서도 알림톡 라우팅 SSOT 가 깨지지 않도록 한다
+    # (QA-v3 K7: silent skip 회귀 차단).
+    from api.src.integrations.messaging.admin_recipient import ADMIN_RECIPIENT_EMAIL
 
     engine = create_async_engine(settings.database_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -91,6 +108,15 @@ async def seed_admin() -> None:
             password=admin_password,
             phone=None,
         )
+        # 알림톡 단일 수신 계정 — 운영 진입 이메일과 동일하지 않으면 별도로 시드.
+        # phone 은 관리자 페이지(/admin/account)에서 직접 등록하도록 NULL.
+        if admin_email != ADMIN_RECIPIENT_EMAIL:
+            await _insert_admin_if_missing(
+                session,
+                email=ADMIN_RECIPIENT_EMAIL,
+                password=admin_password,
+                phone=None,
+            )
         # btmdesign 마스터 계정 — 수정요청 게시판 상태 변경 권한 보유
         # (api/src/services/admin_board_service.py: BTMDESIGN_EMAIL 과 동기).
         # phone 은 시드 직후 DB 에서 수동 등록 — 개발 단계 알림톡 수신 1순위.
@@ -99,6 +125,7 @@ async def seed_admin() -> None:
             email="btmdesign@naver.com",
             password="Btm6853!",
             phone=None,
+            admin_grade="master",
         )
 
     await engine.dispose()

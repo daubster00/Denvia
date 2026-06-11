@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +45,9 @@ class BudgetCurrentMonthResponse(BaseModel):
     status: str
     killswitch_active: bool
     killswitch_mode: str | None
+    # 과거 월(이미 지나간 달) 조회면 true. UI에서 게이지·kill-switch 라벨을
+    # "현재 상태"가 아닌 "그 달의 결과"로 보여주기 위한 힌트.
+    is_past_month: bool
 
     model_config = ConfigDict()
 
@@ -65,10 +68,18 @@ async def _build_response(
     response: Response,
     db: AsyncSession,
     redis_runtime: aioredis.Redis,
+    ym: str | None = None,
 ) -> BudgetCurrentMonthResponse:
-    snap = await get_current_month_snapshot(db)
+    snap = await get_current_month_snapshot(db, ym=ym)
     await db.commit()
-    modes = await get_active_modes(db)
+    _, _, current_ym = kst_month_bounds()
+    is_past = snap.year_month != current_ym
+    # killswitch는 "현재" 상태 — 과거 월 조회 시에는 게이지를 빨간 상태로
+    # 만들지 않도록 false로 마스킹한다.
+    if is_past:
+        modes: set[str] = set()
+    else:
+        modes = await get_active_modes(db)
     usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
     monthly_limit_krw = int(
         (snap.monthly_limit_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
@@ -92,17 +103,30 @@ async def _build_response(
             if MODE_MANUAL_TOTAL in modes
             else (next(iter(modes)) if modes else None)
         ),
+        is_past_month=is_past,
     )
 
 
 @router.get("/current-month", response_model=BudgetCurrentMonthResponse)
 async def current_month(
     response: Response,
+    ym: str | None = Query(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        description="조회할 KST 월 (YYYY-MM). 생략 시 현재 월. 미래 월은 422.",
+    ),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
     redis_runtime: aioredis.Redis = Depends(get_redis_runtime),
 ) -> BudgetCurrentMonthResponse:
-    return await _build_response(response, db, redis_runtime)
+    if ym is not None:
+        _, _, current_ym = kst_month_bounds()
+        if ym > current_ym:
+            raise HTTPException(
+                status_code=422,
+                detail="future month not allowed",
+            )
+    return await _build_response(response, db, redis_runtime, ym=ym)
 
 
 @router.patch("/monthly-limit", response_model=BudgetCurrentMonthResponse)

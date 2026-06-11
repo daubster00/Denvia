@@ -587,20 +587,22 @@ function QuestionDetailPanel({
   return (
     <div className={styles.detailPanel}>
       <header className={styles.detailHeader}>
-        <h3 className={styles.detailTitle}>질문 상세</h3>
+        <h3 className={styles.detailTitle}>
+          질문 상세{data ? ` #${data.qa_log_id}` : ""}
+        </h3>
         <button
           type="button"
           className={styles.detailClose}
           onClick={onClose}
           aria-label="상세 패널 닫기"
         >
-          ✕
+          ×
         </button>
       </header>
       <div className={styles.detailBody}>
         {isLoading && (
-          <p className={styles.detailFieldValueMuted} role="status">
-            상세 내용을 불러오는 중…
+          <p className={styles.detailLoading} role="status">
+            불러오는 중…
           </p>
         )}
         {!isLoading && error != null && (
@@ -617,69 +619,136 @@ function QuestionDetailPanel({
         )}
         {data && (
           <>
-            <section className={styles.detailField}>
-              <p className={styles.detailFieldLabel}>작성일시</p>
-              <p className={styles.detailFieldValue}>
-                {formatDateTime(data.created_at)}
+            <section
+              className={styles.detailSection}
+              data-testid="section-question"
+            >
+              <h4 className={styles.detailSectionTitle}>원본 질의</h4>
+              <p className={styles.detailBlockText}>
+                {data.question_text || "—"}
               </p>
             </section>
-            <section className={styles.detailField}>
-              <p className={styles.detailFieldLabel}>질문 원문</p>
-              <p className={styles.detailFieldValue}>
-                {data.question_text || "(없음)"}
-              </p>
-            </section>
-            <section className={styles.detailField}>
-              <p className={styles.detailFieldLabel}>
-                동의어 치환 쿼리 (검색에 실제로 쓰인 문장)
-              </p>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-normalized"
+            >
+              <h4 className={styles.detailSectionTitle}>
+                ① 치환된 문구 (동의어 매칭 결과)
+              </h4>
               {data.normalized_query ? (
-                <p className={styles.detailFieldValue}>
+                <p
+                  className={`${styles.detailBlockText} ${styles.detailDiffBlock}`}
+                >
                   {data.normalized_query}
                 </p>
               ) : (
-                <p className={styles.detailFieldValueMuted}>
-                  치환 없이 원문 그대로 검색되었습니다.
-                </p>
-              )}
-            </section>
-            <section className={styles.detailField}>
-              <p className={styles.detailFieldLabel}>답변</p>
-              {data.answer_text ? (
-                <p className={styles.detailFieldValue}>{data.answer_text}</p>
-              ) : (
-                <p className={styles.detailFieldValueMuted}>
-                  {statusFallback(data.status)}
-                </p>
-              )}
-            </section>
-            <section className={styles.detailField}>
-              <p className={styles.detailFieldLabel}>
-                검색된 문서 top-{data.retrieved_docs.length}
-              </p>
-              {data.retrieved_docs.length === 0 ? (
                 <p className={styles.detailEmpty}>
-                  (이 질문은 RAG 검색 없이 답변되었거나 기록이 없습니다)
+                  기록 없음 — 본 기능 도입(2026-05-20) 이전 질의이거나 처리
+                  중단됨.
+                </p>
+              )}
+            </section>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-retrieved-docs"
+            >
+              <h4 className={styles.detailSectionTitle}>
+                ② top-k 검색에 들어온 문서 ({data.retrieved_docs.length}건)
+              </h4>
+              {data.rule_matched ? (
+                <p className={styles.detailSectionHint}>
+                  룰 매칭 경로로 응답된 질의입니다. retriever를 거치지 않으므로
+                  검색 문서가 없습니다.
+                </p>
+              ) : null}
+              {data.retrieved_docs.length > 0 ? (
+                <div className={styles.detailDocList}>
+                  {data.retrieved_docs.map((doc, idx) => (
+                    <DocCard key={idx} doc={doc} index={idx} />
+                  ))}
+                </div>
+              ) : !data.rule_matched ? (
+                <p className={styles.detailEmpty}>
+                  검색 문서 기록이 없습니다 (기능 도입 이전 질의일 수 있음).
+                </p>
+              ) : null}
+            </section>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-prompt"
+            >
+              <h4 className={styles.detailSectionTitle}>
+                ③ LLM 에 실제로 전달된 프롬프트 (템플릿 + 질문 + 컨텍스트 치환
+                완료)
+              </h4>
+              {data.prompt_text ? (
+                <pre className={styles.detailPromptBlock}>
+                  {data.prompt_text}
+                </pre>
+              ) : data.rule_matched ? (
+                <p className={styles.detailEmpty}>
+                  룰 매칭 경로 — LLM 호출 없이 응답되어 프롬프트가 없습니다.
                 </p>
               ) : (
-                <ol className={styles.detailDocList}>
-                  {data.retrieved_docs.map((doc, idx) => (
-                    <li key={idx} className={styles.detailDoc}>
-                      <div className={styles.detailDocHead}>
-                        <span className={styles.detailDocRank}>
-                          #{idx + 1}
-                        </span>
-                        <p className={styles.detailDocMeta}>
-                          {summarizeDocMetadata(doc.metadata)}
-                        </p>
-                      </div>
-                      <p className={styles.detailDocContent}>
-                        {doc.page_content || "(본문 없음)"}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
+                <p className={styles.detailEmpty}>
+                  프롬프트 기록이 없습니다 (본 기능 도입 이전 질의이거나
+                  스트림이 중단됨).
+                </p>
               )}
+            </section>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-answer"
+            >
+              <h4 className={styles.detailSectionTitle}>④ 최종 답변</h4>
+              {data.answer_text ? (
+                <p
+                  className={`${styles.detailBlockText} ${styles.detailAnswerBlock}`}
+                >
+                  {data.answer_text}
+                </p>
+              ) : (
+                <p className={styles.detailEmpty}>
+                  답변이 기록되지 않았습니다 ({data.status ?? "—"}).
+                </p>
+              )}
+            </section>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-meta"
+            >
+              <h4 className={styles.detailSectionTitle}>메타</h4>
+              <div className={styles.detailMetaGrid}>
+                <div>
+                  <span className={styles.detailMetaLabel}>일시</span>
+                  {formatDateTime(data.created_at)}
+                </div>
+                <div>
+                  <span className={styles.detailMetaLabel}>상태</span>
+                  {data.status ?? "—"}
+                </div>
+                <div>
+                  <span className={styles.detailMetaLabel}>입력/출력 토큰</span>
+                  {data.input_tokens ?? "—"} / {data.output_tokens ?? "—"}
+                </div>
+                <div>
+                  <span className={styles.detailMetaLabel}>처리 시간</span>
+                  {data.latency_ms != null ? `${data.latency_ms} ms` : "—"}
+                </div>
+                <div>
+                  <span className={styles.detailMetaLabel}>룰 매칭</span>
+                  {data.rule_matched ? "예" : "아니오"}
+                </div>
+                <div>
+                  <span className={styles.detailMetaLabel}>비용(USD)</span>
+                  {data.cost_usd ?? "—"}
+                </div>
+              </div>
             </section>
           </>
         )}
@@ -688,23 +757,39 @@ function QuestionDetailPanel({
   );
 }
 
-function summarizeDocMetadata(meta: FeedbackRetrievedDoc["metadata"]): string {
-  if (!meta || typeof meta !== "object") return "";
-  const parts: string[] = [];
-  const pick = (key: string): string | undefined => {
-    const v = (meta as Record<string, unknown>)[key];
-    if (v === undefined || v === null) return undefined;
-    if (typeof v === "string") return v;
-    if (typeof v === "number" || typeof v === "boolean") return String(v);
-    return undefined;
-  };
-  const source = pick("source") ?? pick("file") ?? pick("doc_id");
-  const page = pick("page") ?? pick("page_number");
-  const section = pick("section") ?? pick("title") ?? pick("heading");
-  if (source) parts.push(source);
-  if (section) parts.push(section);
-  if (page) parts.push(`p.${page}`);
-  return parts.join(" · ");
+function DocCard({
+  doc,
+  index,
+}: {
+  doc: FeedbackRetrievedDoc;
+  index: number;
+}) {
+  return (
+    <div className={styles.detailDocCard} data-testid={`retrieved-doc-${index}`}>
+      <div className={styles.detailDocHeader}>
+        <span className={styles.detailDocIndex}>#{index + 1}</span>
+        <MetaPills metadata={doc.metadata} />
+      </div>
+      <pre className={styles.detailDocContent}>
+        {doc.page_content || "(빈 문서)"}
+      </pre>
+    </div>
+  );
+}
+
+function MetaPills({ metadata }: { metadata: Record<string, unknown> }) {
+  const entries = Object.entries(metadata || {});
+  if (entries.length === 0) return null;
+  return (
+    <ul className={styles.detailDocMetaList}>
+      {entries.map(([k, v]) => (
+        <li key={k} className={styles.detailDocMetaItem}>
+          <strong>{k}:</strong>{" "}
+          {typeof v === "object" ? JSON.stringify(v) : String(v)}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function formatBucket(iso: string, unit: QuestionsUnit): string {

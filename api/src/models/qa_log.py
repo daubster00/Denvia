@@ -39,6 +39,9 @@ class QALog(Base):
     # 관리자 감사용 (Story: QA 상세보기) — SSE 응답에 절대 노출되지 않음
     normalized_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     retrieved_docs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # LLM 에 실제로 들어간 최종 프롬프트(템플릿 + 질문 + top-k 컨텍스트 치환 완료).
+    # on_llm_start 콜백이 받는 prompts[0] 그대로. 관리자 감사 전용.
+    prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

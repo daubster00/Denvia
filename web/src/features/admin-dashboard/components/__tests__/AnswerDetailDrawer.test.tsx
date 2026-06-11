@@ -41,6 +41,8 @@ const sampleDetail: FeedbackDetail = {
       metadata: { source: "doc-b.pdf" },
     },
   ],
+  prompt_text:
+    "당신은 치과 행정 어시스턴트입니다.\n\n질문: <샘플 질문>\n\n문서:\n<샘플 문서 본문 1>\n<샘플 문서 본문 2>\n\n답변:",
   answer_text: sampleItem.answer_text,
   rule_matched: false,
   status: "ok",

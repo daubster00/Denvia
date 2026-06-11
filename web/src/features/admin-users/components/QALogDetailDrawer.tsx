@@ -102,8 +102,25 @@ function DetailBody({ detail }: { detail: UserQALogDetail }) {
         ) : null}
       </section>
 
+      <section className={styles.section} data-testid="section-prompt">
+        <h3 className={styles.sectionTitle}>
+          ③ LLM 에 실제로 전달된 프롬프트 (템플릿 + 질문 + 컨텍스트 치환 완료)
+        </h3>
+        {detail.prompt_text ? (
+          <pre className={styles.promptBlock}>{detail.prompt_text}</pre>
+        ) : detail.rule_matched ? (
+          <p className={styles.empty}>
+            룰 매칭 경로 — LLM 호출 없이 응답되어 프롬프트가 없습니다.
+          </p>
+        ) : (
+          <p className={styles.empty}>
+            프롬프트 기록이 없습니다 (본 기능 도입 이전 질의이거나 스트림이 중단됨).
+          </p>
+        )}
+      </section>
+
       <section className={styles.section} data-testid="section-answer">
-        <h3 className={styles.sectionTitle}>③ 최종 답변</h3>
+        <h3 className={styles.sectionTitle}>④ 최종 답변</h3>
         {detail.answer_text ? (
           <p className={`${styles.blockText} ${styles.answerBlock}`}>{detail.answer_text}</p>
         ) : (

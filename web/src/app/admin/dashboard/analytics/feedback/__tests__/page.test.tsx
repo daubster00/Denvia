@@ -17,6 +17,7 @@ vi.mock("@/features/admin-dashboard/api/analytics", () => ({
   buildFeedbackExportUrl: vi.fn(() => "http://localhost:8000/api/v1/admin/analytics/feedback/export?unit=month&rating_filter=all"),
   fetchFeedback: vi.fn(),
   fetchFeedbackExport: vi.fn(),
+  setFeedbackReviewed: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -47,8 +48,13 @@ const mockData = {
   from: "2025-05-01",
   to: "2026-04-30",
   rating_filter: "all",
-  summary: { good_count: 120, bad_count: 34, good_ratio: 0.779 },
-  series: [{ bucket_start: "2026-04-01", good: 55, bad: 8 }],
+  summary: {
+    good_count: 120,
+    bad_count: 34,
+    reviewed_count: 7,
+    good_ratio: 0.779,
+  },
+  series: [{ bucket_start: "2026-04-01", good: 55, bad: 8, reviewed: 2 }],
   items: [
     {
       qa_log_id: 1001,
@@ -59,6 +65,7 @@ const mockData = {
       user_id: 42,
       email: "doctor@denvia.test",
       created_at: "2026-04-15T10:23:00+09:00",
+      reviewed_at: null,
     },
   ],
   page: 1,

@@ -534,6 +534,9 @@ class QAService:
             )
 
             retrieved_docs_payload: list[dict] = []
+            # 관리자 질문 상세 패널 — LLM 에 실제로 들어간 최종 프롬프트.
+            # 룰 경로는 LLM 호출 자체가 없으므로 None 유지.
+            prompt_text_payload: str | None = None
 
             if use_rule:
                 # 룰 응답 경로: rule_matched → token 1회 → done
@@ -556,10 +559,17 @@ class QAService:
                 accumulated_chunks: list[str] = []
                 usage_holder: list[TokenUsage] = []
                 docs_holder: list[list[dict]] = []
+                prompt_holder: list[str | None] = []
 
-                def _on_complete(u: TokenUsage, full: str, docs: list[dict]) -> None:
+                def _on_complete(
+                    u: TokenUsage,
+                    full: str,
+                    docs: list[dict],
+                    prompt: str | None = None,
+                ) -> None:
                     usage_holder.append(u)
                     docs_holder.append(docs)
+                    prompt_holder.append(prompt)
 
                 async for token in query_runner.stream_rag_answer(normalized, _on_complete):
                     if not first_token_logged:
@@ -579,6 +589,7 @@ class QAService:
                 accumulated = "".join(accumulated_chunks)
                 usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
                 retrieved_docs_payload = docs_holder[0] if docs_holder else []
+                prompt_text_payload = prompt_holder[0] if prompt_holder else None
 
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -593,6 +604,9 @@ class QAService:
             # 관리자 감사용 — 동의어 치환 후 쿼리와 top-k 문서 (rule 경로면 docs는 빈 리스트)
             log.normalized_query = normalized
             log.retrieved_docs = retrieved_docs_payload
+            # LLM 에 실제 들어간 최종 프롬프트(템플릿 + 질문 + 컨텍스트 치환 완료).
+            # 룰 경로는 LLM 호출 자체가 없어 None.
+            log.prompt_text = prompt_text_payload
             await db.commit()
 
             # 신규 — 이상탐지 throttle 상태 전달. 무료 사용자는 throttle_just_applied=True 면

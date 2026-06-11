@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   buildFeedbackExportUrl,
   fetchFeedback,
+  setFeedbackReviewed,
   type FeedbackItem,
 } from "@/features/admin-dashboard/api/analytics";
 import { KPICard } from "@/features/admin-dashboard/components/KPICard";
@@ -15,7 +16,7 @@ import { AnswerDetailDrawer } from "@/features/admin-dashboard/components/Answer
 import styles from "./page.module.css";
 
 type Unit = "day" | "week" | "month";
-type RatingFilter = "all" | "good" | "bad";
+type RatingFilter = "all" | "good" | "bad" | "reviewed";
 
 const UNITS: { value: Unit; label: string }[] = [
   { value: "day", label: "일" },
@@ -27,7 +28,19 @@ const RATING_FILTERS: { value: RatingFilter; label: string }[] = [
   { value: "all", label: "전체" },
   { value: "good", label: "GOOD만" },
   { value: "bad", label: "BAD만" },
+  { value: "reviewed", label: "검토완료만" },
 ];
+
+function formatBucketLabel(iso: string, unit: Unit): string {
+  // 차트 x축에 unit별 가독성 있는 라벨을 보여주기 위함.
+  // 월: 2025-06 / 주: 06/09주 / 일: 06/10
+  if (!iso) return iso;
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  if (unit === "month") return `${y}-${m}`;
+  if (unit === "week") return `${m}/${d}주`;
+  return `${m}/${d}`;
+}
 
 const PER_PAGE = 50;
 
@@ -41,6 +54,10 @@ export default function FeedbackPage() {
   const [drawerItem, setDrawerItem] = useState<FeedbackItem | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [pendingReviewIds, setPendingReviewIds] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const queryKey = [
@@ -85,6 +102,38 @@ export default function FeedbackPage() {
     setPage(1);
   }
 
+  const handleToggleReviewed = useCallback(
+    async (item: FeedbackItem) => {
+      const id = item.qa_log_id;
+      const nextReviewed = item.reviewed_at == null;
+      setPendingReviewIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      setReviewError(null);
+      try {
+        await setFeedbackReviewed(id, nextReviewed);
+        await qc.invalidateQueries({
+          queryKey: ["admin", "analytics", "feedback"],
+        });
+      } catch {
+        setReviewError(
+          nextReviewed
+            ? "검토완료 처리에 실패했습니다. 잠시 후 다시 시도해 주세요."
+            : "검토완료 해제에 실패했습니다. 잠시 후 다시 시도해 주세요."
+        );
+      } finally {
+        setPendingReviewIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [qc]
+  );
+
   const handleExport = useCallback(() => {
     setIsExporting(true);
     setExportError(null);
@@ -115,7 +164,14 @@ export default function FeedbackPage() {
   }, [unit, from, to, ratingFilter, q]);
 
   const summary = data?.summary;
-  const series = data?.series ?? [];
+  const series = useMemo(
+    () =>
+      (data?.series ?? []).map((b) => ({
+        ...b,
+        bucket_label: formatBucketLabel(b.bucket_start, unit),
+      })),
+    [data?.series, unit]
+  );
   const goodPct =
     summary?.good_ratio !== null && summary?.good_ratio !== undefined
       ? `${(summary.good_ratio * 100).toFixed(1)}%`
@@ -252,7 +308,13 @@ export default function FeedbackPage() {
               label="BAD 건수"
               value={`${summary!.bad_count.toLocaleString()}건`}
             />
-            <p className={styles.ratioText}>GOOD 비율: {goodPct}</p>
+            <KPICard
+              label="검토완료 건수"
+              value={`${(summary!.reviewed_count ?? 0).toLocaleString()}건`}
+            />
+            <p className={styles.ratioText}>
+              미검토 GOOD 비율: {goodPct}
+            </p>
           </div>
 
           {/* 추세 차트 */}
@@ -260,18 +322,24 @@ export default function FeedbackPage() {
             <DashboardChart
               variant="bar"
               data={series}
-              xKey="bucket_start"
+              xKey="bucket_label"
               series={[
                 { key: "good", label: "GOOD", tone: "success" },
                 { key: "bad", label: "BAD", tone: "error" },
+                { key: "reviewed", label: "검토완료", tone: "brand" },
               ]}
               height={280}
-              ariaLabel={`피드백 추세 — GOOD ${summary!.good_count}건, BAD ${summary!.bad_count}건`}
+              ariaLabel={`피드백 추세 — GOOD ${summary!.good_count}건, BAD ${summary!.bad_count}건, 검토완료 ${summary!.reviewed_count ?? 0}건`}
               emptyMessage="이 기간에 피드백이 없습니다."
             />
           </div>
 
           {/* 상세 리스트 */}
+          {reviewError && (
+            <p className={styles.reviewError} role="alert">
+              {reviewError}
+            </p>
+          )}
           <FeedbackDetailTable
             items={data.items}
             total={data.total}
@@ -280,6 +348,8 @@ export default function FeedbackPage() {
             onPageChange={setPage}
             onRowClick={setDrawerItem}
             onExport={handleExport}
+            onToggleReviewed={handleToggleReviewed}
+            pendingReviewIds={pendingReviewIds}
             isExporting={isExporting}
             exportError={exportError}
           />

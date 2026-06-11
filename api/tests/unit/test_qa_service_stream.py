@@ -78,7 +78,7 @@ async def test_stream_rag_path_yields_token_and_done():
     async def _mock_stream(query, on_complete):
         yield "안녕"
         yield "하세요"
-        on_complete(TokenUsage(5, 10, 15, 0.002), "안녕하세요", [])
+        on_complete(TokenUsage(5, 10, 15, 0.002), "안녕하세요", [], None)
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 
@@ -193,7 +193,7 @@ async def test_stream_does_not_log_question_text(caplog):
 
     async def _mock_stream(query, on_complete):
         yield "답변"
-        on_complete(TokenUsage(1, 2, 3, 0.0), "답변", [])
+        on_complete(TokenUsage(1, 2, 3, 0.0), "답변", [], None)
 
     rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
 

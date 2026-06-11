@@ -59,6 +59,11 @@ class UserQALogDetail(BaseModel):
         default_factory=list,
         description="top-k 검색 문서들 (룰 경로면 빈 리스트, 본 마이그레이션 이전 행은 NULL)",
     )
+    prompt_text: str | None = Field(
+        default=None,
+        description="LLM에 실제로 전달된 최종 프롬프트(템플릿 + 질문 + 컨텍스트 치환 완료). "
+        "룰 경로 / 0062 마이그레이션 이전 행 / 스트림 중단 행은 NULL.",
+    )
     answer_text: str | None = Field(default=None, description="최종 답변 본문")
     rule_matched: bool = False
     status: str | None = None
