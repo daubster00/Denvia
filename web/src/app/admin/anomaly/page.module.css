@@ -98,7 +98,7 @@
 
 .unitToggle {
   display: grid;
-  grid-template-columns: repeat(4, minmax(56px, 88px));
+  grid-template-columns: repeat(5, minmax(56px, 88px));
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   overflow: hidden;
@@ -170,7 +170,7 @@
 
 @media (max-width: 767px) {
   .unitToggle {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     width: 100%;
   }
 }
