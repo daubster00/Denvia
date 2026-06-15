@@ -139,36 +139,30 @@ _REPEATED_QUESTION_LAST_KEY = "qa:last_question:user:{user_id}"
 _REPEATED_QUESTION_STREAK_KEY = "qa:repeated_question_streak:user:{user_id}"
 _REPEATED_QUESTION_TTL = REPEATED_QUESTION_WINDOW_SECONDS
 
-_AUTO_THROTTLE_INBOX_REASONS: dict[str, str] = {
-    "rapid_followup_questions": (
-        "답변 직후 3초 이내에 새 질문을 연속 3회 이상 보내셔서"
-    ),
-    "repeated_question": "같은 질문을 연속 3회 이상 보내셔서",
-}
+# 자동 throttle(속도제한) 적용 시 사용자 쪽지함에 보내는 통합 안내.
+# 탐지 사유(동일 질문/연속 질문)와 무관하게 사용자에게는 동일 문구로 노출한다.
+# (관리자 화면 anomaly_events 의 구분 라벨 ANOMALY_TYPE_LABELS_KO 는 그대로 유지.)
+_AUTO_THROTTLE_INBOX_TITLE = "답변 속도제한이 적용 되었습니다."
+_AUTO_THROTTLE_INBOX_BODY = (
+    "<p>이상로그 탐지로 인해 답변 출력속도가 기존보다 느리게 출력됩니다. "
+    "이는 관리자가 해지하기 전까지 적용됩니다.</p>"
+    '<p>문의사항은 "문의작성"을 통해 남겨주세요. 감사합니다.</p>'
+)
 
 
-def _build_auto_throttle_inbox_message(
-    *, user_id: int, anomaly_type: str
-) -> InboxMessage:
-    """자동 제한(쿨다운) 적용 시 사용자 쪽지함에 발송하는 안내.
+def _build_auto_throttle_inbox_message(*, user_id: int) -> InboxMessage:
+    """자동 throttle(속도제한) 적용 시 사용자 쪽지함에 발송하는 통합 안내.
 
+    탐지 사유(동일/연속 질문)와 무관하게 사용자에게는 동일 문구로 노출한다.
     만료 시각 없이 관리자 수동 해제 전까지 지속된다.
     """
-    reason_phrase = _AUTO_THROTTLE_INBOX_REASONS.get(
-        anomaly_type, "비정상적인 질의 패턴이 감지되어"
-    )
-    body = (
-        f"<p>{reason_phrase} 자동 제한이 적용되었습니다.</p>"
-        "<p>질문은 계속 보낼 수 있지만 응답이 평소보다 천천히 진행됩니다.</p>"
-        "<p>관리자가 해제할 때까지 적용됩니다.</p>"
-    )
     return InboxMessage(
         user_id=user_id,
         notice_id=None,
         popup_id=None,
         type="system",
-        title="자동 제한이 적용되었습니다.",
-        body_html=sanitize_body_html(body),
+        title=_AUTO_THROTTLE_INBOX_TITLE,
+        body_html=sanitize_body_html(_AUTO_THROTTLE_INBOX_BODY),
     )
 
 
@@ -817,9 +811,7 @@ async def check_rapid_followup_questions(
             # 신규 throttle 적용 시점에 사용자 쪽지함으로 안내. 멱등 보강 — 이미
             # throttled 상태였다면(중복 발생) 쪽지 중복 발송 방지로 skip.
             db.add(
-                _build_auto_throttle_inbox_message(
-                    user_id=user_id, anomaly_type="rapid_followup_questions"
-                )
+                _build_auto_throttle_inbox_message(user_id=user_id)
             )
 
         # 자동 throttle 이 적용되더라도 anomaly row 자체는 'new' 로 INSERT —
@@ -979,9 +971,7 @@ async def check_repeated_question(
             # 신규 throttle 적용 시점에 사용자 쪽지함으로 안내. 이미 throttled 라면
             # 중복 발송 방지로 skip — rapid_followup 분기와 동일 규칙.
             db.add(
-                _build_auto_throttle_inbox_message(
-                    user_id=user_id, anomaly_type="repeated_question"
-                )
+                _build_auto_throttle_inbox_message(user_id=user_id)
             )
 
         now_dt2 = datetime.now(tz=timezone.utc)

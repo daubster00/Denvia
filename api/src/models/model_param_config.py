@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
 
-PARAM_KEYS = ("rag_k", "rag_temperature", "max_tokens")
+PARAM_KEYS = ("rag_k", "rag_temperature", "max_tokens", "max_question_chars")
 
 
 class ModelParamConfig(Base):

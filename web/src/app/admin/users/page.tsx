@@ -9,6 +9,7 @@ import {
 } from "@/features/admin-users/components/SearchFilterBar";
 import { UserSearchTable } from "@/features/admin-users/components/UserSearchTable";
 import { useUsersSearch } from "@/features/admin-users/hooks/useUsersSearch";
+import { useUsersSummary } from "@/features/admin-users/hooks/useUsersSummary";
 import {
   downloadUsersExcel,
   type Segment,
@@ -88,6 +89,9 @@ export default function AdminUsersPage() {
     per_page: PER_PAGE,
   });
 
+  // 가입자 수 배지 — 검색·필터와 무관한 절대 가입자 수(목록 검색과 별개 쿼리).
+  const summary = useUsersSummary();
+
   function handleFilterChange(next: SearchFilters) {
     setFilters(next);
     setPage(1); // 필터 변경 시 1페이지로 리셋
@@ -125,9 +129,16 @@ export default function AdminUsersPage() {
     <section className={styles.page} aria-labelledby="admin-users-title">
       <header className={styles.header}>
         <div className={styles.titleGroup}>
-          <h1 id="admin-users-title" className={styles.title}>
-            고객 관리
-          </h1>
+          <div className={styles.titleRow}>
+            <h1 id="admin-users-title" className={styles.title}>
+              고객 관리
+            </h1>
+            {typeof summary.data?.total_users === "number" ? (
+              <span className={styles.countBadge}>
+                가입자 {summary.data.total_users.toLocaleString()}명
+              </span>
+            ) : null}
+          </div>
           <p className={styles.caption}>
             이메일·휴대폰·카드 뒷4자리로 통합 검색하여 사용자 상세를 확인합니다.
           </p>

@@ -47,6 +47,7 @@ from api.src.schemas.admin.users import (
     UserPermissionUpdateRequest,
     UserSearchItem,
     UserSearchListResponse,
+    UserSummaryResponse,
 )
 from api.src.services import (
     admin_user_activity_service,
@@ -242,6 +243,24 @@ async def export_users_xlsx_route(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.get("/summary", response_model=UserSummaryResponse)
+@limiter.limit("60/minute", key_func=_admin_user_id_key)
+async def get_users_summary(
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> UserSummaryResponse:
+    """고객관리 상단 가입자 수 배지 — role='user' 총수(검색·필터 무관)."""
+    total = await admin_user_service.count_registered_users(db)
+    logger.info(
+        "admin.users.summary_viewed",
+        actor_user_id=admin.id,
+        total_users=total,
+        trace_id=str(getattr(request.state, "trace_id", "")),
+    )
+    return UserSummaryResponse(total_users=total)
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse)

@@ -131,13 +131,15 @@ async def test_update_model_params_temperature_too_high():
 
 
 @pytest.mark.asyncio
-async def test_update_model_params_success_upserts_3_keys():
-    """정상 요청 → DB UPSERT 3건 + Redis 갱신 시도."""
+async def test_update_model_params_success_upserts_4_keys():
+    """정상 요청 → DB UPSERT 4건(rag_k/temp/max_tokens/max_question_chars) + Redis 갱신 시도."""
     from api.src.models.model_param_config import ModelParamConfig
     from api.src.schemas.admin.prompts import ModelParamsUpdateRequest
     from api.src.services.prompt_config_service import update_model_params
 
-    req_data = ModelParamsUpdateRequest(rag_k=8, rag_temperature=0.3, max_tokens=2048)
+    req_data = ModelParamsUpdateRequest(
+        rag_k=8, rag_temperature=0.3, max_tokens=2048, max_question_chars=1500
+    )
 
     request = MagicMock()
     request.state = MagicMock()
@@ -156,8 +158,12 @@ async def test_update_model_params_success_upserts_3_keys():
     existing_tokens.key = "max_tokens"
     existing_tokens.value_json = 1024
 
+    existing_qchars = MagicMock(spec=ModelParamConfig)
+    existing_qchars.key = "max_question_chars"
+    existing_qchars.value_json = 2000
+
     execute_results = []
-    for existing in [existing_k, existing_temp, existing_tokens]:
+    for existing in [existing_k, existing_temp, existing_tokens, existing_qchars]:
         r = MagicMock()
         r.scalar_one_or_none.return_value = existing
         execute_results.append(r)
@@ -179,6 +185,7 @@ async def test_update_model_params_success_upserts_3_keys():
     assert result.rag_k == 8
     assert result.rag_temperature == 0.3
     assert result.max_tokens == 2048
+    assert result.max_question_chars == 1500
     db.commit.assert_awaited_once()
     # 기존 값이 있으므로 db.add는 호출되지 않음
     db.add.assert_not_called()

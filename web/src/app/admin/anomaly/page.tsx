@@ -33,11 +33,12 @@ const VALID_TYPES: AnomalyType[] = [
 
 const VALID_STATUSES: AnomalyStatus[] = ["new", "reviewed", "actioned"];
 
-type PeriodUnit = "all" | "day" | "month" | "year";
+type PeriodUnit = "all" | "day" | "week" | "month" | "year";
 
 const PERIOD_OPTIONS: { value: PeriodUnit; label: string }[] = [
   { value: "all", label: "전체" },
   { value: "day", label: "일별" },
+  { value: "week", label: "주별" },
   { value: "month", label: "월별" },
   { value: "year", label: "연도별" },
 ];
@@ -60,6 +61,42 @@ function lastDayOfMonth(yearMonth: string): string {
   return `${yearMonth}-${String(last).padStart(2, "0")}`;
 }
 
+/** 현재 ISO 주차를 input[type=week] 포맷("YYYY-Www")으로 반환. */
+function currentIsoWeek(): string {
+  const now = new Date();
+  const target = new Date(now);
+  const dayNr = (now.getDay() + 6) % 7; // Mon=0..Sun=6
+  target.setDate(now.getDate() - dayNr + 3); // 해당 주의 목요일 = ISO 주차 결정 기준
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const firstThursdayDayNr = (firstThursday.getDay() + 6) % 7;
+  firstThursday.setDate(firstThursday.getDate() - firstThursdayDayNr + 3);
+  const weekNr =
+    1 +
+    Math.round(
+      (target.getTime() - firstThursday.getTime()) /
+        (7 * 24 * 3600 * 1000),
+    );
+  return `${target.getFullYear()}-W${String(weekNr).padStart(2, "0")}`;
+}
+
+/** "YYYY-Www"(ISO 주차) → 그 주 월요일 00:00 ~ 일요일 23:59 (KST) 범위. */
+function isoWeekRange(weekStr: string): { from?: string; to?: string } {
+  const [yStr, wStr] = weekStr.split("-W");
+  const year = Number(yStr);
+  const week = Number(wStr);
+  if (!year || !week) return {};
+  // Jan 4는 항상 ISO 1주차에 속한다 → 그 주 월요일을 기준점으로 잡는다.
+  const jan4 = new Date(year, 0, 4);
+  const jan4DayNr = (jan4.getDay() + 6) % 7;
+  const monday = new Date(year, 0, 4 - jan4DayNr + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return {
+    from: `${toIsoDate(monday)}T00:00:00+09:00`,
+    to: `${toIsoDate(sunday)}T23:59:59+09:00`,
+  };
+}
+
 /**
  * 단위와 선택값을 KST 기준 ISO datetime 범위(+09:00)로 변환.
  * 백엔드 created_at 은 TIMESTAMP WITH TIME ZONE 이므로 offset 포함이 안전.
@@ -67,12 +104,16 @@ function lastDayOfMonth(yearMonth: string): string {
 function resolveRange(
   unit: PeriodUnit,
   day: string,
+  week: string,
   month: string,
   year: string,
 ): { from?: string; to?: string } {
   if (unit === "all") return {};
   if (unit === "day") {
     return { from: `${day}T00:00:00+09:00`, to: `${day}T23:59:59+09:00` };
+  }
+  if (unit === "week") {
+    return isoWeekRange(week);
   }
   if (unit === "month") {
     return {
@@ -111,6 +152,9 @@ export default function AnomalyPage() {
   const [selectedDay, setSelectedDay] = useState<string>(() =>
     toIsoDate(new Date()),
   );
+  const [selectedWeek, setSelectedWeek] = useState<string>(() =>
+    currentIsoWeek(),
+  );
   const [selectedMonth, setSelectedMonth] = useState<string>(() =>
     currentYearMonth(),
   );
@@ -119,8 +163,15 @@ export default function AnomalyPage() {
   );
 
   const range = useMemo(
-    () => resolveRange(periodUnit, selectedDay, selectedMonth, selectedYear),
-    [periodUnit, selectedDay, selectedMonth, selectedYear],
+    () =>
+      resolveRange(
+        periodUnit,
+        selectedDay,
+        selectedWeek,
+        selectedMonth,
+        selectedYear,
+      ),
+    [periodUnit, selectedDay, selectedWeek, selectedMonth, selectedYear],
   );
 
   const { data, isLoading, isError, refetch } = useAnomalyList({
@@ -200,6 +251,21 @@ export default function AnomalyPage() {
                 }}
                 className={styles.dateInput}
                 aria-label="조회 기준일"
+              />
+            </label>
+          ) : null}
+          {periodUnit === "week" ? (
+            <label className={styles.dateLabel}>
+              <span className={styles.dateLabelText}>기준주</span>
+              <input
+                type="week"
+                value={selectedWeek}
+                onChange={(e) => {
+                  setSelectedWeek(e.target.value);
+                  setPage(1);
+                }}
+                className={styles.dateInput}
+                aria-label="조회 기준주"
               />
             </label>
           ) : null}

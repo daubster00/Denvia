@@ -111,6 +111,23 @@ export function ModelParamForm({ defaults }: Props) {
         )}
       </div>
 
+      <div className={styles.field}>
+        <label className={styles.label}>
+          입력 글자수 제한 (사용자 질문, 100~5000)
+        </label>
+        <input
+          type="number"
+          min={100}
+          max={5000}
+          step={100}
+          className={styles.input}
+          {...register("max_question_chars", { valueAsNumber: true })}
+        />
+        {errors.max_question_chars && (
+          <p className={styles.error}>{errors.max_question_chars.message}</p>
+        )}
+      </div>
+
       {mutation.isError && (
         <p className={styles.error}>
           {mutation.error instanceof Error ? mutation.error.message : "저장 실패"}

@@ -26,6 +26,8 @@ DEFAULTS = {
     ),
     "runtime:rag_k": "5",
     "runtime:rag_temperature": "0.0",
+    # 사용자 질문 입력 글자수 상한 (#85) — 시스템 프롬프트 제외, 순수 질문만 카운트.
+    "runtime:max_question_chars": "2000",
     "runtime:show_upgrade_prompt": "true",
     # Story 2.3 — 무료 quota + 의도적 지연 + 구독 버튼 토글
     "runtime:free_daily_quota": "10",

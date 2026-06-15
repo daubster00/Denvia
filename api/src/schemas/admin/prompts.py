@@ -34,6 +34,8 @@ class ModelParamsResponse(BaseModel):
     rag_k: int
     rag_temperature: float
     max_tokens: int
+    # 사용자 질문 입력 글자수 상한 (시스템 프롬프트 제외, 순수 질문만). 기본 2000.
+    max_question_chars: int = 2000
 
 
 class ModelParamsUpdateRequest(BaseModel):
@@ -41,6 +43,9 @@ class ModelParamsUpdateRequest(BaseModel):
     rag_k: int
     rag_temperature: float
     max_tokens: int
+    # 사용자 질문 입력 글자수 상한 (시스템 프롬프트 제외, 순수 질문만). 기본 2000.
+    # 프론트 ModelParamForm 는 항상 전송 — 기본값은 구버전 클라이언트 안전망.
+    max_question_chars: int = 2000
 
     @field_validator("rag_temperature")
     @classmethod

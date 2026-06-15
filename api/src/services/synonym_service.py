@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
@@ -548,10 +549,47 @@ async def export_csv(db: AsyncSession) -> bytes:
 # RAG runtime helpers
 # ---------------------------------------------------------------------------
 
+# 접두-기호형 동의어 패턴: <영숫자 접두><기호><tail>  (예: "g.inlay" → 접두 "g", tail "inlay")
+_PREFIXED_SYMBOL_FORM = re.compile(r"^[a-z0-9]+[^a-z0-9가-힣]+(?P<tail>[a-z0-9가-힣].*)$")
+_HAS_SYMBOL = re.compile(r"[^a-z0-9가-힣]")
+
+
+def _sanitize_group_synonyms(synonyms: list[str]) -> list[str]:
+    """vendor 동의어 정규화에 넘기기 전, 접두-기호형 동의어를 런타임 dict에서만 제거한다.
+
+    #94: 그룹 동의어가 ["inray","inlay","g.inlay"] 일 때, "g.inlay"는 vendor PHASE 1
+    (기호 포함 동의어 직접 치환)이 토큰 전체를 대표어로 바꿔 "g." 접두가 사라진다
+    (→ "인레이"). 같은 그룹에 평문 "inlay"가 있으면 "g.inlay"를 dict에서 빼,
+    토크나이저가 안쪽 "inlay"만 치환해 접두를 보존("g.인레이")하도록 한다.
+
+    정당한 기호 동의어(c/f, p/e 등)는 tail("f","e")이 평문 동의어와 일치하지 않으므로
+    그대로 유지된다. DB·관리자 UI·검색에는 영향 없음(런타임 dict 빌드 시점에만 적용).
+    """
+    plain_lower = {
+        s.lower() for s in synonyms if not _HAS_SYMBOL.search(s.lower())
+    }
+    kept: list[str] = []
+    for s in synonyms:
+        sl = s.lower()
+        if _HAS_SYMBOL.search(sl):
+            m = _PREFIXED_SYMBOL_FORM.match(sl)
+            if m and m.group("tail") in plain_lower:
+                continue  # 접두 보존을 위해 런타임 dict에서만 제외
+        kept.append(s)
+    return kept
+
+
 async def build_synonyms_dict_from_db(db: AsyncSession) -> dict[str, list[str]]:
-    """RAG normalize_query(query, dict)에 직접 전달할 dict 빌드."""
+    """RAG normalize_query(query, dict)에 직접 전달할 dict 빌드.
+
+    접두-기호형 동의어(평문 tail이 있는 "g.inlay" 등)는 vendor PHASE 1 직접치환이
+    접두를 삼키므로 빌드 시 제거해 토크나이저 경유 치환으로 접두를 보존한다(#94).
+    """
     rows = (await db.execute(select(SynonymGroup))).scalars().all()
-    return {r.canonical_term: list(r.synonyms or []) for r in rows}
+    return {
+        r.canonical_term: _sanitize_group_synonyms(list(r.synonyms or []))
+        for r in rows
+    }
 
 
 async def _get_redis() -> aioredis.Redis:
@@ -590,4 +628,5 @@ __all__ = [
     "list_groups",
     "update_group",
     "_csv_filename_today",
+    "_sanitize_group_synonyms",
 ]

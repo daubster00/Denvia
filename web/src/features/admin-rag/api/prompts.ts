@@ -18,6 +18,8 @@ export interface ModelParamsResponse {
   rag_k: number;
   rag_temperature: number;
   max_tokens: number;
+  /** 사용자 질문 입력 글자수 상한 (시스템 프롬프트 제외, 순수 질문만). */
+  max_question_chars: number;
 }
 
 export const promptUpdateSchema = z.object({
@@ -29,6 +31,11 @@ export const modelParamsSchema = z.object({
   rag_k: z.number().int().min(1, "최소 1 이상").max(20, "최대 20 이하"),
   rag_temperature: z.number().min(0, "최소 0.0 이상").max(1, "최대 1.0 이하"),
   max_tokens: z.number().int().min(256, "최소 256 이상").max(4096, "최대 4096 이하"),
+  max_question_chars: z
+    .number()
+    .int()
+    .min(100, "최소 100 이상")
+    .max(5000, "최대 5000 이하"),
 });
 
 export type PromptUpdateInput = z.infer<typeof promptUpdateSchema>;

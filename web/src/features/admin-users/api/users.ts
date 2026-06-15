@@ -48,6 +48,11 @@ export interface UserSearchListResponse {
   total: number;
 }
 
+export interface UserSummaryResponse {
+  /** 가입된 일반 사용자 총수(role='user', 관리자 제외, 탈퇴자 포함) — 검색·필터 무관. */
+  total_users: number;
+}
+
 export interface FetchUsersParams {
   q?: string;
   segment?: Segment;
@@ -139,6 +144,20 @@ export async function fetchUserDetail(
     throw new Error(`admin user detail fetch failed: ${res.status}`);
   }
   return res.json() as Promise<UserDetailResponse>;
+}
+
+/**
+ * 고객관리 상단 가입자 수 배지 — 검색·필터와 무관한 절대 가입자 수.
+ * GET /api/v1/admin/users/summary
+ */
+export async function fetchUsersSummary(): Promise<UserSummaryResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/users/summary`, {
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error(`admin users summary fetch failed: ${res.status}`);
+  }
+  return res.json() as Promise<UserSummaryResponse>;
 }
 
 /**

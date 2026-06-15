@@ -68,6 +68,17 @@ class UserSearchListResponse(BaseModel):
     total: int
 
 
+class UserSummaryResponse(BaseModel):
+    """GET /api/v1/admin/users/summary 응답 — 고객관리 상단 가입자 수 배지.
+
+    검색·필터와 무관한 절대값이라 관리자가 검색해도 배지 숫자가 흔들리지 않는다.
+    """
+
+    total_users: int = Field(
+        description="가입된 일반 사용자 총수(role='user', 관리자 제외, 탈퇴자 포함)."
+    )
+
+
 class SubscriptionSummary(BaseModel):
     """상세 Drawer 결제 정보 섹션."""
 
@@ -208,6 +219,7 @@ class AdminDMSendResponse(BaseModel):
 __all__ = [
     "UserSearchItem",
     "UserSearchListResponse",
+    "UserSummaryResponse",
     "SubscriptionSummary",
     "RecentQALog",
     "RecentAnomalyEvent",

@@ -504,4 +504,19 @@ async def export_users_xlsx(
     return buf.getvalue(), len(rows)
 
 
-__all__ = ["search_users", "get_user_detail", "export_users_xlsx"]
+async def count_registered_users(db: AsyncSession) -> int:
+    """가입된 일반 사용자(role='user', 관리자 제외) 총수.
+
+    검색·필터와 무관한 절대값 — 고객관리 상단 가입자 수 배지용.
+    탈퇴자(withdrawn_at) 포함: '가입자 수' 1차 요구라 단순 총계로 센다.
+    """
+    stmt = select(func.count()).select_from(User).where(User.role == "user")
+    return int((await db.execute(stmt)).scalar_one())
+
+
+__all__ = [
+    "search_users",
+    "get_user_detail",
+    "export_users_xlsx",
+    "count_registered_users",
+]

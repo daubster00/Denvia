@@ -14,6 +14,7 @@ from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.qa import FeedbackCreateRequest, FeedbackResponse, QAEchoRequest, QAEchoResponse, QAStreamRequest
 from api.src.services.killswitch_service import is_any_total_block_active, is_auto_free_only_active
+from api.src.services.prompt_config_service import DEFAULT_QUESTION_CHARS
 from api.src.services.qa_feedback_service import upsert_feedback
 from api.src.services.qa_service import QAService
 
@@ -68,6 +69,29 @@ async def qa_stream(
                 "code": "BUDGET_HARD_CAP_REACHED",
                 "message": "이번 달 예산 소진으로 무료 질의가 일시 중단되었습니다. "
                            "다음 달 재개 또는 Pro 구독을 고려해주세요",
+            },
+        )
+
+    # #85 — 사용자 질문 입력 글자수 상한 검증. 상한은 관리자 페이지(모델 파라미터)에서
+    # 설정하며 Redis runtime:max_question_chars 에 반영된다. 시스템 프롬프트는 별도
+    # 변수(PROMPT_MODULES)라 question_text 에 포함되지 않으므로 자동으로 카운트에서 빠진다.
+    max_q_chars_raw = await redis_runtime.get("runtime:max_question_chars")
+    try:
+        max_q_chars = (
+            int(max_q_chars_raw)
+            if max_q_chars_raw is not None
+            else DEFAULT_QUESTION_CHARS
+        )
+    except (TypeError, ValueError):
+        max_q_chars = DEFAULT_QUESTION_CHARS
+    if len(body.question_text) > max_q_chars:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "QUESTION_TOO_LONG",
+                "message": f"질문은 최대 {max_q_chars}자까지 입력할 수 있습니다.",
+                "max_question_chars": max_q_chars,
+                "received": len(body.question_text),
             },
         )
 

@@ -29,6 +29,9 @@ logger = structlog.get_logger(__name__)
 VALID_K_RANGE = (1, 20)
 VALID_TEMP_RANGE = (0.0, 1.0)
 VALID_TOKENS_RANGE = (256, 4096)
+# 사용자 질문 입력 글자수 상한 — 시스템 프롬프트는 별도 변수라 카운트에서 자동 제외.
+VALID_QUESTION_CHARS_RANGE = (100, 5000)
+DEFAULT_QUESTION_CHARS = 2000
 
 
 async def _get_redis() -> aioredis.Redis:
@@ -129,6 +132,9 @@ async def get_model_params(db: AsyncSession) -> ModelParamsResponse:
         rag_k=int(params.get("rag_k", 5)),
         rag_temperature=float(params.get("rag_temperature", 0.0)),
         max_tokens=int(params.get("max_tokens", 1024)),
+        max_question_chars=int(
+            params.get("max_question_chars", DEFAULT_QUESTION_CHARS)
+        ),
     )
 
 
@@ -151,6 +157,19 @@ async def update_model_params(
         errors.append(
             {"field": "max_tokens", "min": 256, "max": 4096, "received": req.max_tokens}
         )
+    if not (
+        VALID_QUESTION_CHARS_RANGE[0]
+        <= req.max_question_chars
+        <= VALID_QUESTION_CHARS_RANGE[1]
+    ):
+        errors.append(
+            {
+                "field": "max_question_chars",
+                "min": VALID_QUESTION_CHARS_RANGE[0],
+                "max": VALID_QUESTION_CHARS_RANGE[1],
+                "received": req.max_question_chars,
+            }
+        )
 
     if errors:
         raise HTTPException(
@@ -163,6 +182,7 @@ async def update_model_params(
         "rag_k": req.rag_k,
         "rag_temperature": req.rag_temperature,
         "max_tokens": req.max_tokens,
+        "max_question_chars": req.max_question_chars,
     }
     before: dict[str, object] = {}
 
@@ -203,6 +223,7 @@ async def update_model_params(
                     "runtime:rag_k": str(req.rag_k),
                     "runtime:rag_temperature": str(req.rag_temperature),
                     "runtime:max_tokens": str(req.max_tokens),
+                    "runtime:max_question_chars": str(req.max_question_chars),
                 }
             )
     except Exception as e:
@@ -212,4 +233,5 @@ async def update_model_params(
         rag_k=req.rag_k,
         rag_temperature=req.rag_temperature,
         max_tokens=req.max_tokens,
+        max_question_chars=req.max_question_chars,
     )

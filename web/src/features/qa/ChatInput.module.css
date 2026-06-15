@@ -65,3 +65,19 @@
   color: #aeb0b6;
   cursor: not-allowed;
 }
+
+/* #85: 입력 글자수 카운터 — 입력창 좌하단 패딩 영역.
+   전송 버튼이 우측 세로 중앙에 있어 우하단을 피해 좌측에 둔다(겹침 방지). */
+.counter {
+  position: absolute;
+  left: 18px;
+  bottom: 8px;
+  font-size: 12px;
+  color: #aeb0b6;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.counterNearLimit {
+  color: #dc2626;
+}

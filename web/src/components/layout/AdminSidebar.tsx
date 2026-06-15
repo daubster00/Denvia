@@ -58,11 +58,11 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     icon: IconStorage as IconComponent,
-    label: "RAG 데이터 관리",
+    label: "RAG",
     href: "/admin/rag",
     children: [
       { label: "동의어", href: "/admin/synonyms" },
-      { label: "코드소스", href: "/admin/rag" },
+      { label: "데이터관리", href: "/admin/rag" },
       { label: "프롬프트", href: "/admin/prompt" },
     ],
   },

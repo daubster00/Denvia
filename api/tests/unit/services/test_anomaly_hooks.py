@@ -206,11 +206,11 @@ async def test_rapid_followup_threshold_inserts_new_event(fake_quota, db):
     assert event.reviewed_by_admin_id is None
     assert event.reviewed_at is None
     assert event.details.get("auto_actioned") is True
-    # 쪽지함 안내 — 사용자에게 자동 제한 적용 사실을 알린다.
+    # 쪽지함 안내 — 사용자에게 속도제한 적용 사실을 알린다(통합 문구).
     inbox = inboxes[0]
     assert inbox.user_id == user_id
     assert inbox.type == "system"
-    assert "자동 제한" in inbox.title
+    assert "속도제한" in inbox.title
 
 
 @pytest.mark.asyncio

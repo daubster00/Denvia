@@ -23,6 +23,7 @@ const defaultParams = {
   rag_k: 5,
   rag_temperature: 0.0,
   max_tokens: 1024,
+  max_question_chars: 2000,
 };
 
 describe("ModelParamForm", () => {

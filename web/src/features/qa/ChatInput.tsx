@@ -19,6 +19,11 @@ interface ChatInputProps {
   loading?: boolean;
   /** Story 2.6: 외부 ref 주입 — chip 클릭 후 포커스 이동. 부재 시 내부 useRef 사용. */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
+  /**
+   * #85: 사용자 질문 입력 글자수 상한(UX 가드). 기본 2000.
+   * 실제 강제는 백엔드(runtime:max_question_chars)가 SSOT — 여기선 입력 단계 가드 + 카운터.
+   */
+  maxLength?: number;
 }
 
 /**
@@ -35,6 +40,7 @@ export function ChatInput({
   onSubmit,
   loading = false,
   inputRef: externalRef,
+  maxLength = 2000,
 }: ChatInputProps) {
   const openPopup = useSessionStore((s) => s.openPopup);
   const isHero = variant === "hero";
@@ -87,6 +93,7 @@ export function ChatInput({
 
   const trimmed = (value ?? "").trim();
   const sendDisabled = loading || !trimmed;
+  const currentLen = (value ?? "").length;
 
   return (
     <div className={styles.wrapper}>
@@ -97,11 +104,21 @@ export function ChatInput({
         onKeyDown={handleKeyDown}
         placeholder="무엇이든 물어보세요"
         aria-label="질문 입력"
-        maxLength={2000}
+        maxLength={maxLength}
         rows={1}
         disabled={loading}
         className={styles.input}
       />
+      <span
+        aria-live="polite"
+        className={
+          currentLen >= maxLength
+            ? `${styles.counter} ${styles.counterNearLimit}`
+            : styles.counter
+        }
+      >
+        {currentLen}/{maxLength}
+      </span>
       <button
         type="button"
         aria-label="질문 전송"
