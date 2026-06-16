@@ -10,6 +10,7 @@
 }
 
 .shellInline {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: calc(100vh - var(--topnav-height, 64px));
@@ -129,12 +130,42 @@
   display: block;
 }
 
-/* 답변 지연 안내문구 — 입력창 바로 위 회색 안내 (관리자 콘텐츠 페이지에서 편집) */
-.delayNotice {
+/* #86: 답변 지연 안내문구 — 채팅 화면 상단 중앙 오버레이.
+   "생각중" 상태일 때만 렌더되며, 상단 패딩(72px) 영역에 떠서 메시지를 밀지 않는다.
+   (관리자 콘텐츠 페이지에서 텍스트 편집) */
+.delayNoticeTop {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  max-width: min(90%, 640px);
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #9b9da3;
+  text-align: center;
+  white-space: pre-wrap;
+  background-color: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+}
+
+/* #86: 독립답변 안내문구 — 입력창 바로 위.
+   글자색은 "Pro — 무제한"(.remainingCaption)과 동일한 회색 토큰을 재사용. */
+.independentNotice {
   font-size: 12px;
   color: #9b9da3;
   line-height: 1.5;
   margin: 0 0 6px;
   padding: 0 4px;
   white-space: pre-wrap;
+}
+
+@media (max-width: 767px) {
+  .delayNoticeTop {
+    top: 12px;
+    font-size: 11px;
+    padding: 5px 12px;
+  }
 }

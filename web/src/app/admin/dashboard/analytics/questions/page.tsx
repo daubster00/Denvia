@@ -16,6 +16,7 @@ import {
   DashboardChart,
   type ChartSeries,
 } from "@/features/admin-dashboard/components/DashboardChart";
+import { formatKRW } from "@/lib/format-currency";
 import styles from "./page.module.css";
 
 const UNITS: { value: QuestionsUnit; label: string; hint: string }[] = [
@@ -748,7 +749,22 @@ function QuestionDetailPanel({
                   <span className={styles.detailMetaLabel}>비용(USD)</span>
                   {data.cost_usd ?? "—"}
                 </div>
+                <div>
+                  <span className={styles.detailMetaLabel}>비용(원화 환산)</span>
+                  {data.cost_usd != null
+                    ? formatKRW(data.cost_krw)
+                    : "—"}
+                </div>
               </div>
+              {data.cost_usd != null && (
+                <p className={styles.detailMetaNote}>
+                  {exchangeRateNote(
+                    data.usd_to_krw,
+                    data.usd_to_krw_search_date,
+                    data.usd_to_krw_updated_at,
+                  )}
+                </p>
+              )}
             </section>
           </>
         )}
@@ -809,6 +825,33 @@ function formatDateTime(iso: string): string {
   const hh = String(dt.getHours()).padStart(2, "0");
   const mi = String(dt.getMinutes()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+/**
+ * 원화 환산의 근거를 한 줄로 설명한다.
+ * 예) "환율 기준: 1 USD = ₩1,392 (2026-06-13 환율, 06-16 09:00 갱신)"
+ * 환율 API 자동 갱신 전(메타 없음)이면 기본 환율 안내만 표기한다.
+ */
+function exchangeRateNote(
+  usdToKrw: number,
+  searchDate: string | null,
+  updatedAt: string | null,
+): string {
+  const base = `환율 기준: 1 USD = ${formatKRW(usdToKrw)}`;
+  const parts: string[] = [];
+  if (searchDate) parts.push(`${searchDate} 환율`);
+  if (updatedAt) {
+    const dt = new Date(updatedAt);
+    if (!Number.isNaN(dt.getTime())) {
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      const hh = String(dt.getHours()).padStart(2, "0");
+      const mi = String(dt.getMinutes()).padStart(2, "0");
+      parts.push(`${mm}-${dd} ${hh}:${mi} 갱신`);
+    }
+  }
+  if (parts.length === 0) return `${base} (기본 적용 환율)`;
+  return `${base} (${parts.join(", ")})`;
 }
 
 function segmentLabel(seg: string | null): string {

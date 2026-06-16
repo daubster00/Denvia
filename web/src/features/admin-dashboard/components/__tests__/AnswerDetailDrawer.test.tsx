@@ -46,6 +46,14 @@ const sampleDetail: FeedbackDetail = {
   answer_text: sampleItem.answer_text,
   rule_matched: false,
   status: "ok",
+  input_tokens: null,
+  output_tokens: null,
+  cost_usd: null,
+  cost_krw: null,
+  usd_to_krw: 1400,
+  usd_to_krw_updated_at: null,
+  usd_to_krw_search_date: null,
+  latency_ms: null,
   created_at: sampleItem.created_at,
 };
 

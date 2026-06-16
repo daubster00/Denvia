@@ -482,7 +482,6 @@ class QAService:
             apply_scaling_rules,
             normalize_query,
             generate_rule_answer,
-            get_syn_dict,
             extract_procedures,
         )
 
@@ -511,7 +510,9 @@ class QAService:
             await query_runner.ensure_initialized()
             t_init_ms = int((time.perf_counter() - t0) * 1000)
             scaled = await asyncio.to_thread(apply_scaling_rules, question_text)
-            syn_dict = await asyncio.to_thread(get_syn_dict)
+            # 게시판 #105: vendor 파일 기반 get_syn_dict 대신 DB(synonym_groups)→Redis
+            # 기반 dict를 사용해 관리자 동의어 편집이 라이브 챗봇에 즉시 반영되게 한다.
+            syn_dict = await query_runner.get_synonyms_dict()
             normalized = await asyncio.to_thread(normalize_query, scaled, syn_dict)
             rule_answer = await asyncio.to_thread(generate_rule_answer, normalized)
             procedures = await asyncio.to_thread(extract_procedures, normalized)

@@ -65,11 +65,23 @@ export function ChatShell({
   const isPro = quotaData?.subscription_status === "pro";
   const isAdmin = quotaData?.subscription_status === "admin";
   const delayNoticeText = quotaData?.free_delay_notice_text?.trim() ?? "";
-  // 무료 플랜 전용 안내 — pro/admin 은 지연 자체가 없으므로 노출하지 않는다.
+  // 답변 지연 안내문구 (#86): 채팅 화면 상단 중앙에 배치하고, "생각중" 상태일 때만 노출.
+  // 무료 플랜 전용 — pro/admin 은 지연 자체가 없으므로 노출하지 않는다.
   // 백엔드(`/me/quota`)에서도 빈 문자열로 강제하지만, 클라이언트에서도 한 번 더 차단.
-  const delayNotice = delayNoticeText && !isPro && !isAdmin ? (
-    <p role="note" className={styles.delayNotice}>
+  const showDelayNotice =
+    isStreaming && delayNoticeText && !isPro && !isAdmin;
+  const delayNotice = showDelayNotice ? (
+    <p role="note" className={styles.delayNoticeTop}>
       {delayNoticeText}
+    </p>
+  ) : null;
+
+  // 독립답변 안내문구 (#86): 질문한 뒤(inline) 화면에서만 노출. 초기(hero) 화면엔
+  // 표시하지 않으며, "생각중" 출력 중에도 표시하지 않는다.
+  // 글자색은 "Pro — 무제한"(.remainingCaption)과 동일 회색 토큰을 재사용한다.
+  const independentAnswerNotice = !isStreaming ? (
+    <p role="note" className={styles.independentNotice}>
+      Denvia는 1개의 질문에 대한 독립적인 답변만 가능합니다. 이전 질문에 대한 답변은 이어지지 않습니다.
     </p>
   ) : null;
 
@@ -84,10 +96,10 @@ export function ChatShell({
   ) : null;
 
   if (isHero) {
+    // 초기 화면(질문 전): 안내문구·지연문구 모두 노출하지 않는다 (#86).
     return (
       <div className={styles.shellHero}>
         <div className={styles.inputCenter}>
-          {delayNotice}
           <ChatInput
             variant="hero"
             interactive
@@ -104,6 +116,8 @@ export function ChatShell({
 
   return (
     <div className={styles.shellInline}>
+      {/* 답변 지연 안내문구 — 채팅 화면 상단 중앙, "생각중" 상태일 때만 (#86). */}
+      {delayNotice}
       <div
         role="log"
         aria-label="대화 내역"
@@ -124,7 +138,8 @@ export function ChatShell({
         <div ref={bottomRef} />
       </div>
       <div className={styles.inputBottom}>
-        {delayNotice}
+        {/* 독립답변 안내문구 — 질문 후 화면, "생각중"이 아닐 때만 (#86). */}
+        {independentAnswerNotice}
         <ChatInput
           variant="inline"
           value={inputValue}

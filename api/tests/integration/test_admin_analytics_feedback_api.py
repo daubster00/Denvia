@@ -10,9 +10,17 @@ import jwt as pyjwt
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from api.src.deps.redis import get_redis_runtime
 from api.src.main import app
 from api.src.models.base import get_session
 from api.src.settings import settings
+
+
+def _fake_redis_runtime():
+    """get_redis_runtime override — .get(KEY) → None → 환율 폴백(1400)."""
+    mock = MagicMock()
+    mock.get = AsyncMock(return_value=None)
+    return mock
 
 
 def _make_jwt(role: str = "admin") -> str:
@@ -420,6 +428,7 @@ class TestFeedbackDetailEndpoint:
 
         with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
             app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
             try:
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                     res = await client.get(
@@ -447,6 +456,30 @@ class TestFeedbackDetailEndpoint:
         assert data["retrieved_docs"][0]["metadata"]["source"] == "doc-a.pdf"
         assert data["rule_matched"] is False
         assert res.headers.get("cache-control") == "no-store"
+
+    async def test_detail_includes_krw_conversion(self):
+        """cost_usd 가 있으면 cost_krw 환산 + 적용 환율(폴백 1400)을 함께 반환."""
+        from decimal import Decimal
+
+        row = self._row(cost_usd=Decimal("0.012345"))
+        res = await self._call(qa_log_id=1004, row=row)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["usd_to_krw"] == 1400  # Redis 미설정 → 폴백
+        # 0.012345 * 1400 = 17.283 → 17 (원 단위 반올림).
+        assert data["cost_krw"] == 17
+        # 자동 갱신 전이므로 메타는 None.
+        assert data["usd_to_krw_updated_at"] is None
+        assert data["usd_to_krw_search_date"] is None
+
+    async def test_detail_krw_null_when_cost_usd_null(self):
+        """cost_usd 가 None 이면 cost_krw 도 None, 환율 필드는 그대로 노출."""
+        row = self._row(cost_usd=None)
+        res = await self._call(qa_log_id=1005, row=row)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["cost_krw"] is None
+        assert data["usd_to_krw"] == 1400
 
     async def test_detail_404_when_missing(self):
         res = await self._call(qa_log_id=99999, row=None)
@@ -506,3 +539,59 @@ class TestFeedbackDetailEndpoint:
             app.dependency_overrides.clear()
         assert res.status_code == 200
         assert "spreadsheetml" in res.headers.get("content-type", "")
+
+
+@pytest.mark.asyncio
+class TestFeedbackDelete:
+    """DELETE /feedback/{qa_log_id} — 피드백분석 목록 삭제 (#100)."""
+
+    async def test_delete_success(self):
+        token = _make_admin_jwt()
+        admin = _make_admin()
+        gen = _stub_session()
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
+            app.dependency_overrides[get_session] = gen
+            with patch(
+                "api.src.routers.admin.analytics.delete_feedback",
+                new=AsyncMock(return_value=2),
+            ):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.delete(
+                        "/api/v1/admin/analytics/feedback/1001",
+                        cookies={"denvia_admin_session": token},
+                    )
+            app.dependency_overrides.clear()
+        assert res.status_code == 200
+        body = res.json()
+        assert body["qa_log_id"] == 1001
+        assert body["deleted"] == 2
+
+    async def test_delete_404_when_missing(self):
+        token = _make_admin_jwt()
+        admin = _make_admin()
+        gen = _stub_session()
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=admin)):
+            app.dependency_overrides[get_session] = gen
+            with patch(
+                "api.src.routers.admin.analytics.delete_feedback",
+                new=AsyncMock(return_value=0),
+            ):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    res = await client.delete(
+                        "/api/v1/admin/analytics/feedback/999999",
+                        cookies={"denvia_admin_session": token},
+                    )
+            app.dependency_overrides.clear()
+        assert res.status_code == 404
+
+    async def test_delete_requires_admin(self):
+        token = _make_jwt(role="user")
+        regular = _make_admin()
+        regular.role = "user"
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=regular)):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.delete(
+                    "/api/v1/admin/analytics/feedback/1001",
+                    cookies={"denvia_admin_session": token},
+                )
+        assert res.status_code == 401

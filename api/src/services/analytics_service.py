@@ -718,6 +718,27 @@ async def set_feedback_reviewed(
     }
 
 
+async def delete_feedback(
+    session: AsyncSession,
+    qa_log_id: int,
+) -> int:
+    """qa_log_id 의 모든 피드백 행을 삭제한다.
+
+    피드백분석 목록은 qa_log_id 단위로 표시되므로(검토 토글과 동일),
+    한 qa_log_id 에 묶인 피드백 행을 일괄 삭제한다. qa_logs 원본은
+    보존하고 qa_feedback 행만 제거한다. 삭제된 행 수를 반환.
+    """
+    rows = (await session.execute(
+        select(QAFeedback).where(QAFeedback.qa_log_id == qa_log_id)
+    )).scalars().all()
+    if not rows:
+        return 0
+    for r in rows:
+        await session.delete(r)
+    await session.flush()
+    return len(rows)
+
+
 # =============================================================================
 # 질문 분석 — qa_logs 기반 일/주/월/년 집계 + 정렬·상세·엑셀
 # =============================================================================

@@ -8,6 +8,7 @@ import { LoginPopupMount } from "@/features/auth/LoginPopupMount";
 import { OAuthErrorBanner } from "@/features/auth/OAuthErrorBanner";
 import { AppAlert } from "@/components/feedback/AppAlert";
 import { AppToast } from "@/components/feedback/AppToast";
+import { AnomalyAlertWatcher } from "@/features/inbox/components/AnomalyAlertWatcher";
 import { denviaTokenOverrides } from "@/lib/theme";
 
 const queryClient = new QueryClient({
@@ -34,6 +35,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           </Suspense>
           <AppAlert />
           <AppToast />
+          {/* #106: 무료 플랜 사용자에게만 — 페이지 전환 시 도착한 이상탐지 쪽지 1회 경고 팝업 */}
+          <AnomalyAlertWatcher />
         </SessionBootstrap>
       </ThemeProvider>
     </QueryClientProvider>

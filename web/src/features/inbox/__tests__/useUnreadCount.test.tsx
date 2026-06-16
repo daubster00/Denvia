@@ -14,6 +14,12 @@ vi.mock("../api", () => ({
   fetchActivePopups: vi.fn(),
 }));
 
+// #106: 라우트 변경 시 refetch 검증을 위해 usePathname 을 제어 가능하게 모킹.
+const mockPathname = vi.fn<() => string | null>(() => "/");
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname(),
+}));
+
 const { fetchUnreadCount, fetchActivePopups } = await import("../api");
 
 function makeWrapper() {
@@ -28,6 +34,7 @@ function makeWrapper() {
 beforeEach(() => {
   vi.mocked(fetchUnreadCount).mockReset();
   vi.mocked(fetchActivePopups).mockReset();
+  mockPathname.mockReturnValue("/");
   useSessionStore.setState({ user: null });
   // useActivePopups가 마운트 직후 detectDevice() → matchMedia를 호출하므로 jsdom에 stub.
   window.matchMedia = vi.fn().mockImplementation((q: string) => ({
@@ -72,6 +79,37 @@ describe("useUnreadCount — enabled 가드", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.unread_count).toBe(3);
+  });
+
+  it("#106: 페이지 전환(pathname 변경) 시 미읽음 개수를 다시 조회한다", async () => {
+    useSessionStore.setState({
+      user: {
+        user_id: 1,
+        email: "u@e.com",
+        role: "user",
+        subscription_status: "free",
+        segment: null,
+        years_of_experience: null,
+        must_reset_password: false,
+        is_social: false,
+      },
+    });
+    vi.mocked(fetchUnreadCount)
+      .mockResolvedValueOnce({ unread_count: 0 })
+      .mockResolvedValue({ unread_count: 1 });
+
+    const { result, rerender } = renderHook(() => useUnreadCount(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchUnreadCount).toHaveBeenCalledTimes(1);
+    expect(result.current.data?.unread_count).toBe(0);
+
+    // 다른 페이지로 이동 → refetch 트리거 → 새 카운트(1) 반영.
+    mockPathname.mockReturnValue("/my");
+    rerender();
+    await waitFor(() => expect(result.current.data?.unread_count).toBe(1));
+    expect(fetchUnreadCount).toHaveBeenCalledTimes(2);
   });
 });
 

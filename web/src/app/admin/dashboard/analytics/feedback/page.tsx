@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   buildFeedbackExportUrl,
+  deleteFeedback,
   fetchFeedback,
   setFeedbackReviewed,
   type FeedbackItem,
@@ -58,6 +59,10 @@ export default function FeedbackPage() {
     () => new Set()
   );
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const queryKey = [
@@ -125,6 +130,39 @@ export default function FeedbackPage() {
         );
       } finally {
         setPendingReviewIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [qc]
+  );
+
+  const handleDelete = useCallback(
+    async (item: FeedbackItem) => {
+      const id = item.qa_log_id;
+      const confirmed = window.confirm(
+        "이 피드백을 삭제하시겠습니까?\n삭제하면 피드백분석 목록에서 사라집니다. 되돌릴 수 없습니다."
+      );
+      if (!confirmed) return;
+      setPendingDeleteIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      setDeleteError(null);
+      try {
+        await deleteFeedback(id);
+        await qc.invalidateQueries({
+          queryKey: ["admin", "analytics", "feedback"],
+        });
+      } catch {
+        setDeleteError(
+          "삭제에 실패했습니다. 잠시 후 다시 시도해 주세요."
+        );
+      } finally {
+        setPendingDeleteIds((prev) => {
           const next = new Set(prev);
           next.delete(id);
           return next;
@@ -340,8 +378,14 @@ export default function FeedbackPage() {
               {reviewError}
             </p>
           )}
+          {deleteError && (
+            <p className={styles.reviewError} role="alert">
+              {deleteError}
+            </p>
+          )}
           <FeedbackDetailTable
             items={data.items}
+            unit={unit}
             total={data.total}
             page={data.page}
             perPage={data.per_page}
@@ -350,6 +394,8 @@ export default function FeedbackPage() {
             onExport={handleExport}
             onToggleReviewed={handleToggleReviewed}
             pendingReviewIds={pendingReviewIds}
+            onDelete={handleDelete}
+            pendingDeleteIds={pendingDeleteIds}
             isExporting={isExporting}
             exportError={exportError}
           />

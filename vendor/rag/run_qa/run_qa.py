@@ -535,6 +535,31 @@ def generate_rule_answer(query):
 # =====================================================
 
 
+# ================== 🔥 키워드 필터 청크 ==================
+# 키워드가 질문에 감지되면 해당 키워드를 본문에 포함하는 청크만 1차 필터링한 뒤,
+# 그 안에서만 임베딩 top-k를 수행한다. 미감지 시 호출자가 기존 전체 벡터스토어로 fallback.
+# 원본(게시판 본문) 코드 그대로. 웹 통합에서는 get_keywords()/get_vectorstore() 와 함께 사용.
+
+def get_filtered_chunks(query, keywords, vectorstore):
+    detected = [kw for kw in keywords if kw in query]
+
+    if not detected:
+        return None  # fallback to default retriever
+
+    all_chunks = list(vectorstore.docstore._dict.values())
+
+    filtered = []
+    seen = set()
+    for chunk in all_chunks:
+        if any(kw in chunk.page_content for kw in detected):
+            chunk_id = chunk.metadata.get("id", id(chunk))
+            if chunk_id not in seen:
+                seen.add(chunk_id)
+                filtered.append(chunk)
+
+    return filtered if filtered else None
+
+
 # ================== 🔥 벡터 로드 (lazy init) ==================
 # ADR-0002 허용 수정 (iv): import 시 즉시 실행 → lazy init
 # ADR-0002 허용 수정 (ii): cwd 상대 경로 → 환경변수 주입
@@ -542,6 +567,7 @@ _embeddings = None
 _vectorstore = None
 _retriever = None
 _syn_dict = None
+_keywords = None
 
 
 def _get_faiss_path():
@@ -558,13 +584,22 @@ def _get_syn_path():
     )
 
 
-def init_rag(faiss_path=None, syn_path=None):
-    """FAISS 인덱스와 동의어 사전을 초기화한다 (idempotent)."""
-    global _embeddings, _vectorstore, _retriever, _syn_dict
+def _get_keywords_path():
+    return os.environ.get(
+        "KEYWORDS_PATH",
+        os.path.join(BASE_DIR, "config", "keywords.json"),
+    )
+
+
+def init_rag(faiss_path=None, syn_path=None, kw_path=None):
+    """FAISS 인덱스와 동의어 사전·키워드 목록을 초기화한다 (idempotent)."""
+    global _embeddings, _vectorstore, _retriever, _syn_dict, _keywords
     if faiss_path is None:
         faiss_path = _get_faiss_path()
     if syn_path is None:
         syn_path = _get_syn_path()
+    if kw_path is None:
+        kw_path = _get_keywords_path()
     if _embeddings is None:
         _embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
     if _retriever is None and os.path.exists(faiss_path):
@@ -574,11 +609,34 @@ def init_rag(faiss_path=None, syn_path=None):
         _retriever = _vectorstore.as_retriever(search_kwargs={"k": 5})
     if _syn_dict is None:
         _syn_dict = load_synonym_dict(syn_path)
+    if _keywords is None:
+        try:
+            with open(kw_path, "r", encoding="utf-8") as f:
+                _keywords = json.load(f)
+        except FileNotFoundError:
+            _keywords = []
 
 
 def get_retriever():
     """초기화된 retriever를 반환한다 (FAISS 미초기화 시 None)."""
     return _retriever
+
+
+def get_vectorstore():
+    """초기화된 FAISS 벡터스토어를 반환한다 (키워드 필터 청크 검색용, 미초기화 시 None)."""
+    return _vectorstore
+
+
+def get_embeddings():
+    """초기화된 임베딩 객체를 반환한다 (필터 청크로 임시 인덱스 빌드용)."""
+    return _embeddings
+
+
+def get_keywords():
+    """초기화된 키워드 필터 목록을 반환한다 (config/keywords.json)."""
+    if _keywords is None:
+        init_rag()
+    return _keywords or []
 
 
 def get_syn_dict():
@@ -620,10 +678,19 @@ if __name__ == "__main__":
             # ✅ 2. 질문에 맞는 프롬프트 동적 생성 + RAG 실행
             prompt_template_str = build_prompt_template(query)
 
+            # 키워드 감지 시 필터 청크에서만 top-k, 미감지 시 전체 벡터스토어 fallback
+            filtered_chunks = get_filtered_chunks(query, get_keywords(), get_vectorstore())
+            if filtered_chunks:
+                temp_vs = FAISS.from_documents(filtered_chunks, get_embeddings())
+                actual_k = min(5, len(filtered_chunks))
+                retriever = temp_vs.as_retriever(search_kwargs={"k": actual_k})
+            else:
+                retriever = get_retriever()
+
             qa_chain = RetrievalQA.from_chain_type(
                 llm=ChatOpenAI(model_name="o4-mini"),
                 chain_type="stuff",
-                retriever=get_retriever(),
+                retriever=retriever,
                 return_source_documents=True,
                 chain_type_kwargs={
                     "prompt": PromptTemplate.from_template(prompt_template_str)

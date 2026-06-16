@@ -20,7 +20,7 @@ interface ChatInputProps {
   /** Story 2.6: 외부 ref 주입 — chip 클릭 후 포커스 이동. 부재 시 내부 useRef 사용. */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   /**
-   * #85: 사용자 질문 입력 글자수 상한(UX 가드). 기본 2000.
+   * #85: 사용자 질문 입력 글자수 상한(UX 가드). 기본 300 (#101).
    * 실제 강제는 백엔드(runtime:max_question_chars)가 SSOT — 여기선 입력 단계 가드 + 카운터.
    */
   maxLength?: number;
@@ -30,7 +30,7 @@ interface ChatInputProps {
  * 채팅 입력 컴포넌트.
  * hero variant + interactive=false: readonly, 클릭 시 로그인 팝업 오픈 (UX Spec §2.5).
  * hero variant + interactive=true: 활성 textarea, 데스크톱·태블릿에서만 자동 포커스 (모바일 iOS 키보드 자동 호출 방지).
- * inline variant: 활성 textarea, 항상 자동 포커스, Enter 전송 / Shift+Enter 줄바꿈, maxLength=2000.
+ * inline variant: 활성 textarea, 항상 자동 포커스, Enter 전송 / Shift+Enter 줄바꿈, maxLength=300 (#101).
  */
 export function ChatInput({
   variant = "hero",
@@ -40,7 +40,7 @@ export function ChatInput({
   onSubmit,
   loading = false,
   inputRef: externalRef,
-  maxLength = 2000,
+  maxLength = 300,
 }: ChatInputProps) {
   const openPopup = useSessionStore((s) => s.openPopup);
   const isHero = variant === "hero";
@@ -97,18 +97,35 @@ export function ChatInput({
 
   return (
     <div className={styles.wrapper}>
-      <textarea
-        ref={inputRef}
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="무엇이든 물어보세요"
-        aria-label="질문 입력"
-        maxLength={maxLength}
-        rows={1}
-        disabled={loading}
-        className={styles.input}
-      />
+      <div className={styles.inputBox}>
+        <textarea
+          ref={inputRef}
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="무엇이든 물어보세요"
+          aria-label="질문 입력"
+          maxLength={maxLength}
+          rows={1}
+          disabled={loading}
+          className={styles.input}
+        />
+        <button
+          type="button"
+          aria-label="질문 전송"
+          disabled={sendDisabled}
+          onClick={() => {
+            if (trimmed && !loading) onSubmit?.(trimmed);
+          }}
+          className={
+            sendDisabled
+              ? `${styles.sendBtn} ${styles.sendBtnDisabled}`
+              : styles.sendBtn
+          }
+        >
+          ↑
+        </button>
+      </div>
       <span
         aria-live="polite"
         className={
@@ -119,21 +136,6 @@ export function ChatInput({
       >
         {currentLen}/{maxLength}
       </span>
-      <button
-        type="button"
-        aria-label="질문 전송"
-        disabled={sendDisabled}
-        onClick={() => {
-          if (trimmed && !loading) onSubmit?.(trimmed);
-        }}
-        className={
-          sendDisabled
-            ? `${styles.sendBtn} ${styles.sendBtnDisabled}`
-            : styles.sendBtn
-        }
-      >
-        ↑
-      </button>
     </div>
   );
 }

@@ -51,7 +51,7 @@
 
 .table {
   width: 100%;
-  min-width: 1040px;
+  min-width: 1120px;
   border-collapse: collapse;
   font-size: 14px;
   table-layout: fixed;
@@ -67,19 +67,19 @@
 }
 
 .colQuestion {
-  width: 26%;
+  width: 24%;
 }
 
 .colAnswer {
-  width: 20%;
+  width: 19%;
 }
 
 .colRating {
-  width: 10%;
+  width: 9%;
 }
 
 .colSegment {
-  width: 14%;
+  width: 13%;
 }
 
 .colDate {
@@ -87,11 +87,15 @@
 }
 
 .colReviewStatus {
-  width: 9%;
+  width: 8%;
 }
 
 .colReviewAction {
-  width: 9%;
+  width: 8%;
+}
+
+.colDeleteAction {
+  width: 7%;
 }
 
 .row {
@@ -135,8 +139,33 @@
 .thSegment,
 .thDate,
 .thReviewStatus,
-.thReviewAction {
+.thReviewAction,
+.thDeleteAction {
   width: auto;
+}
+
+.groupHeaderRow {
+  background: #f1f5f9;
+}
+
+.groupHeaderCell {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  border-bottom: 1px solid #e2e8f0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.groupHeaderLabel {
+  margin-right: 10px;
+}
+
+.groupHeaderCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .thDate,
@@ -226,6 +255,28 @@
 
 .reviewBtn:disabled,
 .reviewBtnUndo:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.deleteBtn {
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+
+.deleteBtn:disabled {
   opacity: 0.55;
   cursor: wait;
 }

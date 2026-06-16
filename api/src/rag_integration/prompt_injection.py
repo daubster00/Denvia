@@ -82,6 +82,14 @@ def build_prompt_with_overrides(
             )
         )
         anesthesia_active = _match_keywords(query, PROMPT_MODULES["마취_산정"]["keywords"])
+        perio_exam_active = (
+            "keywords_combo" in PROMPT_MODULES.get("치주낭측정검사_횟수산정", {})
+            and _match_periodontal(
+                query,
+                PROMPT_MODULES["치주낭측정검사_횟수산정"]["keywords_combo"]["set1"],
+                PROMPT_MODULES["치주낭측정검사_횟수산정"]["keywords_combo"]["independent"],
+            )
+        )
 
         injected: list[str] = []
         for module_name, module_data in PROMPT_MODULES.items():
@@ -108,6 +116,8 @@ def build_prompt_with_overrides(
             if periodontal_active and module_name in ("치식_위치", "치면_방향"):
                 continue
             if anesthesia_active and module_name in ("치식_위치", "치면_방향"):
+                continue
+            if perio_exam_active and module_name in ("치식_위치", "치면_방향"):
                 continue
 
             override = overrides.get(module_name)

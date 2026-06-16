@@ -48,6 +48,7 @@ from api.src.services.analytics_service import (
     get_access_buckets,
     get_signups_buckets,
     get_subscriber_counts,
+    delete_feedback,
     set_feedback_reviewed,
 )
 from api.src.services import runtime_config_service
@@ -503,6 +504,14 @@ class FeedbackDetail(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     cost_usd: Decimal | None = None
+    # USD 비용을 한화로 환산한 보조 필드 (UI 메타 표시용). cost_usd 가 None 이면 None.
+    cost_krw: int | None = None
+    # 환산에 적용된 USD→KRW 환율 + 근거 (실시간 한국수출입은행 환율, Redis 캐시).
+    usd_to_krw: int
+    # 환율이 마지막으로 자동 갱신된 시각(ISO8601 UTC) — 자동 갱신 전이면 None.
+    usd_to_krw_updated_at: str | None = None
+    # 환율 API 가 실제 데이터를 반환한 영업일(YYYY-MM-DD) — 자동 갱신 전이면 None.
+    usd_to_krw_search_date: str | None = None
     latency_ms: int | None = None
     created_at: str
 
@@ -644,12 +653,52 @@ async def feedback_set_reviewed(
     )
 
 
+class FeedbackDeleteResponse(BaseModel):
+    qa_log_id: int
+    deleted: int
+
+
+@router.delete(
+    "/feedback/{qa_log_id}",
+    response_model=FeedbackDeleteResponse,
+)
+async def feedback_delete(
+    qa_log_id: int,
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> FeedbackDeleteResponse:
+    """피드백 단건(qa_log_id 묶음)을 피드백분석 목록에서 삭제.
+
+    qa_logs 원본은 보존하고 qa_feedback 행만 제거한다. 같은 qa_log_id로
+    여러 피드백 행이 있으면(GOOD↔BAD 토글 등) 전부 삭제한다.
+    """
+    deleted = await delete_feedback(db, qa_log_id=qa_log_id)
+    if deleted == 0:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ADMIN_FEEDBACK_NOT_FOUND",
+                "message": "피드백 기록을 찾을 수 없습니다.",
+            },
+        )
+
+    await db.commit()
+    logger.info(
+        "admin.analytics.feedback.deleted",
+        actor_user_id=actor.id,
+        qa_log_id=qa_log_id,
+        rows=deleted,
+    )
+    return FeedbackDeleteResponse(qa_log_id=qa_log_id, deleted=deleted)
+
+
 @router.get("/feedback/{qa_log_id}", response_model=FeedbackDetail)
 async def feedback_detail(
     qa_log_id: int,
     response: Response,
     actor: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
 ) -> FeedbackDetail:
     """피드백 단건 상세 — top-k 검색 문서 + 동의어 치환 쿼리 포함.
 
@@ -680,6 +729,15 @@ async def feedback_detail(
             )
         )
 
+    # USD 비용을 한화로 환산 — 실시간 환율(한국수출입은행, Redis 캐시) + 갱신 메타.
+    # Redis 미설정/손상 시 기본 1400 으로 폴백되므로 표기는 항상 가능.
+    snapshot = await runtime_config_service.get_usd_to_krw_snapshot(redis_runtime)
+    cost_krw: int | None = None
+    if row.cost_usd is not None:
+        cost_krw = int(
+            (Decimal(str(row.cost_usd)) * Decimal(snapshot.rate)).quantize(Decimal("1"))
+        )
+
     response.headers["Cache-Control"] = "no-store"
     logger.info(
         "admin.analytics.feedback.detail_viewed",
@@ -699,6 +757,10 @@ async def feedback_detail(
         input_tokens=row.input_tokens,
         output_tokens=row.output_tokens,
         cost_usd=row.cost_usd,
+        cost_krw=cost_krw,
+        usd_to_krw=snapshot.rate,
+        usd_to_krw_updated_at=snapshot.updated_at,
+        usd_to_krw_search_date=snapshot.search_date,
         latency_ms=row.latency_ms,
         created_at=row.created_at.isoformat() if row.created_at else "",
     )

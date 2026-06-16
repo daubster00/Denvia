@@ -96,6 +96,51 @@ def _do_init(faiss_path: str) -> None:
     init_rag(faiss_path=faiss_path)
 
 
+def _build_retriever(query: str, k: int):
+    """질의에 맞는 retriever를 만든다.
+
+    #97 키워드 필터: config/keywords.json 키워드가 질의에 감지되면 해당 키워드를
+    본문에 포함하는 청크만 1차 필터링 → 그 필터 청크로 임시 FAISS 인덱스를 만들어
+    top-k(필터 청크 수보다 작으면 있는 만큼) 검색한다. 미감지 시 기존 전체
+    벡터스토어 retriever로 fallback (vendor get_filtered_chunks 와 동일 동치).
+
+    vendor 모델·파라미터(text-embedding-3-large/k=5 기본)는 변경하지 않는다.
+    필터 시 임시 인덱스는 동일한 vendor embeddings 객체를 재사용한다.
+    """
+    from langchain_community.vectorstores import FAISS
+
+    from rag.run_qa import (  # type: ignore[import-untyped]
+        get_embeddings,
+        get_filtered_chunks,
+        get_keywords,
+        get_retriever,
+        get_vectorstore,
+    )
+
+    vectorstore = get_vectorstore()
+    if vectorstore is not None:
+        try:
+            filtered_chunks = get_filtered_chunks(query, get_keywords(), vectorstore)
+        except Exception as exc:
+            logger.warning("rag.query_runner.keyword_filter_failed", error=str(exc))
+            filtered_chunks = None
+
+        if filtered_chunks:
+            temp_vs = FAISS.from_documents(filtered_chunks, get_embeddings())
+            actual_k = min(k, len(filtered_chunks))
+            logger.info(
+                "rag.query_runner.keyword_filter_hit",
+                filtered=len(filtered_chunks),
+                k=actual_k,
+            )
+            return temp_vs.as_retriever(search_kwargs={"k": actual_k})
+
+    retriever = get_retriever()
+    if retriever is not None and hasattr(retriever, "search_kwargs"):
+        retriever.search_kwargs["k"] = k
+    return retriever
+
+
 def _reset_vendor_globals() -> None:
     """vendor/rag/run_qa/run_qa.py 안쪽 모듈의 lazy-init 전역 변수를 비워
     다음 init_rag 호출 시 FAISS 인덱스·동의어 사전을 디스크에서 새로 읽도록 한다.
@@ -118,6 +163,7 @@ def _reset_vendor_globals() -> None:
         _vendor._vectorstore = None
         _vendor._retriever = None
         _vendor._syn_dict = None
+        _vendor._keywords = None
     except Exception as exc:
         logger.warning("rag.query_runner.vendor_reset_failed", error=str(exc))
 
@@ -156,6 +202,16 @@ async def run_rule_answer(question_text: str) -> str | None:
         return generate_rule_answer(query)
 
     return await asyncio.to_thread(_run)
+
+
+async def get_synonyms_dict() -> dict[str, list[str]]:
+    """라이브 stream 경로용 public 래퍼 (게시판 #105 — 동의어 편집 미반영 픽스).
+
+    `QAService.stream` 이 vendor `get_syn_dict()`(파일 기반 전역 캐시) 대신 이 함수를
+    호출하면, 관리자 동의어 편집(DB synonym_groups + Redis 캐시 무효화)이 즉시 챗봇에
+    반영된다. `run_rule_answer` 와 동일한 DB→Redis→vendor fallback 경로를 공유한다.
+    """
+    return await _get_synonyms_dict()
 
 
 async def _get_synonyms_dict() -> dict[str, list[str]]:
@@ -303,7 +359,6 @@ async def stream_rag_answer(
     return_source_documents=True 로 두지만, 결과 dict 의 'result' 필드만
     토큰 스트림으로 흘리고 'source_documents' 는 콜백으로만 전달한다.
     """
-    from rag.run_qa import get_retriever  # type: ignore[import-untyped]
     from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
 
@@ -364,9 +419,8 @@ async def stream_rag_answer(
 
             prompt_template_str = build_prompt_with_overrides(query, overrides or None)
 
-            retriever = get_retriever()
-            if hasattr(retriever, "search_kwargs"):
-                retriever.search_kwargs["k"] = runtime["rag_k"]
+            # #97 키워드 필터: 키워드 감지 시 필터 청크 retriever, 미감지 시 전체 fallback
+            retriever = _build_retriever(query, runtime["rag_k"])
 
             # callbacks 는 invoke time 에 RunnableConfig 로 전달 — build_chat_llm 의 모듈
             # 전역 캐시(_LLM_CACHE) 가 같은 옵션의 ChatOpenAI 인스턴스를 재사용해 httpx
@@ -455,7 +509,6 @@ async def warmup_once() -> dict:
     반환: ``{"model": str, "latency_ms": int, "tokens": int}`` — 워밍업 서비스가 모니터링 로그에 사용.
     예외는 caller 가 swallow 한다 (loop 가 계속 돌아야 함).
     """
-    from rag.run_qa import get_retriever  # type: ignore[import-untyped]
     from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
 
@@ -483,9 +536,8 @@ async def warmup_once() -> dict:
     prompt_template_str = build_prompt_with_overrides(query, overrides or None)
 
     def _run_sync() -> tuple[int, int]:
-        retriever = get_retriever()
-        if hasattr(retriever, "search_kwargs"):
-            retriever.search_kwargs["k"] = runtime["rag_k"]
+        # 워밍업 query("hi")는 키워드 미감지 → 전체 벡터스토어 fallback 으로 데움.
+        retriever = _build_retriever(query, runtime["rag_k"])
 
         # callbacks 없이 — 캐시 히트되도록. 워밍업이 데우는 인스턴스 == 실제 chat 이 쓰는 인스턴스.
         llm = build_chat_llm(

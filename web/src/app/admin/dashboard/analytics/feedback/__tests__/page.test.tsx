@@ -18,6 +18,7 @@ vi.mock("@/features/admin-dashboard/api/analytics", () => ({
   fetchFeedback: vi.fn(),
   fetchFeedbackExport: vi.fn(),
   setFeedbackReviewed: vi.fn(),
+  deleteFeedback: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({

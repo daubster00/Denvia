@@ -6,10 +6,19 @@
   max-width: 736px;
 }
 
+/* #107: textarea + 전송 버튼을 감싸는 상대 위치 박스.
+   카운터는 이 박스 바깥(아래)에 정상 흐름으로 배치해 두 줄 이상 입력에서도
+   입력 텍스트와 겹치지 않게 한다. */
+.inputBox {
+  position: relative;
+  width: 100%;
+}
+
 .input {
   width: 100%;
   min-height: 70px;
   padding: 22px 58px 22px 24px;
+  display: block;
   font-size: 16px;
   border: 1px solid #dfe3ea;
   border-radius: 14px;
@@ -66,12 +75,13 @@
   cursor: not-allowed;
 }
 
-/* #85: 입력 글자수 카운터 — 입력창 좌하단 패딩 영역.
-   전송 버튼이 우측 세로 중앙에 있어 우하단을 피해 좌측에 둔다(겹침 방지). */
+/* #85 카운터. #107: 입력창 박스 바깥(아래)에 정상 흐름으로 배치 —
+   두 줄 이상 입력해도 입력 텍스트와 겹치지 않는다. 우측 정렬. */
 .counter {
-  position: absolute;
-  left: 18px;
-  bottom: 8px;
+  display: block;
+  margin-top: 4px;
+  padding-right: 6px;
+  text-align: right;
   font-size: 12px;
   color: #aeb0b6;
   font-variant-numeric: tabular-nums;
