@@ -161,6 +161,18 @@ def _try_synonym_replace(token, syn_map):
             suffix = base[len(syn):]
             return replacement_key + suffix + josa
 
+    # 접미(suffix) 부분매칭 fallback — 게시판 #108 (클라이언트 최신 run_qa 반영)
+    for syn in sorted(syn_map.keys(), key=len, reverse=True):
+        if len(syn) <= 1 or _is_english(syn) or syn in _PARTIAL_MATCH_BLACKLIST:
+            continue
+        if base.endswith(syn) and len(base) > len(syn):
+            rk = syn_map[syn]
+            if base.endswith(rk) or rk.endswith(base):
+                continue
+            prefix = base[:-len(syn)]
+            if len(prefix) >= 2 and re.fullmatch(r'[가-힣]+', prefix):
+                return prefix + rk + josa
+
     return None
 
 
@@ -215,6 +227,13 @@ def apply_scaling_rules(text):
     return text
 
 
+def preprocess_boundary(text: str) -> str:
+    """한/영 경계에 공백 삽입 — 게시판 #108 (클라이언트 최신 run_qa 반영)."""
+    text = re.sub(r'([가-힣])([a-zA-Z])', r'\1 \2', text)
+    text = re.sub(r'([a-zA-Z])([가-힣])', r'\1 \2', text)
+    return text
+
+
 # ================== 🔁 normalize_query ==================
 
 def normalize_query(query, synonyms):
@@ -228,7 +247,15 @@ def normalize_query(query, synonyms):
       3) PHASE 2: 멀티워드 동의어 (공백 포함) + 마커 보호
       4) PHASE 3: 토큰 단위 치환 (마커 영역 건너뜀)
       5) 출력 정리 (괄호, 기호 주변 공백)
+
+    게시판 #108 — 클라이언트 최신 run_qa 메인 루프의 전처리(괄호 정리 +
+    한/영 경계 공백삽입 preprocess_boundary)를 normalize_query 진입부로 흡수.
+    웹의 모든 호출 경로(stream/rule)가 동일 파이프라인을 공유하게 한 것이며,
+    괄호 정리·경계 공백 모두 멱등(idempotent)이라 재적용해도 결과가 동일하다.
     """
+    query = re.sub(r'\s*\(\s*', '(', query)
+    query = re.sub(r'\s*\)\s*', ')', query)
+    query = preprocess_boundary(query)
     query = preprocess(query)
     syn_map = build_synonym_map(synonyms)
 
