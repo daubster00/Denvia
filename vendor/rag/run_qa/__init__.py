@@ -7,10 +7,6 @@ from .run_qa import (
     load_synonym_dict,
     init_rag,
     get_retriever,
-    get_vectorstore,
-    get_embeddings,
-    get_keywords,
-    get_filtered_chunks,
     get_syn_dict,
     extract_procedures,
 )
@@ -22,10 +18,6 @@ __all__ = [
     "load_synonym_dict",
     "init_rag",
     "get_retriever",
-    "get_vectorstore",
-    "get_embeddings",
-    "get_keywords",
-    "get_filtered_chunks",
     "get_syn_dict",
     "extract_procedures",
 ]
