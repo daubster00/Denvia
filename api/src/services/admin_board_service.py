@@ -7,7 +7,7 @@
 - 일반 admin: 본인이 작성한 글/댓글만 수정·삭제 가능
 
 content_html 은 Tiptap → sanitize_body_html() 적용 후 저장(XSS 방어).
-댓글 content 는 plain text — html.escape() 적용 후 저장 (목록/상세 응답 시 그대로 노출).
+댓글 content 는 plain text 원문 그대로 저장 (프론트 {content} 텍스트 렌더가 이스케이프).
 
 이미지 저장 경로 : api/data/uploads/admin_board_images/<uuid>.<ext>
 공개 URL prefix  : /static/admin-board-images
@@ -16,7 +16,6 @@ content_html 은 Tiptap → sanitize_body_html() 적용 후 저장(XSS 방어).
 
 from __future__ import annotations
 
-import html as _html
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -447,7 +446,10 @@ async def create_comment(
 ) -> int:
     # 글 존재 여부 확인 — FK CASCADE 가 막아주지만 명시적 404 가 더 친절.
     await _get_post_or_404(db, post_id)
-    safe = _html.escape(content.strip())
+    # 댓글은 프론트에서 {content} 텍스트로 렌더(React 자동 이스케이프)되므로
+    # 여기서 html.escape 하면 &#x27; 등 엔티티가 화면에 그대로 노출된다(이중 이스케이프).
+    # plain text 원문 그대로 저장한다 (표시 안전성은 렌더 계층이 보장).
+    safe = content.strip()
     if not safe:
         raise HTTPException(
             422,
@@ -482,7 +484,10 @@ async def update_comment(
 ) -> None:
     comment = await _get_comment_or_404(db, comment_id)
     _require_comment_edit_permission(comment, current_user)
-    safe = _html.escape(content.strip())
+    # 댓글은 프론트에서 {content} 텍스트로 렌더(React 자동 이스케이프)되므로
+    # 여기서 html.escape 하면 &#x27; 등 엔티티가 화면에 그대로 노출된다(이중 이스케이프).
+    # plain text 원문 그대로 저장한다 (표시 안전성은 렌더 계층이 보장).
+    safe = content.strip()
     if not safe:
         raise HTTPException(
             422,

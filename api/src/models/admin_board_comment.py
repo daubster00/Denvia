@@ -1,7 +1,7 @@
 """AdminBoardComment ORM — 관리자 수정요청 게시판 댓글.
 
 post_id ON DELETE CASCADE — 글 삭제 시 댓글도 함께 정리.
-content는 plain text(html.escape 적용 후 저장).
+content는 plain text 원문 그대로 저장(프론트에서 텍스트 렌더 시 이스케이프).
 """
 
 from datetime import datetime
