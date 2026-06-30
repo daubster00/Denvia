@@ -129,13 +129,10 @@ def build_prompt_with_overrides(
                 parts.append(module_data["text"])
             injected.append(module_name)
 
+        # vendor build_prompt_template과 동일한 최종 템플릿 (#110 클라이언트 compact 포맷)
         parts.append("""
-
 질문: {question}
-
-문서:
-{context}
-
+문서: {context}
 답변:""")
 
         if injected:
