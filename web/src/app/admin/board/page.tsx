@@ -24,6 +24,8 @@ const STATUS_CLASS: Record<BoardPostStatus, string> = {
   completed: styles.statusCompleted,
   rejected: styles.statusRejected,
   on_hold: styles.statusOnHold,
+  confirm_requested: styles.statusConfirmRequested,
+  confirmed: styles.statusConfirmed,
 };
 
 function formatKoreanDate(iso: string): string {
@@ -71,7 +73,7 @@ export default function AdminBoardListPage() {
     ? Math.max(1, Math.ceil(listQuery.data.total / PER_PAGE))
     : 1;
 
-  const categoryLabel = (key: BoardCategory): string =>
+  const categoryLabel = (key: string): string =>
     metaQuery.data?.categories.find((c) => c.key === key)?.label ?? key;
   const statusLabel = (key: BoardPostStatus): string =>
     metaQuery.data?.statuses.find((s) => s.key === key)?.label ?? key;
@@ -82,7 +84,7 @@ export default function AdminBoardListPage() {
         <div className={styles.headerText}>
           <h1 className={styles.title}>수정요청 게시판</h1>
           <p className={styles.caption}>
-            프로젝트 수정 요청을 등록·추적하는 사내 게시판입니다. 상태 변경은 btmdesign 마스터 계정만 가능합니다.
+            프로젝트 수정 요청을 등록·추적하는 사내 게시판입니다. 상태 변경 등 일부 기능은 권한에 따라 제한됩니다.
           </p>
         </div>
         <button

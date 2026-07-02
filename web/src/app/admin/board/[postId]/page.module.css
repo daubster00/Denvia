@@ -77,6 +77,8 @@
 .statusCompleted  { background: #dcfce7; color: #166534; }
 .statusRejected   { background: #fee2e2; color: #991b1b; }
 .statusOnHold     { background: #f3f4f6; color: #374151; }
+.statusConfirmRequested { background: #ffedd5; color: #9a3412; }
+.statusConfirmed  { background: #ede9fe; color: #5b21b6; }
 
 .statusBlock {
   display: flex;
@@ -103,6 +105,140 @@
   font-size: 0.78rem;
   color: #6b7280;
   margin-left: auto;
+}
+
+/* ── 추가개발 컨펌 블록 ─────────────────────────────────────────── */
+.devCostBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 0.5rem;
+}
+
+.devCostHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.devCostLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #9a3412;
+}
+
+.devCostAmount {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #7c2d12;
+}
+
+.devCostForm {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.devCostInput {
+  width: 180px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.4rem;
+  font-size: 0.95rem;
+  text-align: right;
+}
+.devCostInput:focus {
+  outline: none;
+  border-color: #ea580c;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.18);
+}
+
+.devCostUnit {
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.devCostConfirmRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.devCostConfirmHint {
+  font-size: 0.85rem;
+  color: #7c2d12;
+}
+
+.confirmBtn {
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.55rem 1.3rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirmBtn:hover { background: #6d28d9; }
+.confirmBtn:disabled { background: #c4b5fd; cursor: not-allowed; }
+
+.devCostDone {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5b21b6;
+}
+
+/* ── 첨부 파일 목록 ─────────────────────────────────────────────── */
+.attachmentSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+}
+
+.attachmentSectionLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.attachmentList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachmentItem {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.attachmentLink {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachmentLink:hover { text-decoration: underline; }
+
+.attachmentSize {
+  color: #9ca3af;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .content {

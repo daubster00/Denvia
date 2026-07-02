@@ -8,6 +8,7 @@ import { Option, Select } from "@wanteddev/wds";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import {
   BoardApiError,
+  BoardAttachmentRef,
   BoardCategory,
   BoardPostDetail,
   BoardPostFormInput,
@@ -16,6 +17,7 @@ import {
   updateBoardPost,
   uploadBoardImage,
 } from "@/features/admin-board/api/board";
+import { AttachmentPicker } from "@/features/admin-board/components/AttachmentPicker";
 
 import styles from "../../form.module.css";
 
@@ -90,9 +92,20 @@ function EditForm({
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const [category, setCategory] = useState<BoardCategory | "">(post.category);
+  const [category, setCategory] = useState<BoardCategory | "">(
+    post.category as BoardCategory | "",
+  );
   const [title, setTitle] = useState(post.title);
   const [contentHtml, setContentHtml] = useState(post.content_html);
+  const [attachments, setAttachments] = useState<BoardAttachmentRef[]>(
+    post.attachments.map((a) => ({
+      file_url: a.file_url,
+      file_name: a.file_name,
+      mime_type: a.mime_type,
+      size_bytes: a.size_bytes,
+    })),
+  );
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const updateMut = useMutation({
@@ -124,7 +137,16 @@ function EditForm({
       setErrorMsg("본문을 입력해주세요.");
       return;
     }
-    updateMut.mutate({ category, title: title.trim(), content_html: contentHtml });
+    if (uploadingCount > 0) {
+      setErrorMsg("파일 업로드가 끝난 뒤 저장해주세요.");
+      return;
+    }
+    updateMut.mutate({
+      category,
+      title: title.trim(),
+      content_html: contentHtml,
+      attachments,
+    });
   };
 
   const handleImageUpload = async (file: File): Promise<string> => {
@@ -184,6 +206,18 @@ function EditForm({
           </div>
         </div>
 
+        <div className={styles.row}>
+          <span className={styles.label}>첨부 파일</span>
+          <AttachmentPicker
+            value={attachments}
+            onChange={setAttachments}
+            uploadingCount={uploadingCount}
+            onUploadingCountChange={setUploadingCount}
+            onError={setErrorMsg}
+            disabled={updateMut.isPending}
+          />
+        </div>
+
         {errorMsg ? <p className={styles.errorText}>{errorMsg}</p> : null}
 
         <div className={styles.actions}>
@@ -198,7 +232,7 @@ function EditForm({
           <button
             type="submit"
             className={styles.primaryBtn}
-            disabled={updateMut.isPending}
+            disabled={updateMut.isPending || uploadingCount > 0}
           >
             {updateMut.isPending ? "저장 중…" : "저장"}
           </button>

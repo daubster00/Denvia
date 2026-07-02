@@ -7,13 +7,16 @@ prefix: /admin/board   (main.py 에서 /api/v1 prefix 가 추가됨 → /api/v1/
   GET    /admin/board/posts                   목록 (filter: category, status, page, per_page)
   POST   /admin/board/posts                   신규 글 (기본 status='review')
   GET    /admin/board/posts/{post_id}         상세 + 댓글 + 권한 플래그
-  PUT    /admin/board/posts/{post_id}         본인/btmdesign 글 본문 수정
-  PATCH  /admin/board/posts/{post_id}/status  상태 변경 — btmdesign 전용
-  DELETE /admin/board/posts/{post_id}         글 삭제 (CASCADE 로 댓글도 삭제)
+  PUT    /admin/board/posts/{post_id}         본인/마스터 글 본문·첨부 수정
+  PATCH  /admin/board/posts/{post_id}/status  상태 변경 — 마스터 전용
+  PATCH  /admin/board/posts/{post_id}/dev-cost 추가개발비 입력 — 마스터 전용(→컨펌요청)
+  POST   /admin/board/posts/{post_id}/confirm 추가개발비 컨펌 — 운영자 전용(→컨펌)
+  DELETE /admin/board/posts/{post_id}         글 삭제 (CASCADE 로 댓글·첨부도 삭제)
   POST   /admin/board/posts/{post_id}/comments  댓글 작성
   PUT    /admin/board/comments/{comment_id}   댓글 수정
   DELETE /admin/board/comments/{comment_id}   댓글 삭제
   POST   /admin/board/image-upload            본문 에디터 이미지 업로드
+  POST   /admin/board/attachment-upload       글 첨부 파일 업로드(문서/압축/이미지)
 
 가드: require_admin (denvia_admin_session 쿠키).
 """
@@ -27,8 +30,10 @@ from api.src.deps.auth import require_admin, require_admin_page
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.board import (
+    BoardAttachmentUploadResponse,
     BoardCommentCreateRequest,
     BoardCommentUpdateRequest,
+    BoardDevCostUpdateRequest,
     BoardImageUploadResponse,
     BoardMetaResponse,
     BoardPostCreateRequest,
@@ -86,6 +91,7 @@ async def create_board_post(
         category=payload.category,
         title=payload.title,
         content_html=payload.content_html,
+        attachments=payload.attachments,
     )
     return await admin_board_service.get_post(
         db, post_id=post_id, current_user=admin
@@ -117,6 +123,7 @@ async def update_board_post(
         category=payload.category,
         title=payload.title,
         content_html=payload.content_html,
+        attachments=payload.attachments,
     )
     return await admin_board_service.get_post(
         db, post_id=post_id, current_user=admin
@@ -135,6 +142,42 @@ async def change_board_post_status(
         post_id=post_id,
         current_user=admin,
         status=payload.status,
+    )
+    return await admin_board_service.get_post(
+        db, post_id=post_id, current_user=admin
+    )
+
+
+@router.patch("/posts/{post_id}/dev-cost", response_model=BoardPostDetailResponse)
+async def set_board_post_dev_cost(
+    post_id: int,
+    payload: BoardDevCostUpdateRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> BoardPostDetailResponse:
+    """추가개발비 입력 — 마스터 전용. 저장 시 상태 → 컨펌요청."""
+    await admin_board_service.set_dev_cost(
+        db,
+        post_id=post_id,
+        current_user=admin,
+        dev_cost=payload.dev_cost,
+    )
+    return await admin_board_service.get_post(
+        db, post_id=post_id, current_user=admin
+    )
+
+
+@router.post("/posts/{post_id}/confirm", response_model=BoardPostDetailResponse)
+async def confirm_board_post(
+    post_id: int,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> BoardPostDetailResponse:
+    """추가개발비 컨펌 — 운영자 전용. 상태 컨펌요청 → 컨펌."""
+    await admin_board_service.confirm_dev_cost(
+        db,
+        post_id=post_id,
+        current_user=admin,
     )
     return await admin_board_service.get_post(
         db, post_id=post_id, current_user=admin
@@ -211,3 +254,13 @@ async def upload_board_image(
     admin: User = Depends(require_admin),
 ) -> BoardImageUploadResponse:
     return await admin_board_service.upload_board_image(file)
+
+
+# ── 첨부 파일 업로드 ──────────────────────────────────────────────────────────
+@router.post("/attachment-upload", response_model=BoardAttachmentUploadResponse)
+async def upload_board_attachment(
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+) -> BoardAttachmentUploadResponse:
+    """글 첨부 파일 업로드 — 문서/압축/이미지, 20MB 이하."""
+    return await admin_board_service.upload_board_attachment(file)

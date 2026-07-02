@@ -25,10 +25,15 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import String, case, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.src.models.admin_board_attachment import AdminBoardAttachment
 from api.src.models.admin_board_comment import AdminBoardComment
 from api.src.models.admin_board_post import AdminBoardPost
 from api.src.models.user import User
 from api.src.schemas.admin.board import (
+    MAX_ATTACHMENTS_PER_POST,
+    BoardAttachmentRef,
+    BoardAttachmentUploadResponse,
+    BoardAttachmentView,
     BoardCategory,
     BoardCommentItem,
     BoardImageUploadResponse,
@@ -51,21 +56,22 @@ BTMDESIGN_EMAIL = "btmdesign@naver.com"
 
 # 카테고리 라벨 — 응답 메타로 노출. key 는 BoardCategory Literal 과 일치해야 한다.
 CATEGORY_LABELS: list[dict[str, str]] = [
-    {"key": "auth", "label": "로그인/회원가입"},
-    {"key": "mypage", "label": "마이페이지"},
-    {"key": "chatbot", "label": "챗봇/RAG"},
-    {"key": "billing", "label": "결제·구독"},
-    {"key": "admin", "label": "관리자"},
-    {"key": "messaging", "label": "알림톡/SMS"},
-    {"key": "design", "label": "디자인/UI"},
+    {"key": "error", "label": "에러"},
+    {"key": "feature", "label": "추가개발"},
+    {"key": "inquiry", "label": "문의"},
     {"key": "etc", "label": "기타"},
 ]
 ALLOWED_CATEGORIES = {c["key"] for c in CATEGORY_LABELS}
 
-# 상태 라벨 — 0040 + 0041_board_status_completed board_post_status_enum 과 동기.
+# 추가개발 컨펌 플로우 전용 카테고리 키.
+FEATURE_CATEGORY = "feature"
+
+# 상태 라벨 — 0040 + 0041 + 0064 board_post_status_enum 과 동기.
 STATUS_LABELS: list[dict[str, str]] = [
     {"key": "review", "label": "요청사항검토"},
     {"key": "in_progress", "label": "수정중"},
+    {"key": "confirm_requested", "label": "컨펌요청"},
+    {"key": "confirmed", "label": "컨펌"},
     {"key": "completed", "label": "수정완료"},
     {"key": "rejected", "label": "수정불가"},
     {"key": "on_hold", "label": "보류"},
@@ -75,14 +81,16 @@ ALLOWED_STATUSES = {s["key"] for s in STATUS_LABELS}
 # 목록 정렬 우선순위 — 위에서부터 노출되는 순서. 값이 작을수록 상단.
 # 같은 상태 내에서는 created_at DESC (최신 글이 위).
 STATUS_SORT_ORDER: dict[str, int] = {
-    "review": 1,        # 요청사항검토
-    "in_progress": 2,   # 수정중
-    "on_hold": 3,       # 보류
-    "rejected": 4,      # 수정불가
-    "completed": 5,     # 수정완료
+    "review": 1,             # 요청사항검토
+    "in_progress": 2,        # 수정중
+    "confirm_requested": 3,  # 컨펌요청 (운영자 확인 필요 — 상단 노출)
+    "on_hold": 4,            # 보류
+    "confirmed": 5,          # 컨펌
+    "rejected": 6,           # 수정불가
+    "completed": 7,          # 수정완료
 }
 
-# 이미지 업로드
+# 이미지 업로드 (본문 에디터 인라인)
 BOARD_IMAGE_DIR = (
     Path(__file__).parent.parent.parent / "data" / "uploads" / "admin_board_images"
 )
@@ -90,6 +98,29 @@ BOARD_IMAGE_URL_PREFIX = "/static/admin-board-images"
 _ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp"}
 _ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 _MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# 첨부 파일 업로드 (글 하단 다운로드 목록) — 문서/압축/이미지, 파일당 20MB.
+# MIME 은 브라우저마다 제각각(hwp·zip 등)이라 확장자 화이트리스트로만 검증한다.
+BOARD_ATTACHMENT_DIR = (
+    Path(__file__).parent.parent.parent
+    / "data"
+    / "uploads"
+    / "admin_board_attachments"
+)
+BOARD_ATTACHMENT_URL_PREFIX = "/static/admin-board-attachments"
+_ALLOWED_ATTACHMENT_EXTS = {
+    # 문서
+    ".pdf", ".txt", ".csv",
+    ".doc", ".docx",            # 워드
+    ".hwp", ".hwpx",            # 아래한글
+    ".xls", ".xlsx",            # 엑셀
+    ".ppt", ".pptx",            # 파워포인트
+    ".zip",                     # 압축
+    # 이미지 (모든 흔한 확장자)
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+    ".svg", ".tif", ".tiff", ".heic", ".heif", ".ico",
+}
+_MAX_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 # ── 권한 헬퍼 ────────────────────────────────────────────────────────────────
@@ -100,6 +131,11 @@ def is_btmdesign(user: User) -> bool:
     추후 함수명을 `is_master_admin(user)` 로 정리할 수 있음(클린업 마이그).
     """
     return getattr(user, "admin_grade", None) == "master"
+
+
+def is_operator(user: User) -> bool:
+    """운영자 등급 여부 — admin_grade='operator'. 추가개발 컨펌 권한 판정에 사용."""
+    return getattr(user, "admin_grade", None) == "operator"
 
 
 def _display_name(email: str) -> str:
@@ -162,7 +198,28 @@ def _require_btmdesign(user: User) -> None:
             403,
             detail={
                 "code": "BOARD_STATUS_FORBIDDEN",
-                "message": "상태 변경은 btmdesign 마스터 계정만 가능합니다.",
+                "message": "상태 변경 권한이 없습니다.",
+            },
+        )
+
+
+def _validate_attachment_url(file_url: str) -> None:
+    """업로드된 file_url 만 허용 — 외부 URL/path traversal 차단(inquiry 패턴)."""
+    if not file_url.startswith(BOARD_ATTACHMENT_URL_PREFIX + "/"):
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_ATTACHMENT_URL_INVALID",
+                "message": "첨부는 업로드된 파일만 사용할 수 있습니다.",
+            },
+        )
+    rel = file_url[len(BOARD_ATTACHMENT_URL_PREFIX) + 1 :]
+    if "/" in rel or ".." in rel:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_ATTACHMENT_URL_INVALID",
+                "message": "잘못된 첨부 경로입니다.",
             },
         )
 
@@ -231,6 +288,7 @@ async def list_posts(
 
     post_ids = [r.id for r in rows]
     comment_counts: dict[int, int] = {}
+    posts_with_attachments: set[int] = set()
     if post_ids:
         cc_rows = (
             await db.execute(
@@ -243,6 +301,15 @@ async def list_posts(
         ).all()
         comment_counts = {pid: cnt for pid, cnt in cc_rows}
 
+        att_rows = (
+            await db.execute(
+                select(AdminBoardAttachment.post_id)
+                .where(AdminBoardAttachment.post_id.in_(post_ids))
+                .distinct()
+            )
+        ).all()
+        posts_with_attachments = {pid for (pid,) in att_rows}
+
     items = [
         BoardPostListItem(
             id=r.id,
@@ -253,6 +320,7 @@ async def list_posts(
             author_email=r.email,
             author_display=_display_name(r.email),
             comment_count=int(comment_counts.get(r.id, 0)),
+            has_attachments=r.id in posts_with_attachments,
             created_at=r.created_at,
             updated_at=r.updated_at,
         )
@@ -309,6 +377,18 @@ async def get_post(
         for c, email in comment_rows
     ]
 
+    attachment_rows = (
+        await db.execute(
+            select(AdminBoardAttachment)
+            .where(AdminBoardAttachment.post_id == post_id)
+            .order_by(AdminBoardAttachment.id.asc())
+        )
+    ).scalars().all()
+    attachments = [
+        BoardAttachmentView.model_validate(a) for a in attachment_rows
+    ]
+
+    is_feature = post.category == FEATURE_CATEGORY
     return BoardPostDetailResponse(
         id=post.id,
         category=post.category,
@@ -319,14 +399,38 @@ async def get_post(
         author_email=author_email,
         author_display=_display_name(author_email),
         comments=comments,
+        attachments=attachments,
+        dev_cost=post.dev_cost,
         can_edit=is_master or post.author_id == current_user.id,
         can_change_status=is_master,
+        # 마스터는 추가개발 글에 개발비를 입력할 수 있다.
+        can_set_dev_cost=is_master and is_feature,
+        # 운영자는 개발비가 입력되어 컨펌요청 상태인 추가개발 글을 컨펌할 수 있다.
+        can_confirm=(
+            is_operator(current_user)
+            and is_feature
+            and post.status == "confirm_requested"
+            and post.dev_cost is not None
+        ),
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
 
 
 # ── 글 CRUD ──────────────────────────────────────────────────────────────────
+def _validate_attachments(attachments: list[BoardAttachmentRef]) -> None:
+    if len(attachments) > MAX_ATTACHMENTS_PER_POST:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_TOO_MANY_ATTACHMENTS",
+                "message": f"파일은 최대 {MAX_ATTACHMENTS_PER_POST}개까지 첨부할 수 있습니다.",
+            },
+        )
+    for att in attachments:
+        _validate_attachment_url(att.file_url)
+
+
 async def create_post(
     db: AsyncSession,
     *,
@@ -334,8 +438,11 @@ async def create_post(
     category: str,
     title: str,
     content_html: str,
+    attachments: list[BoardAttachmentRef] | None = None,
 ) -> int:
     _ensure_category(category)
+    attachments = attachments or []
+    _validate_attachments(attachments)
     safe_html = sanitize_body_html(content_html)
     post = AdminBoardPost(
         author_id=current_user.id,
@@ -346,12 +453,23 @@ async def create_post(
     )
     db.add(post)
     await db.flush()
+    for att in attachments:
+        db.add(
+            AdminBoardAttachment(
+                post_id=post.id,
+                file_url=att.file_url,
+                file_name=att.file_name,
+                mime_type=att.mime_type,
+                size_bytes=att.size_bytes,
+            )
+        )
     await db.commit()
     logger.info(
         "admin_board.post.created",
         post_id=post.id,
         author_id=current_user.id,
         category=category,
+        attachment_count=len(attachments),
     )
     return post.id
 
@@ -364,20 +482,51 @@ async def update_post(
     category: str,
     title: str,
     content_html: str,
+    attachments: list[BoardAttachmentRef] | None = None,
 ) -> None:
     post = await _get_post_or_404(db, post_id)
     _require_post_edit_permission(post, current_user)
     _ensure_category(category)
+    attachments = attachments or []
+    _validate_attachments(attachments)
 
     post.category = category
     post.title = title
     post.content_html = sanitize_body_html(content_html)
     post.updated_at = datetime.now(timezone.utc)
+
+    # 첨부는 전체 교체 — 프론트가 유지할 첨부 + 신규 첨부를 통째로 보낸다.
+    # (요청에 없는 기존 첨부 row 는 삭제. 디스크 파일은 inquiry 와 동일하게 잔존 허용.)
+    existing = (
+        await db.execute(
+            select(AdminBoardAttachment).where(
+                AdminBoardAttachment.post_id == post_id
+            )
+        )
+    ).scalars().all()
+    keep_urls = {att.file_url for att in attachments}
+    for row in existing:
+        if row.file_url not in keep_urls:
+            await db.delete(row)
+    existing_urls = {row.file_url for row in existing}
+    for att in attachments:
+        if att.file_url not in existing_urls:
+            db.add(
+                AdminBoardAttachment(
+                    post_id=post_id,
+                    file_url=att.file_url,
+                    file_name=att.file_name,
+                    mime_type=att.mime_type,
+                    size_bytes=att.size_bytes,
+                )
+            )
+
     await db.commit()
     logger.info(
         "admin_board.post.updated",
         post_id=post.id,
         editor_id=current_user.id,
+        attachment_count=len(attachments),
     )
 
 
@@ -398,6 +547,79 @@ async def update_post_status(
         "admin_board.post.status_changed",
         post_id=post.id,
         new_status=status,
+        editor_id=current_user.id,
+    )
+
+
+async def set_dev_cost(
+    db: AsyncSession,
+    *,
+    post_id: int,
+    current_user: User,
+    dev_cost: int,
+) -> None:
+    """추가개발비 입력 — 마스터 전용. 저장 시 status→confirm_requested(컨펌요청)."""
+    _require_btmdesign(current_user)
+    post = await _get_post_or_404(db, post_id)
+    if post.category != FEATURE_CATEGORY:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_DEV_COST_NOT_FEATURE",
+                "message": "추가개발 카테고리 글에만 개발비를 입력할 수 있습니다.",
+            },
+        )
+    post.dev_cost = dev_cost
+    post.status = "confirm_requested"
+    post.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    logger.info(
+        "admin_board.post.dev_cost_set",
+        post_id=post.id,
+        dev_cost=dev_cost,
+        editor_id=current_user.id,
+    )
+
+
+async def confirm_dev_cost(
+    db: AsyncSession,
+    *,
+    post_id: int,
+    current_user: User,
+) -> None:
+    """추가개발비 컨펌 — 운영자 전용. status: confirm_requested→confirmed(컨펌)."""
+    if not is_operator(current_user):
+        raise HTTPException(
+            403,
+            detail={
+                "code": "BOARD_CONFIRM_FORBIDDEN",
+                "message": "컨펌 권한이 없습니다.",
+            },
+        )
+    post = await _get_post_or_404(db, post_id)
+    if post.category != FEATURE_CATEGORY:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_CONFIRM_NOT_FEATURE",
+                "message": "추가개발 카테고리 글만 컨펌할 수 있습니다.",
+            },
+        )
+    if post.status != "confirm_requested" or post.dev_cost is None:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_CONFIRM_NOT_REQUESTED",
+                "message": "컨펌요청 상태의 글만 컨펌할 수 있습니다.",
+            },
+        )
+    post.status = "confirmed"
+    post.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    logger.info(
+        "admin_board.post.confirmed",
+        post_id=post.id,
+        dev_cost=post.dev_cost,
         editor_id=current_user.id,
     )
 
@@ -579,6 +801,59 @@ async def upload_board_image(file: UploadFile) -> BoardImageUploadResponse:
     )
 
 
+# ── 첨부 파일 업로드 ──────────────────────────────────────────────────────────
+async def upload_board_attachment(
+    file: UploadFile,
+) -> BoardAttachmentUploadResponse:
+    """글 첨부 파일 업로드 — 문서/압축/이미지, 20MB 제한.
+
+    MIME 은 파일 종류마다 제각각(hwp·zip 등)이라 확장자 화이트리스트로 검증한다.
+    """
+    raw_name = file.filename or ""
+    ext = Path(raw_name).suffix.lower()
+    if ext not in _ALLOWED_ATTACHMENT_EXTS:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_ATTACHMENT_EXT_INVALID",
+                "message": (
+                    "PDF·ZIP·워드·아래한글·엑셀·TXT·이미지 파일만 첨부할 수 있습니다."
+                ),
+            },
+        )
+
+    contents = await file.read()
+    size = len(contents)
+    if size == 0:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_ATTACHMENT_EMPTY",
+                "message": "빈 파일은 첨부할 수 없습니다.",
+            },
+        )
+    if size > _MAX_ATTACHMENT_SIZE_BYTES:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "BOARD_ATTACHMENT_TOO_LARGE",
+                "message": "파일 크기는 20MB 이하여야 합니다.",
+            },
+        )
+
+    BOARD_ATTACHMENT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    dest = BOARD_ATTACHMENT_DIR / safe_filename
+    dest.write_bytes(contents)
+
+    return BoardAttachmentUploadResponse(
+        file_url=f"{BOARD_ATTACHMENT_URL_PREFIX}/{safe_filename}",
+        file_name=raw_name[:255] or safe_filename,
+        mime_type=file.content_type or "application/octet-stream",
+        size_bytes=size,
+    )
+
+
 # ── 메타 ──────────────────────────────────────────────────────────────────────
 def get_meta() -> BoardMetaResponse:
     """프론트 select/표시 라벨 — DB hit 없음."""
@@ -592,16 +867,22 @@ __all__ = [
     "BTMDESIGN_EMAIL",
     "BOARD_IMAGE_DIR",
     "BOARD_IMAGE_URL_PREFIX",
+    "BOARD_ATTACHMENT_DIR",
+    "BOARD_ATTACHMENT_URL_PREFIX",
     "is_btmdesign",
+    "is_operator",
     "list_posts",
     "get_post",
     "create_post",
     "update_post",
     "update_post_status",
+    "set_dev_cost",
+    "confirm_dev_cost",
     "delete_post",
     "create_comment",
     "update_comment",
     "delete_comment",
     "upload_board_image",
+    "upload_board_attachment",
     "get_meta",
 ]

@@ -10,17 +10,20 @@ import {
 } from "@tanstack/react-query";
 import { Option, Select } from "@wanteddev/wds";
 
-import { toEditorHtml } from "@/lib/asset-url";
+import { resolveAssetUrl, toEditorHtml } from "@/lib/asset-url";
 import {
   BoardApiError,
   BoardCommentItem,
   BoardPostDetail,
   BoardPostStatus,
+  confirmBoardPost,
   createBoardComment,
   deleteBoardComment,
   deleteBoardPost,
   fetchBoardMeta,
   fetchBoardPost,
+  formatFileSize,
+  setBoardDevCost,
   updateBoardComment,
   updateBoardPostStatus,
 } from "@/features/admin-board/api/board";
@@ -33,6 +36,8 @@ const STATUS_CLASS: Record<BoardPostStatus, string> = {
   completed: styles.statusCompleted,
   rejected: styles.statusRejected,
   on_hold: styles.statusOnHold,
+  confirm_requested: styles.statusConfirmRequested,
+  confirmed: styles.statusConfirmed,
 };
 
 function formatKoreanDateTime(iso: string): string {
@@ -50,6 +55,7 @@ export default function BoardPostDetailPage(
   const queryClient = useQueryClient();
 
   const [commentDraft, setCommentDraft] = useState("");
+  const [devCostDraft, setDevCostDraft] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
@@ -82,6 +88,32 @@ export default function BoardPostDetailPage(
     onError: (err: unknown) => {
       setErrorMsg(
         err instanceof BoardApiError ? err.message : "상태 변경에 실패했습니다.",
+      );
+    },
+  });
+
+  const devCostMut = useMutation({
+    mutationFn: (amount: number) => setBoardDevCost(postId, amount),
+    onSuccess: () => {
+      setErrorMsg(null);
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      setErrorMsg(
+        err instanceof BoardApiError ? err.message : "개발비 저장에 실패했습니다.",
+      );
+    },
+  });
+
+  const confirmMut = useMutation({
+    mutationFn: () => confirmBoardPost(postId),
+    onSuccess: () => {
+      setErrorMsg(null);
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      setErrorMsg(
+        err instanceof BoardApiError ? err.message : "컨펌에 실패했습니다.",
       );
     },
   });
@@ -168,6 +200,16 @@ export default function BoardPostDetailPage(
   const statusLabel =
     metaQuery.data?.statuses.find((s) => s.key === post.status)?.label ??
     post.status;
+  const isFeature = post.category === "feature";
+
+  const onSaveDevCost = () => {
+    const digits = devCostDraft.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setErrorMsg("개발비 금액을 입력해주세요.");
+      return;
+    }
+    devCostMut.mutate(Number(digits));
+  };
 
   const onSubmitComment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,11 +259,20 @@ export default function BoardPostDetailPage(
                 disabled={statusMut.isPending}
                 width="180px"
               >
-                {metaQuery.data?.statuses.map((s) => (
-                  <Option key={s.key} value={s.key}>
-                    {s.label}
-                  </Option>
-                ))}
+                {metaQuery.data?.statuses
+                  // 컨펌요청·컨펌은 추가개발 컨펌 플로우(개발비 입력·컨펌 버튼)로만
+                  // 전이되므로 수동 상태 드롭다운에서는 감춘다. 단 현재 값이면 노출.
+                  .filter(
+                    (s) =>
+                      (s.key !== "confirm_requested" &&
+                        s.key !== "confirmed") ||
+                      s.key === post.status,
+                  )
+                  .map((s) => (
+                    <Option key={s.key} value={s.key}>
+                      {s.label}
+                    </Option>
+                  ))}
               </Select>
             </div>
           ) : (
@@ -231,15 +282,106 @@ export default function BoardPostDetailPage(
           )}
           <span className={styles.statusNote}>
             {post.can_change_status
-              ? "btmdesign 마스터 계정 — 상태 변경 가능"
-              : "상태 변경은 btmdesign 마스터 계정만 가능합니다"}
+              ? "상태를 변경할 수 있습니다"
+              : "상태 변경 권한이 없습니다"}
           </span>
         </div>
+
+        {isFeature && (
+          <div className={styles.devCostBlock}>
+            <div className={styles.devCostHeader}>
+              <span className={styles.devCostLabel}>추가개발비</span>
+              <span className={styles.devCostAmount}>
+                {post.dev_cost !== null
+                  ? `${post.dev_cost.toLocaleString("ko-KR")}원`
+                  : "미입력"}
+              </span>
+            </div>
+
+            {post.can_set_dev_cost && (
+              <div className={styles.devCostForm}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className={styles.devCostInput}
+                  placeholder={
+                    post.dev_cost !== null
+                      ? post.dev_cost.toLocaleString("ko-KR")
+                      : "예: 500000"
+                  }
+                  value={devCostDraft}
+                  onChange={(e) =>
+                    setDevCostDraft(e.target.value.replace(/[^0-9]/g, ""))
+                  }
+                />
+                <span className={styles.devCostUnit}>원</span>
+                <button
+                  type="button"
+                  className={styles.primaryBtn}
+                  disabled={devCostMut.isPending || !devCostDraft}
+                  onClick={onSaveDevCost}
+                >
+                  {devCostMut.isPending
+                    ? "저장 중…"
+                    : post.dev_cost !== null
+                      ? "개발비 수정"
+                      : "개발비 입력"}
+                </button>
+              </div>
+            )}
+
+            {post.can_confirm && (
+              <div className={styles.devCostConfirmRow}>
+                <span className={styles.devCostConfirmHint}>
+                  금액을 확인하고 컨펌해주세요.
+                </span>
+                <button
+                  type="button"
+                  className={styles.confirmBtn}
+                  disabled={confirmMut.isPending}
+                  onClick={() => confirmMut.mutate()}
+                >
+                  {confirmMut.isPending ? "처리 중…" : "컨펌"}
+                </button>
+              </div>
+            )}
+
+            {post.status === "confirmed" && (
+              <p className={styles.devCostDone}>✔ 컨펌 완료된 추가개발 건입니다.</p>
+            )}
+          </div>
+        )}
 
         <div
           className={styles.content}
           dangerouslySetInnerHTML={{ __html: toEditorHtml(post.content_html) }}
         />
+
+        {post.attachments.length > 0 && (
+          <div className={styles.attachmentSection}>
+            <span className={styles.attachmentSectionLabel}>
+              첨부 파일 {post.attachments.length}개
+            </span>
+            <ul className={styles.attachmentList}>
+              {post.attachments.map((a) => (
+                <li key={a.id} className={styles.attachmentItem}>
+                  <a
+                    href={resolveAssetUrl(a.file_url)}
+                    download={a.file_name}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.attachmentLink}
+                  >
+                    📎 {a.file_name}
+                  </a>
+                  <span className={styles.attachmentSize}>
+                    {formatFileSize(a.size_bytes)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {errorMsg ? <p className={styles.errorText}>{errorMsg}</p> : null}
 

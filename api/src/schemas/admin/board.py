@@ -14,43 +14,63 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# 5가지 상태 — 0040_admin_board.py + 0041_board_status_completed.py 동기.
+# 7가지 상태 — 0040 + 0041 + 0064 board_post_status_enum 동기.
+# confirm_requested(컨펌요청)/confirmed(컨펌)은 추가개발 컨펌 플로우 전용.
 BoardPostStatus = Literal[
-    "review", "in_progress", "completed", "rejected", "on_hold"
+    "review",
+    "in_progress",
+    "completed",
+    "rejected",
+    "on_hold",
+    "confirm_requested",
+    "confirmed",
 ]
 
-# 카테고리 8종 — 본 프로젝트 영역 기준. 추후 추가는 ALLOWED_CATEGORIES 확장 + UI 라벨만.
-BoardCategory = Literal[
-    "auth",
-    "mypage",
-    "chatbot",
-    "billing",
-    "admin",
-    "messaging",
-    "design",
-    "etc",
-]
+# 카테고리 4종 — error(에러) / feature(추가개발) / inquiry(문의) / etc(기타).
+# 신규 글 작성/수정 요청에만 강제. 과거 글(auth/mypage 등 레거시 키)은
+# DB(String) 에 그대로 남아 응답에서는 str 로 관대하게 받는다(라벨 fallback).
+BoardCategory = Literal["error", "feature", "inquiry", "etc"]
+
+# 첨부 정책 — 문서/압축/이미지, 파일당 20MB, 글당 최대 10개.
+MAX_ATTACHMENTS_PER_POST = 10
 
 
 # ── 요청 ──────────────────────────────────────────────────────────────────────
+class BoardAttachmentRef(BaseModel):
+    """업로드된 첨부 1건. file_url 은 /static/admin-board-attachments/<uuid>.<ext> 형식."""
+
+    file_url: str = Field(min_length=1, max_length=500)
+    file_name: str = Field(min_length=1, max_length=255)
+    mime_type: str = Field(min_length=1, max_length=128)
+    size_bytes: int = Field(ge=1)
+
+
 class BoardPostCreateRequest(BaseModel):
     category: BoardCategory
     title: str = Field(min_length=1, max_length=200)
     content_html: str = Field(min_length=1, max_length=50000)
+    attachments: list[BoardAttachmentRef] = Field(default_factory=list)
 
 
 class BoardPostUpdateRequest(BaseModel):
-    """본인(또는 btmdesign) 글 수정 — title/content/category 동시 갱신."""
+    """본인(또는 마스터) 글 수정 — title/content/category/첨부 동시 갱신."""
 
     category: BoardCategory
     title: str = Field(min_length=1, max_length=200)
     content_html: str = Field(min_length=1, max_length=50000)
+    attachments: list[BoardAttachmentRef] = Field(default_factory=list)
 
 
 class BoardPostStatusUpdateRequest(BaseModel):
-    """상태만 변경 — btmdesign 마스터 전용."""
+    """상태만 변경 — 마스터 전용."""
 
     status: BoardPostStatus
+
+
+class BoardDevCostUpdateRequest(BaseModel):
+    """추가개발비 입력 — 마스터 전용. 저장 시 status→confirm_requested."""
+
+    dev_cost: int = Field(ge=0, le=1_000_000_000)
 
 
 class BoardCommentCreateRequest(BaseModel):
@@ -71,6 +91,27 @@ class BoardImageUploadResponse(BaseModel):
     size_bytes: int
 
 
+class BoardAttachmentUploadResponse(BaseModel):
+    """첨부 파일 업로드 응답 — 폼이 글 저장 시 attachments 배열에 그대로 동봉."""
+
+    file_url: str
+    file_name: str
+    mime_type: str
+    size_bytes: int
+
+
+class BoardAttachmentView(BaseModel):
+    """상세에서 노출되는 첨부 정보(다운로드 링크)."""
+
+    id: int
+    file_url: str
+    file_name: str
+    mime_type: str
+    size_bytes: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BoardCommentItem(BaseModel):
     id: int
     post_id: int
@@ -87,13 +128,14 @@ class BoardCommentItem(BaseModel):
 
 class BoardPostListItem(BaseModel):
     id: int
-    category: BoardCategory
+    category: str  # 신규 4종 + 레거시 키 관대 수용(라벨 fallback)
     status: BoardPostStatus
     title: str
     author_id: int
     author_email: str
     author_display: str
     comment_count: int
+    has_attachments: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -109,7 +151,7 @@ class BoardPostListResponse(BaseModel):
 
 class BoardPostDetailResponse(BaseModel):
     id: int
-    category: BoardCategory
+    category: str  # 신규 4종 + 레거시 키 관대 수용(라벨 fallback)
     status: BoardPostStatus
     title: str
     content_html: str
@@ -117,8 +159,12 @@ class BoardPostDetailResponse(BaseModel):
     author_email: str
     author_display: str
     comments: list[BoardCommentItem]
-    can_edit: bool          # 본인 글 OR btmdesign — 글 수정/삭제 권한
-    can_change_status: bool  # btmdesign 전용 — 상태 변경 권한
+    attachments: list[BoardAttachmentView]
+    dev_cost: int | None  # 추가개발비(원) — 미입력이면 None
+    can_edit: bool           # 본인 글 OR 마스터 — 글 수정/삭제 권한
+    can_change_status: bool   # 마스터 전용 — 상태 변경 권한
+    can_set_dev_cost: bool    # 마스터 & category='feature' — 개발비 입력 권한
+    can_confirm: bool         # 운영자 & category='feature' & 컨펌요청 상태 — 컨펌 권한
     created_at: datetime
     updated_at: datetime
 

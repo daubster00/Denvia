@@ -288,3 +288,13 @@ app.mount(
     StaticFiles(directory=str(BOARD_IMAGE_DIR)),
     name="admin-board-images",
 )
+
+# 정적 자산 — 관리자 수정요청 게시판 첨부 파일 (0064). 첫 업로드 시 자동 생성됨.
+from api.src.services.admin_board_service import BOARD_ATTACHMENT_DIR  # noqa: E402
+
+BOARD_ATTACHMENT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/static/admin-board-attachments",
+    StaticFiles(directory=str(BOARD_ATTACHMENT_DIR)),
+    name="admin-board-attachments",
+)

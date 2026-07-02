@@ -8,12 +8,14 @@ import { Option, Select } from "@wanteddev/wds";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import {
   BoardApiError,
+  BoardAttachmentRef,
   BoardCategory,
   BoardPostFormInput,
   createBoardPost,
   fetchBoardMeta,
   uploadBoardImage,
 } from "@/features/admin-board/api/board";
+import { AttachmentPicker } from "@/features/admin-board/components/AttachmentPicker";
 
 import styles from "../form.module.css";
 
@@ -30,6 +32,8 @@ export default function NewBoardPostPage() {
   const [category, setCategory] = useState<BoardCategory | "">("");
   const [title, setTitle] = useState("");
   const [contentHtml, setContentHtml] = useState("");
+  const [attachments, setAttachments] = useState<BoardAttachmentRef[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const createMut = useMutation({
@@ -59,7 +63,16 @@ export default function NewBoardPostPage() {
       setErrorMsg("본문을 입력해주세요.");
       return;
     }
-    createMut.mutate({ category, title: title.trim(), content_html: contentHtml });
+    if (uploadingCount > 0) {
+      setErrorMsg("파일 업로드가 끝난 뒤 등록해주세요.");
+      return;
+    }
+    createMut.mutate({
+      category,
+      title: title.trim(),
+      content_html: contentHtml,
+      attachments,
+    });
   };
 
   const handleImageUpload = async (file: File): Promise<string> => {
@@ -119,8 +132,20 @@ export default function NewBoardPostPage() {
             />
           </div>
           <p className={styles.helpText}>
-            이미지(PNG·JPG·WEBP, 5MB 이하)는 도구막대의 "이미지" 버튼으로 추가하세요.
+            이미지(PNG·JPG·WEBP, 5MB 이하)는 도구막대의 "이미지" 버튼으로 본문에 넣을 수 있습니다.
           </p>
+        </div>
+
+        <div className={styles.row}>
+          <span className={styles.label}>첨부 파일</span>
+          <AttachmentPicker
+            value={attachments}
+            onChange={setAttachments}
+            uploadingCount={uploadingCount}
+            onUploadingCountChange={setUploadingCount}
+            onError={setErrorMsg}
+            disabled={createMut.isPending}
+          />
         </div>
 
         {errorMsg ? <p className={styles.errorText}>{errorMsg}</p> : null}
@@ -137,7 +162,7 @@ export default function NewBoardPostPage() {
           <button
             type="submit"
             className={styles.primaryBtn}
-            disabled={createMut.isPending}
+            disabled={createMut.isPending || uploadingCount > 0}
           >
             {createMut.isPending ? "등록 중…" : "등록"}
           </button>
