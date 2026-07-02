@@ -24,6 +24,7 @@ celery_app = Celery(
         "api.src.workers.content_schedule_tasks",  # Story 4.2: F-502 야간 차단 토글
         "api.src.workers.forex_tasks",         # Story 5.5 후속: USD→KRW 환율 일일 자동 갱신
         "api.src.workers.career_tasks",        # 연차 매년 1월 1일 +1 자동 가산
+        "api.src.workers.qa_tasks",            # 게시판 #112: in_progress 고아 qa_logs 정리
     ],
 )
 
@@ -58,6 +59,11 @@ celery_app.conf.update(
         "reap-stale-rebuilds-10min": {
             "task": "rag.reap_stale_rebuilds",
             "schedule": 600,
+        },
+        # 게시판 #112: 5분 이상 in_progress 로 멈춘 qa_logs 고아 정리 — 5분마다
+        "reap-stuck-qa-logs-5min": {
+            "task": "qa_tasks.reap_stuck_qa_logs",
+            "schedule": 300,
         },
         # Story 8.3: 소프트 삭제 파일 30일 후 FS 영구 삭제 — 매일 04:00 KST
         "purge-deleted-knowledge-daily": {

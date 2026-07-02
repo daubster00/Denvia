@@ -29,6 +29,12 @@ class TokenUsage:
 
 DEFAULT_CHAT_MODEL = "o4-mini"
 
+# LLM 요청 타임아웃(초) — 게시판 #112. 미설정 시 httpx 무한 대기라, 상류가 hang 하면
+# 스트림이 종료 이벤트를 못 내고 qa_logs 가 'in_progress' 로 영구 고아가 됐다. 스트리밍에서
+# 이 값은 "토큰 사이 무응답(read) 허용 시간"으로 동작 — 정상 토큰이 흐르면 계속 리셋되므로
+# 긴 답변을 자르지 않고, 진짜 stall 일 때만 APITimeoutError 를 일으켜 error 경로로 떨어뜨린다.
+LLM_REQUEST_TIMEOUT_SECONDS = 60.0
+
 
 def _is_reasoning_model(name: str) -> bool:
     """o3-/o4- 계열은 reasoning 모델 — temperature 파라미터 미지원.
@@ -83,6 +89,8 @@ def build_chat_llm(
         "streaming": streaming,
         "callbacks": callbacks or [],
         "max_tokens": max_tokens,
+        # 게시판 #112 — 무한 hang 방지. reasoning/일반 모델 공통 적용.
+        "request_timeout": LLM_REQUEST_TIMEOUT_SECONDS,
     }
     if not _is_reasoning_model(effective_model):
         kwargs["temperature"] = temperature
