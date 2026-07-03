@@ -12,6 +12,8 @@ from api.src.models.notification_queue import NotificationQueue  # noqa: F401
 from api.src.models.oauth_identity import OAuthIdentity  # noqa: F401
 from api.src.models.qa_feedback import QAFeedback  # noqa: F401
 from api.src.models.qa_log import QALog  # noqa: F401
+from api.src.models.qa_review import QAReview  # noqa: F401
+from api.src.models.qa_review_settings import QAReviewSettings  # noqa: F401
 from api.src.models.rebuild_job import RebuildJob  # noqa: F401
 from api.src.models.user import User  # noqa: F401
 from api.src.models.subscription import Subscription  # noqa: F401

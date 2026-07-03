@@ -45,6 +45,7 @@ ADMIN_PAGE_ROUTES: list[tuple[str, str]] = [
     ("/admin/finance", "재무"),
     ("/admin/cs", "CS"),
     ("/admin/board", "수정요청"),
+    ("/admin/qa-review", "질의응답 검토"),
     ("/admin/alimtalk", "알림톡 관리"),
     ("/admin/settings", "설정"),
     ("/admin/feature/openai-warmup", "AI 워밍업 (상단바 토글)"),

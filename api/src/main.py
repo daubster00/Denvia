@@ -40,6 +40,7 @@ from api.src.routers.admin import payments as admin_payments
 from api.src.routers.admin import killswitch as admin_killswitch
 from api.src.routers.admin import seo as admin_seo
 from api.src.routers.admin import board as admin_board
+from api.src.routers.admin import qa_review as admin_qa_review
 from api.src.routers.admin import openai_warmup as admin_openai_warmup
 from api.src.routers.admin import alimtalk as admin_alimtalk
 from api.src.routers import billing as billing_router
@@ -234,6 +235,7 @@ app.include_router(admin_payments.router, prefix="/api/v1")
 app.include_router(admin_killswitch.router, prefix="/api/v1")
 app.include_router(admin_seo.router, prefix="/api/v1")
 app.include_router(admin_board.router, prefix="/api/v1")
+app.include_router(admin_qa_review.router, prefix="/api/v1")
 app.include_router(admin_openai_warmup.router, prefix="/api/v1")
 app.include_router(admin_alimtalk.router, prefix="/api/v1")
 app.include_router(billing_router.router, prefix="/api/v1")

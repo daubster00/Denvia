@@ -1,0 +1,422 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.dialog {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: #6b7280;
+  padding: 6px;
+  border-radius: 6px;
+}
+
+.closeBtn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 얇고 연한 보라색 스크롤바 — 모달 내 스크롤 영역 공통. */
+.body,
+.answer,
+.memoInput {
+  scrollbar-width: thin;
+  scrollbar-color: #d8b4fe transparent;
+}
+
+.body::-webkit-scrollbar,
+.answer::-webkit-scrollbar,
+.memoInput::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.body::-webkit-scrollbar-track,
+.answer::-webkit-scrollbar-track,
+.memoInput::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.body::-webkit-scrollbar-thumb,
+.answer::-webkit-scrollbar-thumb,
+.memoInput::-webkit-scrollbar-thumb {
+  background: #e9d5ff;
+  border-radius: 999px;
+}
+
+.body::-webkit-scrollbar-thumb:hover,
+.answer::-webkit-scrollbar-thumb:hover,
+.memoInput::-webkit-scrollbar-thumb:hover {
+  background: #d8b4fe;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.question {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.answer {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #f8fafc;
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.meta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.userLine {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+}
+
+.rateBtns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goodBtn,
+.goodBtnActive,
+.badBtn,
+.badBtnActive {
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.goodBtn {
+  background: #ffffff;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+}
+
+.goodBtn:hover {
+  background: #ecfdf5;
+}
+
+.goodBtnActive {
+  background: #059669;
+  border: 1px solid #059669;
+  color: #ffffff;
+}
+
+.badBtn {
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+}
+
+.badBtn:hover {
+  background: #fef2f2;
+}
+
+.badBtnActive {
+  background: #dc2626;
+  border: 1px solid #dc2626;
+  color: #ffffff;
+}
+
+.goodBtn:disabled,
+.goodBtnActive:disabled,
+.badBtn:disabled,
+.badBtnActive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.unratedHint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.memoInput {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #111827;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.memoInput:focus {
+  outline: 2px solid #7c3aed;
+  outline-offset: -2px;
+  border-color: transparent;
+}
+
+.memoInput:disabled {
+  background: #f8fafc;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.changeCount {
+  margin: 0;
+  font-size: 12px;
+  color: #b45309;
+}
+
+.errorMsg {
+  margin: 0;
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid #eef1f5;
+  padding-top: 16px;
+}
+
+.actionsRight {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.reviewBtn,
+.reviewedBtn {
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reviewBtn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.reviewBtn:hover {
+  background: #f9fafb;
+}
+
+.reviewedBtn {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #4338ca;
+}
+
+.reviewBtn:disabled,
+.reviewedBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cancelBtn {
+  padding: 8px 18px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff;
+  font-size: 14px;
+  color: #374151;
+}
+
+.cancelBtn:hover {
+  background: #f9fafb;
+}
+
+/* ── 평가 편집(평가하기 / 작성완료) ─────────────────────────────────────── */
+
+.evalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editBtn {
+  padding: 5px 14px;
+  border-radius: 8px;
+  border: 1px solid #ddd6fe;
+  background: #f5f3ff;
+  color: #7c3aed;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.editBtn:hover {
+  background: #ede9fe;
+}
+
+.ratingView {
+  display: flex;
+  align-items: center;
+}
+
+.ratingBadgeGood,
+.ratingBadgeBad,
+.ratingBadgeNone {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ratingBadgeGood {
+  background: #059669;
+  color: #ffffff;
+}
+
+.ratingBadgeBad {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.ratingBadgeNone {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.memoView,
+.memoEmpty {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  border: 1px solid #eef1f5;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.memoView {
+  color: #374151;
+}
+
+.memoEmpty {
+  color: #9ca3af;
+}
+
+.memoAuthor {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.memoEditActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.memoCancelBtn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff;
+  font-size: 14px;
+  color: #374151;
+}
+
+.memoCancelBtn:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.memoDoneBtn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.memoDoneBtn:hover:not(:disabled) {
+  background: #6d28d9;
+}
+
+.memoCancelBtn:disabled,
+.memoDoneBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

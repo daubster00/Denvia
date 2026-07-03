@@ -18,6 +18,7 @@ export const ADMIN_MATRIX_ROUTES = [
   "/admin/finance",
   "/admin/cs",
   "/admin/board",
+  "/admin/qa-review",
   "/admin/alimtalk",
   "/admin/settings",
 ] as const;

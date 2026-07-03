@@ -86,6 +86,8 @@ const MENU_ITEMS: MenuItem[] = [
     ],
   },
   { icon: IconWrite as IconComponent, label: "수정요청", href: "/admin/board" },
+  // #113 — 질의응답 검토(굿/베드). 부운영자도 접근(권한 매트릭스로 게이팅).
+  { icon: IconBubble as IconComponent, label: "질의응답 검토", href: "/admin/qa-review" },
   // master/operator 만 보이는 항목. sub_operator 가 클릭해도 백엔드 403.
   // children: 관리자 목록 / 등급 관리 / 페이지 권한 / 활동 로그.
   // 권한 매트릭스 수정도 master/operator 동일(2026-05-28 SSOT 갱신).

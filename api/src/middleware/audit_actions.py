@@ -66,6 +66,12 @@ AUDIT_ADMIN_GRADE_DELETED = "admin.grade.deleted"  # /admin/admins/grades 커스
 # Story 4.6 — `/admin/alimtalk` 관리자 알림톡 관리 페이지
 AUDIT_ALIMTALK_TEST_SEND_DISPATCHED = "alimtalk.test_send_dispatched"   # 운영자가 테스트 발송 실행(성공/실패 무관 기록)
 AUDIT_ALIMTALK_TEST_RECIPIENT_UPDATED = "alimtalk.test_recipient_updated"  # 테스트 수신 번호 등록/변경/해제
+# #113 — `/admin/qa-review` 질의응답 검토 페이지
+AUDIT_QA_REVIEW_RATE = "qa_review.rate"                 # 굿/베드 평가 설정·전환·해제
+AUDIT_QA_REVIEW_COMMENT = "qa_review.comment"           # 베드 코멘트 수정
+AUDIT_QA_REVIEW_COMPLETE = "qa_review.complete"         # 검토완료/미검토 토글(master/operator)
+AUDIT_QA_REVIEW_BULK_DELETE = "qa_review.bulk_delete"   # 다중 삭제(소프트 숨김)
+AUDIT_QA_REVIEW_SETTINGS = "qa_review.settings"         # 부관리자 조회 최대 과거 일수 변경
 
 
 def audit_action(action: str):

@@ -1,0 +1,473 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 28px 40px;
+  max-width: 1300px;
+  margin-left: 0;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.titleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.backLink {
+  font-size: 13px;
+  color: #6b7280;
+  text-decoration: none;
+  width: fit-content;
+}
+
+.backLink:hover {
+  color: #374151;
+  text-decoration: underline;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 4px 0 0;
+}
+
+.caption {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.refreshBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.refreshBtn:hover {
+  background-color: #f9fafb;
+}
+
+.refreshBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 28px 18px 14px;
+}
+
+.toggleGroup {
+  display: flex;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.toggleBtn,
+.toggleBtnActive {
+  background: #ffffff;
+  border: none;
+  border-right: 1px solid #e5e7eb;
+  padding: 7px 14px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.toggleBtn:last-child,
+.toggleBtnActive:last-child {
+  border-right: none;
+}
+
+.toggleBtnActive {
+  background: #7c3aed;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.toggleBtn:hover {
+  background: #f9fafb;
+}
+
+.toggleBtn:disabled,
+.toggleBtnActive:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dateRange {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.dateLabel {
+  position: relative;
+  display: inline-flex;
+}
+
+.dateLabelText {
+  position: absolute;
+  left: 0;
+  top: -19px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.dateInput {
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 180px;
+  padding: 7px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.searchInput:focus {
+  outline: 2px solid #7c3aed;
+  outline-offset: -2px;
+  border-color: transparent;
+}
+
+.clampNotice {
+  margin: 0;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.statsToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actionBtn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.actionBtn:hover {
+  background: #f9fafb;
+}
+
+.actionLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #374151;
+  text-decoration: none;
+}
+
+.actionLink:hover {
+  background: #f9fafb;
+}
+
+.settingsPanel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.settingsLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.settingsError {
+  font-size: 13px;
+  color: #dc2626;
+}
+
+.kpiRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ratioText {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+  padding: 8px 0;
+}
+
+.chartBox {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.bulkBar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #3730a3;
+}
+
+.bulkDeleteBtn {
+  background: #dc2626;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.bulkDeleteBtn:hover {
+  background: #b91c1c;
+}
+
+.actionError {
+  margin: 0;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 14px;
+}
+
+.statusMessage {
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  padding: 32px 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  margin: 0;
+}
+
+.errorBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px 20px;
+  color: #991b1b;
+}
+
+.errorBox p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.retryBtn {
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #991b1b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background-color: #fee2e2;
+}
+
+.tableWrap {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow-x: auto;
+  /* 얇고 연한 보라색 스크롤바. */
+  scrollbar-width: thin;
+  scrollbar-color: #d8b4fe transparent;
+}
+
+.tableWrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.tableWrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tableWrap::-webkit-scrollbar-thumb {
+  background: #e9d5ff;
+  border-radius: 999px;
+}
+
+.tableWrap::-webkit-scrollbar-thumb:hover {
+  background: #d8b4fe;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  /* 답변이 길어도 칼럼 폭이 고정되도록 — colgroup 폭을 그대로 따른다. */
+  table-layout: fixed;
+}
+
+.table thead th {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.thCheck {
+  width: 44px;
+  padding-left: 16px;
+}
+
+/* ── 칼럼 폭(table-layout: fixed) ─────────────────────────────────────── */
+.colCheck {
+  width: 44px;
+}
+
+/* 질문·답변은 남는 폭을 절반씩 나눠 갖는다. 답변이 길어도 여기 폭을 넘지 않고 말줄임. */
+.colQuestion,
+.colAnswer {
+  width: auto;
+}
+
+.colRating {
+  width: 84px;
+}
+
+.colStatus {
+  width: 104px;
+}
+
+.colUser {
+  width: 150px;
+}
+
+.colAction {
+  width: 104px;
+}
+
+.emptyRow {
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  padding: 32px 16px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.pageBtn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.pageBtn:hover {
+  background: #f9fafb;
+}
+
+.pageBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 14px;
+  color: #374151;
+}
+
+@media (max-width: 767px) {
+  .page {
+    padding: 16px 16px 32px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kpiRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
