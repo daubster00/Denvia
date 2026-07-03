@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import structlog
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.user import User
@@ -95,7 +96,23 @@ async def signup_admin_pending(
         updated_at=now,
     )
     db.add(user)
-    await db.flush()  # user.id 획득
+    try:
+        await db.flush()  # user.id 획득
+    except IntegrityError as exc:
+        # 앱 레벨 중복검사(관리자 진영)를 통과한 뒤에도 DB partial unique 인덱스
+        # (uq_users_email_admin / uq_users_phone_admin)에 걸리는 경우 — 예: 동시 가입 요청 경합.
+        # raw 500 대신 친절한 409 로 변환한다. (진영 간 이메일/휴대폰 공존은 0066 이후 허용됨)
+        await db.rollback()
+        constraint = str(getattr(exc.orig, "diag", None) and exc.orig.diag.constraint_name or exc)
+        if "phone" in constraint:
+            code, message = "ACCOUNT_PHONE_DUPLICATE", "이미 사용 중인 연락처입니다."
+        else:
+            code, message = "ACCOUNT_EMAIL_DUPLICATE", "이미 사용 중인 이메일입니다."
+        logger.warning("admin.signup.integrity_conflict", constraint=constraint)
+        raise HTTPException(
+            status_code=409,
+            detail={"code": code, "message": message},
+        ) from exc
 
     logger.info(
         "admin.signup.inserted",
