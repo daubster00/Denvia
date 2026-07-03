@@ -653,59 +653,9 @@ function QuestionDetailPanel({
 
             <section
               className={styles.detailSection}
-              data-testid="section-retrieved-docs"
-            >
-              <h4 className={styles.detailSectionTitle}>
-                ② top-k 검색에 들어온 문서 ({data.retrieved_docs.length}건)
-              </h4>
-              {data.rule_matched ? (
-                <p className={styles.detailSectionHint}>
-                  룰 매칭 경로로 응답된 질의입니다. retriever를 거치지 않으므로
-                  검색 문서가 없습니다.
-                </p>
-              ) : null}
-              {data.retrieved_docs.length > 0 ? (
-                <div className={styles.detailDocList}>
-                  {data.retrieved_docs.map((doc, idx) => (
-                    <DocCard key={idx} doc={doc} index={idx} />
-                  ))}
-                </div>
-              ) : !data.rule_matched ? (
-                <p className={styles.detailEmpty}>
-                  검색 문서 기록이 없습니다 (기능 도입 이전 질의일 수 있음).
-                </p>
-              ) : null}
-            </section>
-
-            <section
-              className={styles.detailSection}
-              data-testid="section-prompt"
-            >
-              <h4 className={styles.detailSectionTitle}>
-                ③ LLM 에 실제로 전달된 프롬프트 (템플릿 + 질문 + 컨텍스트 치환
-                완료)
-              </h4>
-              {data.prompt_text ? (
-                <pre className={styles.detailPromptBlock}>
-                  {data.prompt_text}
-                </pre>
-              ) : data.rule_matched ? (
-                <p className={styles.detailEmpty}>
-                  룰 매칭 경로 — LLM 호출 없이 응답되어 프롬프트가 없습니다.
-                </p>
-              ) : (
-                <p className={styles.detailEmpty}>
-                  프롬프트 기록이 없습니다 (본 기능 도입 이전 질의이거나
-                  스트림이 중단됨).
-                </p>
-              )}
-            </section>
-
-            <section
-              className={styles.detailSection}
               data-testid="section-answer"
             >
-              <h4 className={styles.detailSectionTitle}>④ 최종 답변</h4>
+              <h4 className={styles.detailSectionTitle}>② 최종 답변</h4>
               {data.answer_text ? (
                 <p
                   className={`${styles.detailBlockText} ${styles.detailAnswerBlock}`}
@@ -763,6 +713,56 @@ function QuestionDetailPanel({
                     data.usd_to_krw_search_date,
                     data.usd_to_krw_updated_at,
                   )}
+                </p>
+              )}
+            </section>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-retrieved-docs"
+            >
+              <h4 className={styles.detailSectionTitle}>
+                ③ top-k 검색에 들어온 문서 ({data.retrieved_docs.length}건)
+              </h4>
+              {data.rule_matched ? (
+                <p className={styles.detailSectionHint}>
+                  룰 매칭 경로로 응답된 질의입니다. retriever를 거치지 않으므로
+                  검색 문서가 없습니다.
+                </p>
+              ) : null}
+              {data.retrieved_docs.length > 0 ? (
+                <div className={styles.detailDocList}>
+                  {data.retrieved_docs.map((doc, idx) => (
+                    <DocCard key={idx} doc={doc} index={idx} />
+                  ))}
+                </div>
+              ) : !data.rule_matched ? (
+                <p className={styles.detailEmpty}>
+                  검색 문서 기록이 없습니다 (기능 도입 이전 질의일 수 있음).
+                </p>
+              ) : null}
+            </section>
+
+            <section
+              className={styles.detailSection}
+              data-testid="section-prompt"
+            >
+              <h4 className={styles.detailSectionTitle}>
+                ④ LLM 에 실제로 전달된 프롬프트 (템플릿 + 질문 + 컨텍스트 치환
+                완료)
+              </h4>
+              {data.prompt_text ? (
+                <pre className={styles.detailPromptBlock}>
+                  {data.prompt_text}
+                </pre>
+              ) : data.rule_matched ? (
+                <p className={styles.detailEmpty}>
+                  룰 매칭 경로 — LLM 호출 없이 응답되어 프롬프트가 없습니다.
+                </p>
+              ) : (
+                <p className={styles.detailEmpty}>
+                  프롬프트 기록이 없습니다 (본 기능 도입 이전 질의이거나
+                  스트림이 중단됨).
                 </p>
               )}
             </section>
