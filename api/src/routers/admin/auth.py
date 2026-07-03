@@ -280,6 +280,7 @@ async def admin_login(
         redis_url=settings.redis_url,
         db=db,
         rotate_session=False,
+        expected_role="admin",
     )
     await db.commit()
 

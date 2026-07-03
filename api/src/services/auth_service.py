@@ -735,9 +735,14 @@ async def login_user(
             )
 
     # 사용자 조회 (이메일 미존재 시에도 동일 에러 반환 — timing-safe)
-    result = await db.execute(
-        select(User).where(User.email == email, User.withdrawn_at.is_(None))
-    )
+    # 이메일 유니크는 role별 partial 로 분리되어(비탈퇴 기준) 같은 이메일이 user 행과 admin
+    # 행으로 동시에 존재할 수 있다. expected_role 이 지정되면 조회 자체를 해당 role 로 좁혀야
+    # 한다 — 좁히지 않으면 같은 이메일의 비탈퇴 행이 2개가 되어 scalar_one_or_none() 이
+    # MultipleResultsFound 로 터지고 500 이 난다(관리자 로그인 회귀, 2026-07-03).
+    lookup_conditions = [User.email == email, User.withdrawn_at.is_(None)]
+    if expected_role is not None:
+        lookup_conditions.append(User.role == expected_role)
+    result = await db.execute(select(User).where(*lookup_conditions))
     user = result.scalar_one_or_none()
 
     # AC-1: OAuth-only 사용자 분기
