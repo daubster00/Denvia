@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Image from "next/image";
 import type { QAMessage } from "@/stores/qa-store";
 import { AnswerFeedback } from "./AnswerFeedback";
@@ -55,6 +55,19 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
   // 타자기 애니메이션이 보이도록 content를 즉시 렌더한다.
   const showSpinner = isPending && message.content.length === 0;
 
+  // 로딩이 길어지면(복잡한 질문) 안내 문구를 추가로 노출한다. 백엔드 첫 토큰 상한이
+  // 45초이므로, 그 전에 사용자가 "멈춘 것 아닌가" 불안하지 않게 미리 안심 문구를 준다.
+  const SLOW_HINT_DELAY_MS = 7000;
+  const [showSlowHint, setShowSlowHint] = useState(false);
+  useEffect(() => {
+    if (!showSpinner) {
+      setShowSlowHint(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSlowHint(true), SLOW_HINT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [showSpinner]);
+
   if (isUser) {
     return (
       <div role="article" aria-live="polite" className={styles.userRow}>
@@ -91,6 +104,9 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
         {showSpinner ? (
           <div role="status" aria-live="polite" className={styles.pendingRow}>
             <span>생각중이야…</span>
+            {showSlowHint && (
+              <div className={styles.pendingSlowHint}>복잡한 질문은 시간이 더 걸립니다.</div>
+            )}
           </div>
         ) : isError ? (
           <div>

@@ -177,6 +177,41 @@ async def test_stream_exception_yields_error_event():
     assert "지연" in err_data["message"]
 
 
+@pytest.mark.asyncio
+async def test_stream_first_token_timeout_yields_slow_question_error():
+    """게시판 #112 후속 — 첫 토큰 45초 상한 초과 시 SLOW_QUESTION error 이벤트 +
+    status='error' + latency_ms 기록(리퍼 고아와 구분)."""
+    from api.src.rag_integration.query_runner import FirstTokenTimeoutError
+
+    svc = QAService()
+    db = _make_db(log_id=71)
+    user = _make_user()
+
+    async def _mock_stream_timeout(query, on_complete):
+        raise FirstTokenTimeoutError("첫 토큰이 45초 내 도착하지 않음")
+        yield  # make it a generator
+
+    rag_mock = _make_rag_module_mock(rule_answer=None, procedures=[])
+
+    with (
+        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
+        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
+        patch("api.src.services.qa_service.query_runner.stream_rag_answer", side_effect=_mock_stream_timeout),
+    ):
+        events = await _collect(svc.stream(db=db, user=user, question_text="전악 치식 질문"))
+
+    error_events = [ev for ev in events if ev["event"] == "error"]
+    assert len(error_events) == 1
+    err_data = json.loads(error_events[0]["data"])
+    assert err_data["code"] == "SLOW_QUESTION"
+    assert "복잡" in err_data["message"]
+
+    added: QALog = db.add.call_args[0][0]
+    assert added.status == "error"
+    # 리퍼가 청소하는 in_progress 고아(latency NULL)와 달리 latency_ms 가 기록돼야 한다.
+    assert added.latency_ms is not None
+
+
 # ---------------------------------------------------------------------------
 # PII 보호 테스트
 # ---------------------------------------------------------------------------

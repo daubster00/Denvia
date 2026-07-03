@@ -16,6 +16,20 @@ from api.src.settings import REDIS_DB_RUNTIME_CONFIG, settings
 
 logger = structlog.get_logger(__name__)
 
+# 첫 토큰(TTFT) wall-clock 상한(초) — 게시판 #112 후속.
+# o4-mini(추론형 모델)는 무거운 질문에서 첫 글자를 내놓기 전 추론 단계에 갇혀 첫 토큰조차
+# 못 내는 경우가 있다(관측: 정상 완료 TTFT 최대 ~15초, p99 ~13초). httpx request_timeout(60초)
+# 은 "토큰 사이 무응답" 시간이라 추론 중 연결이 살아 있으면 안 걸려 무한 로딩이 됐다.
+# 이 값은 스트림 시작~첫 토큰 도착까지의 절대 시간 상한 — 넘으면 취소 불가능한 백그라운드
+# 스레드는 버리고 즉시 error 로 종료해 사용자에게 확실히 응답을 돌려준다. 정상 무거운 질문도
+# 15초 안에 첫 토큰이 나오므로 45초는 오탐 위험 없이 진짜 hang 만 잡는 여유값.
+FIRST_TOKEN_TIMEOUT_SECONDS = 45.0
+
+
+class FirstTokenTimeoutError(Exception):
+    """첫 토큰이 ``FIRST_TOKEN_TIMEOUT_SECONDS`` 안에 도착하지 못했을 때 발생."""
+
+
 _initialized = False
 # 마지막으로 메모리에 로드한 인덱스의 실제 경로(symlink 해석 후).
 # 재빌드가 끝나면 atomic_swap이 current symlink의 target을 index_a↔index_b로 바꾼다.
@@ -416,18 +430,36 @@ async def stream_rag_answer(
         finally:
             token_queue.put(None)  # sentinel
 
-    thread_task = asyncio.get_event_loop().run_in_executor(None, _run_sync)
+    loop = asyncio.get_event_loop()
+    thread_task = loop.run_in_executor(None, _run_sync)
 
+    # 첫 토큰 wall-clock 상한 초과 여부 — True 면 취소 불가능한 백그라운드 스레드를
+    # await 하지 않고(=버리고) 즉시 반환한다. 스레드는 LLM 이 응답하거나 httpx
+    # request_timeout 이 걸리면 스스로 종료되며 sentinel 을 넣고 정리된다.
+    timed_out = False
     try:
-        while True:
-            token = await asyncio.get_event_loop().run_in_executor(
-                None, token_queue.get
+        # 첫 토큰만 45초 상한. 첫 토큰이 도착하면 이후 토큰은 상한 없이 흘려보내
+        # 긴 답변을 자르지 않는다(#112 — request_timeout 이 토큰 사이 stall 을 담당).
+        try:
+            first = await asyncio.wait_for(
+                loop.run_in_executor(None, token_queue.get),
+                timeout=FIRST_TOKEN_TIMEOUT_SECONDS,
             )
-            if token is None:
-                break
-            yield token
+        except asyncio.TimeoutError:
+            timed_out = True
+            raise FirstTokenTimeoutError(
+                f"첫 토큰이 {FIRST_TOKEN_TIMEOUT_SECONDS:.0f}초 내 도착하지 않음"
+            )
+        if first is not None:
+            yield first
+            while True:
+                token = await loop.run_in_executor(None, token_queue.get)
+                if token is None:
+                    break
+                yield token
     finally:
-        await thread_task
+        if not timed_out:
+            await thread_task
 
     if exc_holder:
         raise exc_holder[0]

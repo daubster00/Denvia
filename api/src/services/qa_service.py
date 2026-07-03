@@ -677,6 +677,28 @@ class QAService:
             )
             raise
 
+        except query_runner.FirstTokenTimeoutError:
+            # 게시판 #112 후속 — 첫 토큰 45초 상한 초과. 추론이 길어 첫 글자조차 못 낸
+            # 무거운 질문(전악 치식 나열 등)이 무한 로딩으로 남던 것을 확실히 끊는다.
+            # latency_ms 를 기록해 리퍼가 청소하는 'in_progress' 고아(latency NULL)와 구분한다.
+            latency_ms = int((time.perf_counter() - t0) * 1000)
+            log.latency_ms = latency_ms
+            log.status = "error"
+            await db.commit()
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "code": "SLOW_QUESTION",
+                    "message": "질문이 복잡해 답변이 지연되고 있어요. 잠시 후 다시 시도해주세요.",
+                }),
+            }
+            logger.warning(
+                "qa.stream.first_token_timeout",
+                qa_log_id=qa_log_id,
+                user_id=user.id,
+                latency_ms=latency_ms,
+            )
+
         except Exception as exc:
             # AC-6: tenacity 최종 실패 또는 기타 예외
             latency_ms = int((time.perf_counter() - t0) * 1000)

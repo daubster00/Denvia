@@ -101,6 +101,13 @@
   color: #70737c;
 }
 
+/* 로딩이 길어질 때(복잡한 질문) 추가로 뜨는 안내 문구. 스피너 아래에 은은하게. */
+.pendingSlowHint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #9298a2;
+}
+
 .errorText {
   margin: 0 0 8px;
   color: #dc2626;
