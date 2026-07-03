@@ -226,8 +226,9 @@ export default function QaReviewPage() {
         change_count: res.change_count,
         reviewed_at: res.reviewed_at,
         // 평가 응답에는 작성자 이름이 없으므로, 방금 저장한 관리자 계정으로 낙관적 갱신.
-        // 평가를 해제(rating=null)하면 메모도 사라지므로 작성자도 비운다.
+        // 평가를 해제(rating=null)하면 메모도 사라지므로 작성자·작성일자도 비운다.
         rated_by_name: res.rating == null ? null : admin?.email ?? null,
+        rated_at: res.rating == null ? null : res.rated_at,
       });
     },
     [patchReview, admin?.email],

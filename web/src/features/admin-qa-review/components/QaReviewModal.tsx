@@ -40,14 +40,12 @@ export function QaReviewModal({
 }: Props) {
   const review = item.review;
   const isReviewed = review.reviewed_at != null;
-  const hasSavedRating = review.rating != null;
   const hasMemo = !!(review.comment && review.comment.trim());
 
-  // 서버 값 기준 초안 상태 — 열려 있는 동안 다른 항목으로 바뀌면(리스트 갱신) 동기화.
+  // 서버 값 기준 초안 상태 — '평가수정' 없이 항상 편집 가능. 열려 있는 동안 다른
+  // 항목으로 바뀌면(리스트 갱신·저장 반영) 초안을 서버 값으로 다시 동기화한다.
   const [draftRating, setDraftRating] = useState<QaRating | null>(review.rating);
   const [draftComment, setDraftComment] = useState(review.comment ?? "");
-  // '평가하기' 를 눌러야 평가·메모 편집이 가능해진다. 기본은 읽기 전용 보기.
-  const [editing, setEditing] = useState(false);
   const [syncKey, setSyncKey] = useState(
     `${review.rating ?? ""}|${review.comment ?? ""}`,
   );
@@ -56,7 +54,6 @@ export function QaReviewModal({
     setSyncKey(serverKey);
     setDraftRating(review.rating);
     setDraftComment(review.comment ?? "");
-    setEditing(false);
   }
 
   const [saving, setSaving] = useState(false);
@@ -75,25 +72,13 @@ export function QaReviewModal({
     draftRating !== review.rating ||
     draftComment.trim() !== (review.comment ?? "").trim();
 
-  const handleStartEdit = () => {
-    setError(null);
-    setEditing(true);
-  };
-
-  const handleCancelEdit = () => {
-    setDraftRating(review.rating);
-    setDraftComment(review.comment ?? "");
-    setError(null);
-    setEditing(false);
-  };
-
-  // '작성완료' — 평가(굿/배드/해제) + 메모를 저장하고 읽기 전용 보기로 돌아간다.
+  // '저장' — 평가(굿/배드/해제) + 메모를 저장한다. 성공 시 서버 값이 캐시에 반영되며
+  // 위 동기화 로직이 초안을 새 값으로 맞추고, 작성자 계정·작성일자가 갱신된다.
   const handleSave = async () => {
     setError(null);
     setSaving(true);
     try {
       await onSave(item, draftRating, draftComment.trim());
-      setEditing(false);
     } catch {
       setError("저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
@@ -156,101 +141,82 @@ export function QaReviewModal({
 
           <div className={styles.field}>
             <span className={styles.fieldLabel}>평가</span>
-
-            {editing ? (
-              <div className={styles.rateBtns}>
-                <button
-                  type="button"
-                  className={
-                    draftRating === "good" ? styles.goodBtnActive : styles.goodBtn
-                  }
-                  aria-pressed={draftRating === "good"}
-                  disabled={saving}
-                  onClick={() =>
-                    setDraftRating((prev) => (prev === "good" ? null : "good"))
-                  }
-                >
-                  굿
-                </button>
-                <button
-                  type="button"
-                  className={
-                    draftRating === "bad" ? styles.badBtnActive : styles.badBtn
-                  }
-                  aria-pressed={draftRating === "bad"}
-                  disabled={saving}
-                  onClick={() =>
-                    setDraftRating((prev) => (prev === "bad" ? null : "bad"))
-                  }
-                >
-                  배드
-                </button>
-                {draftRating === null && (
-                  <span className={styles.unratedHint}>선택 안 함(미평가)</span>
-                )}
-              </div>
-            ) : (
-              <div className={styles.ratingView}>
-                {review.rating === "good" ? (
-                  <span className={styles.ratingBadgeGood}>굿</span>
-                ) : review.rating === "bad" ? (
-                  <span className={styles.ratingBadgeBad}>배드</span>
-                ) : (
-                  <span className={styles.ratingBadgeNone}>미평가</span>
-                )}
-              </div>
-            )}
+            <div className={styles.rateBtns}>
+              <button
+                type="button"
+                className={
+                  draftRating === "good" ? styles.goodBtnActive : styles.goodBtn
+                }
+                aria-pressed={draftRating === "good"}
+                disabled={saving}
+                onClick={() =>
+                  setDraftRating((prev) => (prev === "good" ? null : "good"))
+                }
+              >
+                굿
+              </button>
+              <button
+                type="button"
+                className={
+                  draftRating === "bad" ? styles.badBtnActive : styles.badBtn
+                }
+                aria-pressed={draftRating === "bad"}
+                disabled={saving}
+                onClick={() =>
+                  setDraftRating((prev) => (prev === "bad" ? null : "bad"))
+                }
+              >
+                배드
+              </button>
+              {draftRating === null && (
+                <span className={styles.unratedHint}>선택 안 함(미평가)</span>
+              )}
+            </div>
           </div>
 
           <div className={styles.field}>
             <label className={styles.fieldLabel} htmlFor="qa-review-memo">
               평가 메모
             </label>
-            {editing ? (
-              <>
-                <textarea
-                  id="qa-review-memo"
-                  className={styles.memoInput}
-                  value={draftComment}
-                  onChange={(e) => setDraftComment(e.target.value)}
-                  placeholder={
-                    draftRating === null
-                      ? "먼저 굿 또는 배드를 선택한 뒤 메모를 남길 수 있습니다."
-                      : "평가 사유·개선점 등을 자유롭게 적어주세요."
-                  }
-                  rows={4}
-                  maxLength={2000}
-                  disabled={saving || draftRating === null}
-                />
-                <div className={styles.memoEditActions}>
-                  <button
-                    type="button"
-                    className={styles.memoCancelBtn}
-                    onClick={handleCancelEdit}
-                    disabled={saving}
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.memoDoneBtn}
-                    onClick={handleSave}
-                    disabled={saving || !dirty}
-                  >
-                    {saving ? "저장 중…" : "작성완료"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p className={hasMemo ? styles.memoView : styles.memoEmpty}>
-                {hasMemo ? review.comment : "작성된 평가 메모가 없습니다."}
-              </p>
-            )}
+            {/* '평가수정'/'평가하기' 없이 항상 입력 가능. 단 메모는 굿/배드를
+                먼저 선택해야 작성할 수 있다(백엔드 규칙과 동일). */}
+            <textarea
+              id="qa-review-memo"
+              className={styles.memoInput}
+              value={draftComment}
+              onChange={(e) => setDraftComment(e.target.value)}
+              placeholder={
+                draftRating === null
+                  ? "먼저 굿 또는 배드를 선택한 뒤 메모를 남길 수 있습니다."
+                  : "평가 사유·개선점 등을 자유롭게 적어주세요."
+              }
+              rows={4}
+              maxLength={2000}
+              disabled={saving || draftRating === null}
+            />
+            {/* 마지막으로 저장된 메모의 작성자 계정(좌) + 작성일자(우측 끝). */}
             {hasMemo && review.rated_by_name && (
-              <span className={styles.memoAuthor}>
-                작성자 {review.rated_by_name}
-              </span>
+              <div className={styles.memoMetaRow}>
+                <span className={styles.memoAuthor}>
+                  작성자 {review.rated_by_name}
+                </span>
+                {review.rated_at && (
+                  <span className={styles.memoDate}>
+                    {formatDateTime(review.rated_at)}
+                  </span>
+                )}
+              </div>
             )}
+            <div className={styles.memoEditActions}>
+              <button
+                type="button"
+                className={styles.memoDoneBtn}
+                onClick={handleSave}
+                disabled={saving || !dirty}
+              >
+                {saving ? "저장 중…" : "저장"}
+              </button>
+            </div>
           </div>
 
           {privileged && review.change_count > 0 && (
@@ -280,15 +246,6 @@ export function QaReviewModal({
             </button>
           )}
           <div className={styles.actionsRight}>
-            {!editing && (
-              <button
-                type="button"
-                className={styles.editBtn}
-                onClick={handleStartEdit}
-              >
-                {hasSavedRating || hasMemo ? "평가 수정" : "평가하기"}
-              </button>
-            )}
             <button type="button" onClick={onClose} className={styles.cancelBtn}>
               닫기
             </button>

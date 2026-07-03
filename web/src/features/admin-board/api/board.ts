@@ -9,6 +9,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type BoardPostStatus =
   | "review"
+  | "rework"
   | "in_progress"
   | "completed"
   | "rejected"
@@ -81,6 +82,7 @@ export interface BoardPostDetail {
   dev_cost: number | null;
   can_edit: boolean;
   can_change_status: boolean;
+  can_request_rework: boolean;
   can_set_dev_cost: boolean;
   can_confirm: boolean;
   created_at: string;

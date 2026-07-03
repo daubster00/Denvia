@@ -190,6 +190,7 @@ async def list_reviews(
                 QAReview.comment,
                 QAReview.change_count,
                 QAReview.reviewed_at,
+                QAReview.updated_at,
                 reviewer.email.label("reviewer_email"),
                 rater.email.label("rater_email"),
             )
@@ -219,6 +220,8 @@ async def list_reviews(
                 "reviewed_at": _to_kst_iso(r.reviewed_at),
                 "reviewed_by_name": r.reviewer_email,
                 "rated_by_name": r.rater_email,
+                # 평가/메모를 마지막으로 저장한 시각(모달의 작성자 계정 옆에 표기).
+                "rated_at": _to_kst_iso(r.updated_at),
             },
             "user": {
                 "user_id": int(r.user_id) if r.user_id is not None else None,
@@ -391,12 +394,14 @@ def _serialize_review(review: QAReview | None) -> dict[str, Any]:
             "comment": None,
             "change_count": 0,
             "reviewed_at": None,
+            "rated_at": None,
         }
     return {
         "rating": review.rating,
         "comment": review.comment,
         "change_count": int(review.change_count),
         "reviewed_at": _to_kst_iso(review.reviewed_at),
+        "rated_at": _to_kst_iso(review.updated_at),
     }
 
 

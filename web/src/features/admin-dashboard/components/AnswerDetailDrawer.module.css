@@ -1,123 +1,259 @@
-.backdrop {
+/*
+ * 피드백 상세 Drawer.
+ * 디자인(배경색·항목명·레이아웃)은 admin/dashboard/analytics/questions 상세 패널과
+ * 1:1 로 동일하게 맞춘다. 클래스 이름과 값은 questions/page.module.css 의 detail* 계열을
+ * 그대로 옮겨온 것이며, 피드백 전용(계정 링크·평점 색상)만 추가한다.
+ */
+
+.detailBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
-  z-index: 40;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  animation: detailFadeIn 160ms ease-out;
 }
 
-.drawer {
-  position: fixed;
-  right: 0;
-  top: 0;
+.detailDrawer {
+  position: relative;
+  width: min(720px, 100vw);
   height: 100vh;
-  width: 480px;
-  max-width: 100vw;
   background: #ffffff;
-  border-left: 1px solid #e2e8f0;
-  z-index: 50;
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
   display: flex;
   flex-direction: column;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
+  animation: detailSlideIn 200ms ease-out;
 }
 
-.drawerHeader {
+.detailPanel {
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@keyframes detailFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes detailSlideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.detailHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
+  gap: 8px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.drawerTitle {
+.detailTitle {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: #0f172a;
   margin: 0;
 }
 
-.closeBtn {
-  background: none;
+.detailClose {
+  appearance: none;
+  background: transparent;
   border: none;
-  cursor: pointer;
-  font-size: 18px;
   color: #6b7280;
-  padding: 4px;
+  font-size: 22px;
   line-height: 1;
-  border-radius: 4px;
+  cursor: pointer;
+  padding: 4px 8px;
 }
 
-.closeBtn:hover {
-  background: #f3f4f6;
+.detailClose:hover {
+  color: #111827;
 }
 
-.drawerBody {
+.detailBody {
   flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  padding: 20px;
+  overflow-y: auto;
 }
 
-.section {
+.detailSection {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.sectionLabel {
-  font-size: 14px;
-  font-weight: 600;
+.detailSectionTitle {
+  font-size: 12px;
+  font-weight: 700;
   color: #6b7280;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: 0;
   margin: 0;
 }
 
-.sectionContent {
-  font-size: 14px;
-  color: #111827;
-  line-height: 1.6;
+.detailSectionHint {
+  font-size: 12px;
+  color: #6b7280;
   margin: 0;
+}
+
+.detailBlockText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.detailDiffBlock {
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+}
+
+.detailAnswerBlock {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+}
+
+.detailPromptBlock {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #0f172a;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 340px;
+  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.meta {
+.detailEmpty {
   margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.detailLoading {
+  padding: 32px 0;
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.detailDocList {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-top: 4px;
-  border-top: 1px solid #f1f5f9;
 }
 
-.metaRow {
+.detailDocCard {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detailDocHeader {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
-.metaLabel {
-  font-size: 14px;
-  color: #94a3b8;
-  min-width: 72px;
+.detailDocIndex {
+  font-weight: 700;
+  color: #2563eb;
 }
 
-.metaValue {
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
+.detailDocMetaList {
   margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
 }
 
+.detailDocMetaItem {
+  font-size: 11px;
+  background: #f3f4f6;
+  color: #374151;
+  padding: 2px 8px;
+  border-radius: 999px;
+  word-break: break-all;
+}
+
+.detailDocContent {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detailMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  font-size: 12.5px;
+  color: #374151;
+}
+
+.detailMetaLabel {
+  color: #6b7280;
+  margin-right: 6px;
+}
+
+.detailMetaNote {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: #9ca3af;
+}
+
+/* --- 피드백 전용: 평점 색상 + 계정 링크 --- */
 .ratingGood {
   color: #16a34a;
+  font-weight: 600;
 }
 
 .ratingBad {
   color: #dc2626;
+  font-weight: 600;
 }
 
 .accountLink {
@@ -136,120 +272,40 @@
   font-style: italic;
 }
 
-.topkEmpty {
-  margin: 0;
-  font-size: 13px;
-  color: #6b7280;
-  font-style: italic;
-}
-
-.docList {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.errorBox {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.docCard {
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: #f9fafb;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.docHeader {
-  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 12px;
-  color: #6b7280;
+  gap: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px 20px;
+  color: #991b1b;
 }
 
-.docIndex {
-  font-weight: 700;
-  color: #2563eb;
-  flex-shrink: 0;
-}
-
-.docMetaList {
+.errorBox p {
   margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  list-style: none;
-  justify-content: flex-end;
+  font-size: 14px;
 }
 
-.docMetaItem {
-  font-size: 11px;
+.retryBtn {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
-  color: #374151;
-  padding: 2px 8px;
-  border-radius: 999px;
-  word-break: break-all;
-}
-
-.docContent {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: #1f2937;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.normalizedBlock {
-  margin-top: 4px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #fecaca;
   border-radius: 6px;
-  padding: 8px 12px;
-  background: #ffffff;
-}
-
-.normalizedSummary {
-  font-size: 12px;
-  color: #2563eb;
+  padding: 6px 12px;
+  color: #991b1b;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  font-weight: 500;
 }
 
-.normalizedText {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: #111827;
-  white-space: pre-wrap;
-  word-break: break-word;
+.retryBtn:hover {
+  background-color: #fee2e2;
 }
 
-.promptBlock {
-  margin: 4px 0 0;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 10px 12px;
-  max-height: 320px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.promptEmpty {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #6b7280;
-  font-style: italic;
+@media (max-width: 640px) {
+  .detailDrawer {
+    width: 100vw;
+  }
 }

@@ -66,9 +66,11 @@ ALLOWED_CATEGORIES = {c["key"] for c in CATEGORY_LABELS}
 # 추가개발 컨펌 플로우 전용 카테고리 키.
 FEATURE_CATEGORY = "feature"
 
-# 상태 라벨 — 0040 + 0041 + 0064 board_post_status_enum 과 동기.
+# 상태 라벨 — 0040 + 0041 + 0064 + 0067 board_post_status_enum 과 동기.
+# rework(추가수정)은 요청사항검토 바로 다음에 배치한다.
 STATUS_LABELS: list[dict[str, str]] = [
     {"key": "review", "label": "요청사항검토"},
+    {"key": "rework", "label": "추가수정"},
     {"key": "in_progress", "label": "수정중"},
     {"key": "confirm_requested", "label": "컨펌요청"},
     {"key": "confirmed", "label": "컨펌"},
@@ -80,14 +82,16 @@ ALLOWED_STATUSES = {s["key"] for s in STATUS_LABELS}
 
 # 목록 정렬 우선순위 — 위에서부터 노출되는 순서. 값이 작을수록 상단.
 # 같은 상태 내에서는 created_at DESC (최신 글이 위).
+# rework(추가수정)은 요청사항검토 바로 다음(2순위)에 배치.
 STATUS_SORT_ORDER: dict[str, int] = {
     "review": 1,             # 요청사항검토
-    "in_progress": 2,        # 수정중
-    "confirm_requested": 3,  # 컨펌요청 (운영자 확인 필요 — 상단 노출)
-    "on_hold": 4,            # 보류
-    "confirmed": 5,          # 컨펌
-    "rejected": 6,           # 수정불가
-    "completed": 7,          # 수정완료
+    "rework": 2,             # 추가수정 (요청검토 바로 다음)
+    "in_progress": 3,        # 수정중
+    "confirm_requested": 4,  # 컨펌요청 (운영자 확인 필요 — 상단 노출)
+    "on_hold": 5,            # 보류
+    "confirmed": 6,          # 컨펌
+    "rejected": 7,           # 수정불가
+    "completed": 8,          # 수정완료
 }
 
 # 이미지 업로드 (본문 에디터 인라인)
@@ -403,6 +407,10 @@ async def get_post(
         dev_cost=post.dev_cost,
         can_edit=is_master or post.author_id == current_user.id,
         can_change_status=is_master,
+        # 운영자는 수정완료된 글을 '추가수정'으로 되돌릴 수 있다.
+        can_request_rework=(
+            is_operator(current_user) and _can_operator_request_rework(post)
+        ),
         # 마스터는 추가개발 글에 개발비를 입력할 수 있다.
         can_set_dev_cost=is_master and is_feature,
         # 운영자는 개발비가 입력되어 컨펌요청 상태인 추가개발 글을 컨펌할 수 있다.
@@ -530,6 +538,11 @@ async def update_post(
     )
 
 
+def _can_operator_request_rework(post: AdminBoardPost) -> bool:
+    """운영자가 '추가수정'으로 되돌릴 수 있는 조건 — 수정완료 글에 한함."""
+    return post.status == "completed"
+
+
 async def update_post_status(
     db: AsyncSession,
     *,
@@ -537,9 +550,26 @@ async def update_post_status(
     current_user: User,
     status: str,
 ) -> None:
-    _require_btmdesign(current_user)
     _ensure_status(status)
     post = await _get_post_or_404(db, post_id)
+
+    # 마스터는 모든 상태 전이가 가능하다.
+    # 운영자는 예외적으로 '수정완료→추가수정'만 허용(재수정 요청).
+    if not is_btmdesign(current_user):
+        operator_rework = (
+            is_operator(current_user)
+            and status == "rework"
+            and _can_operator_request_rework(post)
+        )
+        if not operator_rework:
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "BOARD_STATUS_FORBIDDEN",
+                    "message": "상태 변경 권한이 없습니다.",
+                },
+            )
+
     post.status = status
     post.updated_at = datetime.now(timezone.utc)
     await db.commit()

@@ -14,10 +14,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# 7가지 상태 — 0040 + 0041 + 0064 board_post_status_enum 동기.
+# 8가지 상태 — 0040 + 0041 + 0064 + 0067 board_post_status_enum 동기.
+# rework(추가수정)은 수정완료 글을 운영자가 다시 되돌릴 때 쓰는 상태.
 # confirm_requested(컨펌요청)/confirmed(컨펌)은 추가개발 컨펌 플로우 전용.
 BoardPostStatus = Literal[
     "review",
+    "rework",
     "in_progress",
     "completed",
     "rejected",
@@ -163,6 +165,7 @@ class BoardPostDetailResponse(BaseModel):
     dev_cost: int | None  # 추가개발비(원) — 미입력이면 None
     can_edit: bool           # 본인 글 OR 마스터 — 글 수정/삭제 권한
     can_change_status: bool   # 마스터 전용 — 상태 변경 권한
+    can_request_rework: bool  # 운영자 & 수정완료 상태 — '추가수정'으로 되돌릴 권한
     can_set_dev_cost: bool    # 마스터 & category='feature' — 개발비 입력 권한
     can_confirm: bool         # 운영자 & category='feature' & 컨펌요청 상태 — 컨펌 권한
     created_at: datetime

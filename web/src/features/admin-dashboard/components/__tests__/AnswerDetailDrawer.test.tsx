@@ -25,6 +25,7 @@ const sampleItem: FeedbackItem = {
   user_id: 42,
   email: "doctor@denvia.test",
   created_at: "2026-04-15T10:23:00+09:00",
+  reviewed_at: null,
 };
 
 const sampleDetail: FeedbackDetail = {
@@ -93,7 +94,7 @@ describe("AnswerDetailDrawer", () => {
   it("닫기 버튼 클릭 → onClose 호출", () => {
     const onClose = vi.fn();
     renderWithClient(<AnswerDetailDrawer item={sampleItem} onClose={onClose} />);
-    const closeBtn = screen.getByRole("button", { name: "Drawer 닫기" });
+    const closeBtn = screen.getByRole("button", { name: "상세 패널 닫기" });
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -107,12 +108,12 @@ describe("AnswerDetailDrawer", () => {
 
   it("backdrop 클릭 → onClose 호출", () => {
     const onClose = vi.fn();
-    const { container } = renderWithClient(
+    renderWithClient(
       <AnswerDetailDrawer item={sampleItem} onClose={onClose} />
     );
-    const backdrop = container.querySelector('[aria-hidden="true"]');
-    expect(backdrop).not.toBeNull();
-    fireEvent.click(backdrop!);
+    // 딤 배경(=dialog 컨테이너) 자체를 클릭하면 닫힌다.
+    const backdrop = screen.getByRole("dialog");
+    fireEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -143,7 +144,7 @@ describe("AnswerDetailDrawer", () => {
   it("top-k 검색 문서가 로드되면 건수와 본문 렌더", async () => {
     renderWithClient(<AnswerDetailDrawer item={sampleItem} onClose={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getByText(/top-k 검색 문서 \(2건\)/)).toBeTruthy();
+      expect(screen.getByText(/top-k 검색에 들어온 문서 \(2건\)/)).toBeTruthy();
     });
     expect(screen.getByText(/크라운은 단일 치아 보철물입니다/)).toBeTruthy();
     expect(screen.getByText(/브릿지는 결손 치아를 인접 치아로 지지합니다/)).toBeTruthy();
@@ -170,7 +171,7 @@ describe("AnswerDetailDrawer", () => {
     renderWithClient(<AnswerDetailDrawer item={sampleItem} onClose={vi.fn()} />);
     await waitFor(() => {
       expect(
-        screen.getByText(/룰 매칭 경로 응답 — retriever를 거치지 않아/)
+        screen.getByText(/룰 매칭 경로로 응답된 질의입니다\. retriever를 거치지 않으므로/)
       ).toBeTruthy();
     });
   });

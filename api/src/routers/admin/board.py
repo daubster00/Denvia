@@ -8,7 +8,7 @@ prefix: /admin/board   (main.py 에서 /api/v1 prefix 가 추가됨 → /api/v1/
   POST   /admin/board/posts                   신규 글 (기본 status='review')
   GET    /admin/board/posts/{post_id}         상세 + 댓글 + 권한 플래그
   PUT    /admin/board/posts/{post_id}         본인/마스터 글 본문·첨부 수정
-  PATCH  /admin/board/posts/{post_id}/status  상태 변경 — 마스터 전용
+  PATCH  /admin/board/posts/{post_id}/status  상태 변경 — 마스터(전 상태) / 운영자(수정완료→추가수정)
   PATCH  /admin/board/posts/{post_id}/dev-cost 추가개발비 입력 — 마스터 전용(→컨펌요청)
   POST   /admin/board/posts/{post_id}/confirm 추가개발비 컨펌 — 운영자 전용(→컨펌)
   DELETE /admin/board/posts/{post_id}         글 삭제 (CASCADE 로 댓글·첨부도 삭제)

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { useQueryClient } from "@tanstack/react-query";
 import { adminLogin, adminFetchMe } from "@/features/admin-auth/api";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
 import { ApiError } from "@/types/api";
@@ -16,6 +17,7 @@ interface AdminLoginFormValues {
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const setAdmin = useAdminSessionStore((s) => s.setAdmin);
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +54,10 @@ export default function AdminLoginPage() {
         email: data.email,
         password: data.password,
       });
+      // 로그인·로그아웃 모두 SPA 이동(새로고침 없음)이라 React Query 캐시가
+      // 계정 전환 사이에 살아남는다. 새 계정으로 들어올 때 이전 계정의 캐시를
+      // 반드시 비워, 등급이 다른 계정이 이전 응답을 그대로 보는 것을 차단한다.
+      queryClient.clear();
       setAdmin(admin);
       router.replace("/admin");
     } catch (err: unknown) {

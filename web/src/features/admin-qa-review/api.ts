@@ -27,6 +27,8 @@ export interface QaReviewState {
   reviewed_by_name: string | null;
   /** 평가 메모를 작성한 관리자 계정(이메일). */
   rated_by_name: string | null;
+  /** 평가/메모를 마지막으로 저장한 시각(KST ISO). 작성자 계정 옆에 표기. */
+  rated_at: string | null;
 }
 
 export interface QaReviewUser {
@@ -57,6 +59,8 @@ export interface QaReviewActionResult {
   change_count: number;
   reviewed_at: string | null;
   reviewed: boolean | null;
+  /** 평가/메모를 마지막으로 저장한 시각(KST ISO). */
+  rated_at: string | null;
 }
 
 export interface QaEffectivePeriod {

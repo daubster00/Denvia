@@ -32,6 +32,7 @@ import styles from "./page.module.css";
 
 const STATUS_CLASS: Record<BoardPostStatus, string> = {
   review: styles.statusReview,
+  rework: styles.statusRework,
   in_progress: styles.statusInProgress,
   completed: styles.statusCompleted,
   rejected: styles.statusRejected,
@@ -252,6 +253,7 @@ export default function BoardPostDetailPage(
         <div className={styles.statusBlock}>
           <span className={styles.statusBlockLabel}>상태</span>
           {post.can_change_status ? (
+            // 마스터: 어떤 상태에서든 전체 상태 변경 가능.
             <div className={styles.statusSelectWrap}>
               <Select
                 value={post.status}
@@ -275,6 +277,23 @@ export default function BoardPostDetailPage(
                   ))}
               </Select>
             </div>
+          ) : post.can_request_rework ? (
+            // 마스터가 아닌 계정: 수정완료 건에 한해 '추가수정'만 선택 가능.
+            // 드롭다운 목록에는 추가수정 한 항목만 노출한다.
+            <div className={styles.statusSelectWrap}>
+              <Select
+                value={post.status}
+                onChange={(v) => statusMut.mutate(v as BoardPostStatus)}
+                disabled={statusMut.isPending}
+                width="180px"
+                render={() => statusLabel}
+              >
+                <Option value="rework">
+                  {metaQuery.data?.statuses.find((s) => s.key === "rework")
+                    ?.label ?? "추가수정"}
+                </Option>
+              </Select>
+            </div>
           ) : (
             <span className={`${styles.statusBadge} ${STATUS_CLASS[post.status]}`}>
               {statusLabel}
@@ -283,7 +302,9 @@ export default function BoardPostDetailPage(
           <span className={styles.statusNote}>
             {post.can_change_status
               ? "상태를 변경할 수 있습니다"
-              : "상태 변경 권한이 없습니다"}
+              : post.can_request_rework
+                ? "수정완료 건을 추가수정으로 변경할 수 있습니다"
+                : "상태 변경 권한이 없습니다"}
           </span>
         </div>
 

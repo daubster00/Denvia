@@ -157,6 +157,7 @@
   white-space: nowrap;
 }
 .statusReview     { background: #fef3c7; color: #92400e; }
+.statusRework     { background: #dc2626; color: #fff; }
 .statusInProgress { background: #dbeafe; color: #1e40af; }
 .statusCompleted  { background: #dcfce7; color: #166534; }
 .statusRejected   { background: #fee2e2; color: #991b1b; }

@@ -20,6 +20,7 @@ const PER_PAGE = 20;
 
 const STATUS_CLASS: Record<BoardPostStatus, string> = {
   review: styles.statusReview,
+  rework: styles.statusRework,
   in_progress: styles.statusInProgress,
   completed: styles.statusCompleted,
   rejected: styles.statusRejected,

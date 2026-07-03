@@ -375,9 +375,24 @@
   color: #9ca3af;
 }
 
+/* 작성자 계정(좌) + 작성일자(우측 끝)를 한 줄에 양끝 배치. */
+.memoMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .memoAuthor {
   font-size: 12px;
   color: #94a3b8;
+}
+
+.memoDate {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .memoEditActions {

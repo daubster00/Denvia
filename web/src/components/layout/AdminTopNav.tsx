@@ -20,7 +20,10 @@ export function AdminTopNav() {
       await adminLogout();
     } finally {
       clearAdmin();
-      queryClient.removeQueries({ queryKey: ["admin-session"] });
+      // 관리자 데이터 캐시 전체 제거 — 같은 브라우저에서 다른 등급 계정으로
+      // 다시 로그인했을 때 이전 계정의 캐시(예: 질의응답 검토 목록 — 부운영자
+      // 조회기간 제한이 걸리지 않은 운영자 응답)가 남아 노출되는 것을 막는다.
+      queryClient.clear();
       router.replace("/admin/login");
     }
   };

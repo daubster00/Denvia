@@ -25,6 +25,8 @@ class ReviewState(BaseModel):
     reviewed_by_name: str | None = None
     # 평가 메모(굿/베드 코멘트)를 작성한 관리자 계정. rated_by_admin_id → email.
     rated_by_name: str | None = None
+    # 평가/메모를 마지막으로 저장한 시각(KST ISO). 모달에서 작성자 계정 옆에 표기.
+    rated_at: str | None = None
 
 
 class ReviewUserInfo(BaseModel):
@@ -117,6 +119,8 @@ class ReviewActionResponse(BaseModel):
     change_count: int = 0
     reviewed_at: str | None = None
     reviewed: bool | None = None
+    # 평가/메모를 마지막으로 저장한 시각(KST ISO). 모달 저장 후 작성일자 표기용.
+    rated_at: str | None = None
 
 
 class BulkDeleteResponse(BaseModel):
