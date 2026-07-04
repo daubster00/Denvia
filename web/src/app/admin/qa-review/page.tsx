@@ -450,8 +450,11 @@ export default function QaReviewPage() {
       {/* 부운영자 조회기간 상한에 걸렸을 때 안내 */}
       {effective?.clamped && (
         <p className={styles.clampNotice} role="status">
-          조회 가능한 기간이 최근 {effective.max_lookback_days}일로 제한되어 있어,
-          시작일이 {effective.date_from}로 조정되었습니다.
+          조회 가능한 기간이{" "}
+          {effective.max_lookback_days <= 1
+            ? "당일"
+            : `최근 ${effective.max_lookback_days}일`}
+          로 제한되어 있어, 시작일이 {effective.date_from}로 조정되었습니다.
         </p>
       )}
 

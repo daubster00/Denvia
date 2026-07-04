@@ -74,11 +74,15 @@ def _clamp_for_sub_operator(
     viewer_grade: str | None,
     max_lookback_days: int,
 ) -> tuple[date, bool]:
-    """sub_operator 는 (오늘 - max_lookback_days) 이전을 조회할 수 없다. 클램프 여부 반환."""
+    """sub_operator 는 '오늘 포함 최근 max_lookback_days 일(달력 기준)' 밖을 조회할 수 없다.
+
+    프리셋 라벨과 1:1 로 맞춘다: 당일=1 → 오늘만, 3일=3 → 오늘 포함 3일,
+    7일=7 → 오늘 포함 7일. 따라서 하한은 (오늘 - (일수-1)). 클램프 여부도 반환.
+    """
     if viewer_grade != "sub_operator":
         return from_date, False
     today = datetime.now(KST).date()
-    min_date = today - timedelta(days=max_lookback_days)
+    min_date = today - timedelta(days=max(max_lookback_days - 1, 0))
     if from_date < min_date:
         return min_date, True
     return from_date, False
