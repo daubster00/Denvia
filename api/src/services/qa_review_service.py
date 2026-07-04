@@ -68,18 +68,35 @@ def _resolve_period(
     return f, t
 
 
-def _clamp_for_sub_operator(
+# 조회 기간 제한·사용자정보 비노출에서 제외되는 '전체 열람' 등급.
+# master/operator 만 전체 기간을 본다. 그 외 등급(내장 sub_operator + 0057 이후
+# 동적 생성 커스텀 등급 g_*)은 모두 설정된 기간만 본다. 실서버는 부관리자 계정이
+# 문자열 "sub_operator" 가 아니라 커스텀 코드(g_1038039a 등)를 쓰므로, 특정 문자열이
+# 아니라 '전체 열람 등급이 아님' 으로 판정해야 한다.
+FULL_ACCESS_GRADES = frozenset({"master", "operator"})
+
+
+def is_period_restricted(viewer_grade: str | None) -> bool:
+    """이 등급이 질의응답 조회 기간 제한(및 작성자 정보 비노출) 대상인가.
+
+    master/operator/None(레거시 백필 누락) → 전체 열람(제한 없음).
+    그 외 모든 등급(sub_operator + 커스텀 g_*) → 제한 대상.
+    """
+    return viewer_grade is not None and viewer_grade not in FULL_ACCESS_GRADES
+
+
+def _clamp_for_restricted_grade(
     from_date: date,
     *,
     viewer_grade: str | None,
     max_lookback_days: int,
 ) -> tuple[date, bool]:
-    """sub_operator 는 '오늘 포함 최근 max_lookback_days 일(달력 기준)' 밖을 조회할 수 없다.
+    """제한 등급은 '오늘 포함 최근 max_lookback_days 일(달력 기준)' 밖을 조회할 수 없다.
 
     프리셋 라벨과 1:1 로 맞춘다: 당일=1 → 오늘만, 3일=3 → 오늘 포함 3일,
     7일=7 → 오늘 포함 7일. 따라서 하한은 (오늘 - (일수-1)). 클램프 여부도 반환.
     """
-    if viewer_grade != "sub_operator":
+    if not is_period_restricted(viewer_grade):
         return from_date, False
     today = datetime.now(KST).date()
     min_date = today - timedelta(days=max(max_lookback_days - 1, 0))
@@ -131,7 +148,7 @@ async def list_reviews(
 ) -> dict[str, Any]:
     """qa_logs LEFT JOIN qa_reviews(hidden_at IS NULL) 목록 + total + effective 기간."""
     from_date, to_date = _resolve_period(period, date_from, date_to)
-    from_date, clamped = _clamp_for_sub_operator(
+    from_date, clamped = _clamp_for_restricted_grade(
         from_date, viewer_grade=viewer_grade, max_lookback_days=max_lookback_days
     )
     start_kst = _kst_dt(from_date)

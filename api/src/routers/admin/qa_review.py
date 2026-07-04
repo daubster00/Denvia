@@ -104,7 +104,8 @@ async def list_reviews(
         max_lookback_days=max_lookback_days,
     )
 
-    hide_user = viewer_grade == "sub_operator"
+    # 작성자 정보 비노출은 기간 제한과 동일 기준(master/operator 가 아닌 모든 등급).
+    hide_user = qa_review_service.is_period_restricted(viewer_grade)
     items: list[ReviewItem] = []
     for it in data["items"]:
         user_info = None if hide_user else ReviewUserInfo(**it["user"])
