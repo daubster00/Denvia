@@ -7,6 +7,7 @@ import Image from "@tiptap/extension-image";
 import { TextStyle, Color, FontSize } from "@tiptap/extension-text-style";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveAssetUrl, toEditorHtml } from "@/lib/asset-url";
+import { normalizeCssColorToHex } from "@/lib/sanitize";
 import styles from "./RichTextEditor.module.css";
 
 interface Props {
@@ -183,6 +184,11 @@ export function RichTextEditor({
   const currentColor: string | null =
     (editor.getAttributes("textStyle") as { color?: string | null }).color ??
     null;
+  // 기존 글 재편집 시 브라우저 DOM 정규화로 color가 rgb(R, G, B) 형식이 될 수
+  // 있어(수정요청 #119), 스와치 활성 비교·언더라인 표시용으로 hex로 정규화한다.
+  const currentColorHex: string | null = currentColor
+    ? normalizeCssColorToHex(currentColor)
+    : null;
 
   return (
     <div className={styles.wrapper} aria-label={ariaLabel}>
@@ -270,7 +276,7 @@ export function RichTextEditor({
             </span>
             <span
               className={styles.colorPickerUnderline}
-              data-color={currentColor ?? PRESET_COLORS[0].hex}
+              data-color={currentColorHex ?? PRESET_COLORS[0].hex}
               aria-hidden="true"
             />
           </button>
@@ -281,10 +287,12 @@ export function RichTextEditor({
               aria-label="글자 색 선택"
             >
               {PRESET_COLORS.map((c) => {
+                // 기본색(검정)은 color 마크가 없는 상태 또는 rgb 형식으로
+                // 검정이 들어온 상태 모두 활성으로 취급한다.
                 const isActive =
                   c.hex === PRESET_COLORS[0].hex
-                    ? !currentColor
-                    : currentColor?.toLowerCase() === c.hex;
+                    ? !currentColor || currentColorHex === c.hex
+                    : currentColorHex === c.hex;
                 return (
                   <button
                     key={c.hex}

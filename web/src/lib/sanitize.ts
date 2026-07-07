@@ -26,7 +26,31 @@ const ALLOWED_COLORS = new Set<string>([
 const ALLOWED_FONT_SIZES_PX = new Set<number>([12, 14, 16, 20, 24]);
 const STYLE_PROP_RX = /\s*([a-z-]+)\s*:\s*([^;]+?)\s*(?:;|$)/g;
 const HEX_RX = /^#[0-9a-fA-F]{6}$/;
+// rgb(R, G, B) / rgba(R, G, B, 1) — 브라우저 DOM 정규화 형식(공백 유무 무관)
+const RGB_RX = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(\d*\.?\d+)\s*)?\)$/;
 const PX_RX = /^(\d+)px$/;
+
+/** color 값을 소문자 hex(#rrggbb)로 정규화. 인식 불가 형식이면 null.
+ *
+ * Tiptap으로 기존 글을 다시 열어 편집하면 브라우저 DOM 정규화 때문에
+ * 프리셋 hex가 `rgb(220, 38, 38)` 형식으로 바뀐다(수정요청 #119).
+ * 이 형식도 hex로 되돌려 프리셋 검사를 통과할 수 있게 한다.
+ * alpha가 1이 아닌 rgba는 프리셋 색과 동치가 아니므로 정규화하지 않는다.
+ * 서버 api/src/utils/html_sanitize.py의 _normalize_color_to_hex와 동일 규칙.
+ */
+export function normalizeCssColorToHex(raw: string): string | null {
+  if (HEX_RX.test(raw)) return raw.toLowerCase();
+  const m = RGB_RX.exec(raw.toLowerCase());
+  if (!m) return null;
+  const r = parseInt(m[1], 10);
+  const g = parseInt(m[2], 10);
+  const b = parseInt(m[3], 10);
+  if (r > 255 || g > 255 || b > 255) return null;
+  if (m[4] !== undefined && parseFloat(m[4]) !== 1) return null;
+  return `#${[r, g, b]
+    .map((v) => v.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
 
 function filterSpanStyle(value: string): string | null {
   if (!value) return null;
@@ -37,8 +61,9 @@ function filterSpanStyle(value: string): string | null {
     const prop = match[1].toLowerCase();
     const raw = match[2].trim();
     if (prop === "color") {
-      if (HEX_RX.test(raw) && ALLOWED_COLORS.has(raw.toLowerCase())) {
-        kept.push(`color: ${raw.toLowerCase()}`);
+      const hex = normalizeCssColorToHex(raw);
+      if (hex !== null && ALLOWED_COLORS.has(hex)) {
+        kept.push(`color: ${hex}`);
       }
     } else if (prop === "font-size") {
       const px = PX_RX.exec(raw);

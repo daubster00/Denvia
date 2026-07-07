@@ -49,13 +49,42 @@ _ALLOWED_FONT_SIZES_PX = frozenset({12, 14, 16, 20, 24})
 
 _STYLE_PROP_RX = re.compile(r"\s*([a-z\-]+)\s*:\s*([^;]+?)\s*(?:;|$)")
 _COLOR_VALUE_RX = re.compile(r"^#[0-9a-fA-F]{6}$")
+# rgb(R, G, B) / rgba(R, G, B, 1) — 브라우저 DOM 정규화 형식(공백 유무 무관)
+_RGB_VALUE_RX = re.compile(
+    r"^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*"
+    r"(?:,\s*(\d*\.?\d+)\s*)?\)$"
+)
 _FONT_SIZE_VALUE_RX = re.compile(r"^(\d+)px$")
+
+
+def _normalize_color_to_hex(raw_val: str) -> str | None:
+    """color 값을 소문자 hex(#rrggbb)로 정규화. 인식 불가 형식이면 None.
+
+    Tiptap으로 기존 글을 다시 열어 편집하면 브라우저 DOM 정규화 때문에
+    프리셋 hex가 `rgb(220, 38, 38)` 형식으로 바뀐다(수정요청 #119).
+    이 형식도 hex로 되돌려 프리셋 검사를 통과할 수 있게 한다.
+    alpha가 1이 아닌 rgba는 프리셋 색과 동치가 아니므로 정규화하지 않는다.
+    클라이언트 web/src/lib/sanitize.ts의 normalizeCssColorToHex와 동일 규칙.
+    """
+    if _COLOR_VALUE_RX.match(raw_val):
+        return raw_val.lower()
+    m = _RGB_VALUE_RX.match(raw_val.lower())
+    if not m:
+        return None
+    r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if max(r, g, b) > 255:
+        return None
+    alpha = m.group(4)
+    if alpha is not None and float(alpha) != 1.0:
+        return None
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _filter_span_style(value: str) -> str | None:
     """span의 style 속성을 화이트리스트 기반으로 정제.
 
     color는 프리셋 8색만, font-size는 프리셋 5단계 px만 통과시킨다.
+    color는 hex 외에 rgb()/rgba(alpha=1) 표기도 hex로 정규화 후 검사한다.
     그 외 모든 CSS 프로퍼티(position, background, url(), expression() 등)는 제거.
     유효 프로퍼티가 하나도 없으면 None을 반환해 style 속성 자체를 떨어뜨린다.
     """
@@ -66,8 +95,9 @@ def _filter_span_style(value: str) -> str | None:
         prop = match.group(1).lower()
         raw_val = match.group(2).strip()
         if prop == "color":
-            if _COLOR_VALUE_RX.match(raw_val) and raw_val.lower() in _ALLOWED_COLORS:
-                kept.append(f"color: {raw_val.lower()}")
+            hex_val = _normalize_color_to_hex(raw_val)
+            if hex_val is not None and hex_val in _ALLOWED_COLORS:
+                kept.append(f"color: {hex_val}")
         elif prop == "font-size":
             sz = _FONT_SIZE_VALUE_RX.match(raw_val)
             if sz and int(sz.group(1)) in _ALLOWED_FONT_SIZES_PX:
