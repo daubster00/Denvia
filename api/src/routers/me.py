@@ -25,6 +25,7 @@ from api.src.schemas.inbox import (
     ActivePopupResponse,
     InboxListResponse,
     InboxPreviewResponse,
+    InboxReadAllResponse,
     UnreadCountResponse,
 )
 from api.src.schemas.me import (
@@ -405,6 +406,24 @@ async def mark_inbox_message_read(
         was_already_read=was_already,
     )
     return Response(status_code=204)
+
+
+@router.post("/me/inbox/read-all", response_model=InboxReadAllResponse)
+async def mark_all_inbox_messages_read(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> InboxReadAllResponse:
+    """본인 미읽음 쪽지 일괄 읽음 처리 — #118 쪽지함 전체읽음 버튼.
+
+    멱등 — 미읽음이 없으면 updated_count=0으로 200 응답한다.
+    """
+    updated = await inbox_service.mark_all_read(db, current_user.id)
+    logger.info(
+        "inbox.read_all",
+        user_id=current_user.id,
+        updated_count=updated,
+    )
+    return InboxReadAllResponse(updated_count=updated)
 
 
 @router.delete("/me/inbox/{message_id}", status_code=204)

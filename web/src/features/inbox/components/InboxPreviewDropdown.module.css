@@ -118,6 +118,11 @@
   color: #475569;
 }
 
+.typeBadge[data-type="admin_dm"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .itemBody {
   flex: 1;
   display: flex;

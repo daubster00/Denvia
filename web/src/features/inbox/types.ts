@@ -28,6 +28,11 @@ export interface UnreadCountResponse {
   unread_count: number;
 }
 
+export interface InboxReadAllResponse {
+  /** 이번 호출로 미읽음→읽음 전환된 쪽지 수 — #118 전체읽음. */
+  updated_count: number;
+}
+
 export type PopupTargetDevice = "pc" | "mobile" | "both";
 export type PopupType = "image" | "editor";
 export type PopupDisplayPosition = "center" | "left" | "right" | "custom";

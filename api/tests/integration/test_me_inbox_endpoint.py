@@ -227,6 +227,61 @@ class TestInboxReadEndpoint:
 
 
 @pytest.mark.asyncio
+class TestInboxReadAllEndpoint:
+    """#118: POST /api/v1/me/inbox/read-all — 전체읽음."""
+
+    async def test_unauth_returns_401(self):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            res = await client.post("/api/v1/me/inbox/read-all")
+        assert res.status_code == 401
+
+    async def test_returns_updated_count(self, monkeypatch):
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_session] = _stub_session()
+
+        captured_user_ids: list[int] = []
+
+        async def _mark_all(db, user_id):
+            captured_user_ids.append(user_id)
+            return 5
+
+        monkeypatch.setattr(
+            "api.src.routers.me.inbox_service.mark_all_read", _mark_all
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            res = await client.post("/api/v1/me/inbox/read-all")
+        assert res.status_code == 200
+        assert res.json() == {"updated_count": 5}
+        # 본인 user_id로만 일괄 처리한다.
+        assert captured_user_ids == [user.id]
+
+    async def test_idempotent_zero_when_nothing_unread(self, monkeypatch):
+        user = _make_user()
+        app.dependency_overrides[get_current_user] = lambda: user
+        app.dependency_overrides[get_session] = _stub_session()
+
+        async def _mark_all(db, user_id):
+            return 0
+
+        monkeypatch.setattr(
+            "api.src.routers.me.inbox_service.mark_all_read", _mark_all
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            res = await client.post("/api/v1/me/inbox/read-all")
+        assert res.status_code == 200
+        assert res.json() == {"updated_count": 0}
+
+
+@pytest.mark.asyncio
 class TestUnreadCountEndpoint:
     async def test_unauth_returns_401(self):
         async with AsyncClient(

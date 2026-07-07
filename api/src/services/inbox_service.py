@@ -3,6 +3,7 @@
 함수 목록:
 - list_inbox(): 쪽지함 페이지네이션 조회 + sanitize
 - mark_read(): 단일 쪽지 읽음 처리(멱등)
+- mark_all_read(): 본인 미읽음 쪽지 일괄 읽음 처리 — #118 전체읽음 버튼
 - soft_delete(): 사용자 본인 쪽지 휴지통 처리(30일 후 영구삭제 배치)
 - get_unread_count(): TopNav 뱃지용 미읽음 개수
 - get_active_popups(): 메인 진입 시 노출 후보 배열 조회 (디바이스 필터)
@@ -19,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.inbox_message import InboxMessage
@@ -129,6 +130,28 @@ async def mark_read(
         row.is_read = True
         await db.commit()
     return was_already_read
+
+
+async def mark_all_read(db: AsyncSession, user_id: int) -> int:
+    """본인 미읽음 쪽지를 일괄 읽음 처리한다 — #118 쪽지함 전체읽음 버튼.
+
+    휴지통(deleted_at IS NOT NULL) 쪽지는 건드리지 않는다. 멱등 — 미읽음이 없으면
+    UPDATE 대상 0건으로 그냥 0을 반환한다.
+
+    Returns:
+        이번 호출로 미읽음→읽음 전환된 쪽지 수.
+    """
+    result = await db.execute(
+        update(InboxMessage)
+        .where(
+            InboxMessage.user_id == user_id,
+            InboxMessage.is_read.is_(False),
+            InboxMessage.deleted_at.is_(None),
+        )
+        .values(is_read=True)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
 
 
 async def soft_delete(
@@ -344,6 +367,7 @@ async def get_preview_messages(
 __all__ = [
     "list_inbox",
     "mark_read",
+    "mark_all_read",
     "soft_delete",
     "send_admin_dm",
     "get_unread_count",

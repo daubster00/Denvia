@@ -10,6 +10,7 @@ import { IconInbox } from "@wanteddev/wds-icon";
 
 import { deleteInboxMessage } from "../api";
 import { useInbox } from "../hooks/useInbox";
+import { useMarkAllRead } from "../hooks/useMarkAllRead";
 import { useMarkRead } from "../hooks/useMarkRead";
 import type { InboxFilter, InboxItem } from "../types";
 import { NoticeCard } from "./NoticeCard";
@@ -30,6 +31,7 @@ export function InboxList({ filter }: InboxListProps) {
 
   const { data, isLoading, isError, refetch } = useInbox(page, perPage, filter);
   const markRead = useMarkRead();
+  const markAllRead = useMarkAllRead();
   const qc = useQueryClient();
   const deleteMutation = useMutation<void, Error, number>({
     mutationFn: (messageId) => deleteInboxMessage(messageId),
@@ -80,6 +82,20 @@ export function InboxList({ filter }: InboxListProps) {
 
   return (
     <div className={styles.wrapper}>
+      {/* #118: 안읽은 쪽지가 있을 때만 전체읽음 버튼 노출 — 일일이 클릭하지 않아도 일괄 처리 */}
+      {data.unread_count > 0 && (
+        <div className={styles.toolbar}>
+          <button
+            type="button"
+            className={styles.markAllBtn}
+            onClick={() => markAllRead.mutate()}
+            disabled={markAllRead.isPending}
+          >
+            {markAllRead.isPending ? "처리 중…" : "전체읽음"}
+          </button>
+        </div>
+      )}
+
       <ul className={styles.list}>
         {data.items.map((item) => (
           <li key={item.message_id}>

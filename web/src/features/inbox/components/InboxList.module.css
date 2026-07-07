@@ -6,6 +6,33 @@
   gap: 24px;
 }
 
+/* #118: 전체읽음 버튼 툴바 — 목록 상단 우측 정렬 */
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -12px;
+}
+
+.markAllBtn {
+  padding: 6px 14px;
+  background: #fff;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.markAllBtn:not(:disabled):hover {
+  background: #faf5ff;
+}
+
+.markAllBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .list {
   list-style: none;
   padding: 0;

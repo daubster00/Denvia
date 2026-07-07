@@ -11,6 +11,8 @@ import type { InboxListResponse } from "../types";
 vi.mock("../api", () => ({
   fetchInbox: vi.fn(),
   markInboxRead: vi.fn(() => Promise.resolve()),
+  markAllInboxRead: vi.fn(() => Promise.resolve({ updated_count: 1 })),
+  deleteInboxMessage: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,7 +21,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const { fetchInbox } = await import("../api");
+const { fetchInbox, markAllInboxRead } = await import("../api");
 
 function makeWrapper() {
   return function wrapper({ children }: { children: ReactNode }) {
@@ -60,6 +62,7 @@ const oneItem: InboxListResponse = {
 
 beforeEach(() => {
   vi.mocked(fetchInbox).mockReset();
+  vi.mocked(markAllInboxRead).mockClear();
 });
 
 describe("InboxList", () => {
@@ -94,6 +97,48 @@ describe("InboxList", () => {
     await waitFor(() => expect(screen.getByText("공지 1")).toBeDefined());
     const prev = screen.getByRole("button", { name: "이전" });
     expect((prev as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // ── #118: 전체읽음 버튼 ────────────────────────────────────────────────
+
+  it("#118: 안읽은 쪽지가 있으면 전체읽음 버튼이 노출된다", async () => {
+    vi.mocked(fetchInbox).mockResolvedValue(oneItem);
+    render(<InboxList filter="all" />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("공지 1")).toBeDefined());
+    expect(screen.getByRole("button", { name: "전체읽음" })).toBeDefined();
+  });
+
+  it("#118: 안읽은 쪽지가 없으면 전체읽음 버튼이 노출되지 않는다", async () => {
+    vi.mocked(fetchInbox).mockResolvedValue({
+      ...oneItem,
+      items: [{ ...oneItem.items[0], is_read: true }],
+      unread_count: 0,
+    });
+    render(<InboxList filter="all" />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("공지 1")).toBeDefined());
+    expect(screen.queryByRole("button", { name: "전체읽음" })).toBeNull();
+  });
+
+  it("#118: 전체읽음 클릭 → API 호출 + 목록 invalidate(재조회)", async () => {
+    vi.mocked(fetchInbox)
+      .mockResolvedValueOnce(oneItem)
+      .mockResolvedValue({
+        ...oneItem,
+        items: [{ ...oneItem.items[0], is_read: true }],
+        unread_count: 0,
+      });
+    render(<InboxList filter="all" />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("공지 1")).toBeDefined());
+
+    fireEvent.click(screen.getByRole("button", { name: "전체읽음" }));
+    await waitFor(() =>
+      expect(markAllInboxRead).toHaveBeenCalledTimes(1),
+    );
+    // invalidate → 재조회 응답(unread_count=0)이 반영되어 버튼이 사라진다.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "전체읽음" })).toBeNull(),
+    );
+    expect(vi.mocked(fetchInbox).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("per_page 변경 시 page=1로 reset되고 fetch 재호출", async () => {

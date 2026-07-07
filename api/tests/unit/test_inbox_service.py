@@ -55,6 +55,58 @@ async def test_mark_read_flips_unread_to_read() -> None:
     db.commit.assert_awaited_once()
 
 
+# ── #118: mark_all_read — 전체읽음 버튼 ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mark_all_read_returns_updated_rowcount() -> None:
+    """미읽음 N건 일괄 UPDATE → rowcount 반환 + commit."""
+    update_result = MagicMock()
+    update_result.rowcount = 4
+
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=update_result)
+
+    out = await inbox_service.mark_all_read(db, user_id=1)
+    assert out == 4
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mark_all_read_idempotent_when_nothing_unread() -> None:
+    """미읽음 0건이어도 예외 없이 0을 반환한다(멱등)."""
+    update_result = MagicMock()
+    update_result.rowcount = 0
+
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=update_result)
+
+    out = await inbox_service.mark_all_read(db, user_id=1)
+    assert out == 0
+
+
+@pytest.mark.asyncio
+async def test_mark_all_read_query_scopes_user_unread_not_deleted() -> None:
+    """UPDATE 절에 user_id·is_read=false·deleted_at IS NULL 필터가 모두 포함된다."""
+    captured: list = []
+
+    async def _capture(stmt):
+        captured.append(stmt)
+        result = MagicMock()
+        result.rowcount = 0
+        return result
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=_capture)
+
+    await inbox_service.mark_all_read(db, user_id=42)
+    assert len(captured) == 1
+    sql = str(captured[0].compile(compile_kwargs={"literal_binds": False}))
+    assert "user_id" in sql
+    assert "is_read" in sql
+    assert "deleted_at IS NULL" in sql
+
+
 @pytest.mark.asyncio
 async def test_get_unread_count_returns_int() -> None:
     db = AsyncMock()

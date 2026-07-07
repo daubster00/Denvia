@@ -35,6 +35,16 @@ class UnreadCountResponse(BaseModel):
     unread_count: int
 
 
+class InboxReadAllResponse(BaseModel):
+    """POST /api/v1/me/inbox/read-all 응답 — #118 전체읽음.
+
+    `updated_count`는 이번 호출로 미읽음→읽음 전환된 쪽지 수.
+    이미 전부 읽은 상태면 0(멱등).
+    """
+
+    updated_count: int
+
+
 class ActivePopupResponse(BaseModel):
     """GET /api/v1/me/popups/active items[i] — Story 7.2 v2/v3/v4.
 

@@ -6,6 +6,7 @@ import type {
   InboxFilter,
   InboxListResponse,
   InboxPreviewResponse,
+  InboxReadAllResponse,
   UnreadCountResponse,
 } from "./types";
 
@@ -27,6 +28,13 @@ export async function fetchInbox(
 export async function markInboxRead(messageId: number): Promise<void> {
   await apiFetch<void>(`/api/v1/me/inbox/${messageId}/read`, {
     method: "PATCH",
+  });
+}
+
+/** POST /api/v1/me/inbox/read-all — 미읽음 쪽지 일괄 읽음 처리(#118 전체읽음). */
+export async function markAllInboxRead(): Promise<InboxReadAllResponse> {
+  return apiFetch<InboxReadAllResponse>("/api/v1/me/inbox/read-all", {
+    method: "POST",
   });
 }
 
