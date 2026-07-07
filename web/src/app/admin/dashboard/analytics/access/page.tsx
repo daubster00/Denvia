@@ -102,7 +102,8 @@ export default function AccessAnalyticsPage() {
           </h1>
           <p className={styles.caption}>
             회원 로그인 1회를 접속 1회로 봅니다. 접속자 수는 고유 회원 수,
-            접속횟수는 로그인 누적 횟수입니다.
+            접속횟수는 로그인 누적 횟수입니다. 신규 가입 직후 자동 입장은
+            접속에 포함되지 않으며, 재로그인부터 집계됩니다.
           </p>
         </div>
         <button
