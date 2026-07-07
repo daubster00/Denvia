@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { QaReviewItem } from "../api";
 import styles from "./QaReviewRow.module.css";
 
@@ -80,7 +81,20 @@ export function QaReviewRow({
 
       {privileged && (
         <td className={styles.userCell}>
-          {item.user ? item.user.email ?? item.user.segment ?? "-" : "-"}
+          {item.user ? (
+            item.user.user_id != null && item.user.email ? (
+              <Link
+                href={`/admin/users/${item.user.user_id}`}
+                className={styles.userLink}
+              >
+                {item.user.email}
+              </Link>
+            ) : (
+              item.user.email ?? item.user.segment ?? "-"
+            )
+          ) : (
+            "-"
+          )}
         </td>
       )}
 

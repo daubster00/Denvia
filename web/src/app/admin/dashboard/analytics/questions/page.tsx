@@ -487,7 +487,19 @@ export default function QuestionsAnalyticsPage() {
                           }}
                         >
                           <td>{formatDateTime(it.created_at)}</td>
-                          <td>{it.email ?? "(비회원)"}</td>
+                          <td>
+                            {it.user_id != null && it.email ? (
+                              <Link
+                                href={`/admin/users/${it.user_id}`}
+                                className={styles.emailLink}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {it.email}
+                              </Link>
+                            ) : (
+                              it.email ?? "(비회원)"
+                            )}
+                          </td>
                           <td>{segmentLabel(it.segment)}</td>
                           <td>
                             <div className={styles.qaCell}>

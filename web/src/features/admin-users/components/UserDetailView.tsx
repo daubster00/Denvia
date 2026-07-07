@@ -9,6 +9,7 @@ import {
   formatSubscriptionStatus,
 } from "@/features/admin-users/labels";
 import { UserPermissionDialog } from "./UserPermissionDialog";
+import { UserActivityLogs } from "./UserActivityLogs";
 import styles from "./UserDetailView.module.css";
 
 interface Props {
@@ -293,36 +294,17 @@ export function UserDetailView({
 
         <section
           className={`${styles.section} ${styles.sectionFull}`}
-          aria-labelledby="recent-qa-title"
+          aria-labelledby="activity-logs-title"
         >
-          <h2 id="recent-qa-title" className={styles.sectionTitle}>
-            최근 질의 ({detail.recent_qa.length}건)
+          <h2 id="activity-logs-title" className={styles.sectionTitle}>
+            로그 기록
           </h2>
-          {detail.recent_qa.length === 0 ? (
-            <p className={styles.placeholderText}>최근 질의가 없습니다.</p>
+          {isWithdrawn ? (
+            <p className={styles.placeholderText}>
+              탈퇴 사용자는 로그 조회 불가
+            </p>
           ) : (
-            <ul className={styles.qaList}>
-              {detail.recent_qa.map((qa) => (
-                <li key={qa.qa_log_id} className={styles.qaItem}>
-                  <div className={styles.qaMeta}>
-                    <span>{formatDateTime(qa.created_at)}</span>
-                    <span>
-                      입력 {qa.input_tokens ?? "—"} · 출력 {qa.output_tokens ?? "—"}
-                    </span>
-                  </div>
-                  <div className={styles.qaBlock}>
-                    <span className={styles.qaLabelQ}>Q</span>
-                    <p className={styles.qaText}>{qa.question_excerpt}</p>
-                  </div>
-                  <div className={styles.qaBlock}>
-                    <span className={styles.qaLabelA}>A</span>
-                    <p className={styles.qaAnswer}>
-                      {qa.answer_excerpt ?? "—"}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <UserActivityLogs userId={user.user_id} />
           )}
         </section>
       </div>
@@ -338,23 +320,6 @@ export function UserDetailView({
         >
           권한 수정
         </button>
-        {isWithdrawn ? (
-          <button
-            type="button"
-            disabled
-            title="탈퇴 사용자는 로그 조회 불가"
-            className={styles.actionButton}
-          >
-            로그 기록
-          </button>
-        ) : (
-          <Link
-            href={`/admin/users/${user.user_id}/logs`}
-            className={styles.actionLink}
-          >
-            로그 기록
-          </Link>
-        )}
       </div>
 
       <UserPermissionDialog

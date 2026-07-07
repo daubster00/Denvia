@@ -131,6 +131,16 @@
   word-break: break-word;
 }
 
+/* 사용자 이메일 → 고객관리 상세 링크 */
+.userLink {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.userLink:hover {
+  text-decoration: underline;
+}
+
 /* 검토/수정 버튼 칼럼 */
 .actionCell {
   padding: 14px 12px;

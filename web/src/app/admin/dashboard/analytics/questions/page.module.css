@@ -599,6 +599,16 @@
   box-shadow: inset 3px 0 0 #7c3aed;
 }
 
+/* 계정 이메일 → 고객관리 상세 링크 (행 선택 클릭과 분리) */
+.emailLink {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.emailLink:hover {
+  text-decoration: underline;
+}
+
 .tableBox {
   background: #ffffff;
   border: 1px solid #e5e7eb;
