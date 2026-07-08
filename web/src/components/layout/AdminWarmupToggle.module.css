@@ -105,3 +105,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ─── 모바일 (<768px) ─────────────────────────────
+   헤더 폭이 좁아 위젯 전체를 그대로 두면 로고를 덮는다.
+   상태 배지(정지/가동 중)와 시작/정지 버튼만 남기고
+   'AI 워밍업' 라벨·모델명·마지막 ping 텍스트는 숨겨 작게 압축한다. */
+@media (max-width: 767px) {
+  .wrap {
+    gap: 6px;
+    padding: 4px 6px;
+    flex-shrink: 0;
+  }
+
+  .info {
+    gap: 6px;
+  }
+
+  .title,
+  .model,
+  .meta {
+    display: none;
+  }
+
+  .button {
+    height: 28px;
+    padding: 0 10px;
+  }
+
+  .error {
+    display: none;
+  }
+}

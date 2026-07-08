@@ -8,8 +8,14 @@
   overflow: hidden;
 }
 
+/* 좁은 화면에선 칸을 찌그러뜨리지 않고 좌우로 밀어서 본다 (#123 방향). */
+.tableScroll {
+  overflow-x: auto;
+}
+
 .table {
   width: 100%;
+  min-width: 820px;
   border-collapse: collapse;
   font-size: 14px;
 }
@@ -25,6 +31,7 @@
   color: #374151;
   padding: 10px 14px;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .row {

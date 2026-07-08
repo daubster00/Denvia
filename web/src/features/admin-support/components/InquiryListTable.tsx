@@ -105,6 +105,7 @@ export function InquiryListTable({
 
   return (
     <div className={styles.wrapper}>
+      <div className={styles.tableScroll}>
       <table
         className={styles.table}
         role="table"
@@ -153,6 +154,7 @@ export function InquiryListTable({
           ))}
         </tbody>
       </table>
+      </div>
 
       <nav className={styles.pagination} aria-label="페이지 네비게이션">
         <button

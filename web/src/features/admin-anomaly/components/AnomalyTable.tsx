@@ -138,6 +138,7 @@ export function AnomalyTable({
 
   return (
     <div className={styles.wrapper}>
+      <div className={styles.tableScroll}>
       <table
         className={styles.table}
         role="table"
@@ -262,6 +263,7 @@ export function AnomalyTable({
           })}
         </tbody>
       </table>
+      </div>
 
       <AdminDMDialog
         open={dmTarget !== null}

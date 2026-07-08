@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   IconApps,
   IconPersons,
@@ -14,9 +15,13 @@ import {
   IconSetting,
   IconWrite,
   IconChevronRight,
+  IconClose,
 } from "@wanteddev/wds-icon";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
+import { useAdminUiStore } from "@/stores/admin-ui-store";
 import { canAccessAdminPath } from "@/features/admin-auth/pageAccess";
+import { adminLogout } from "@/features/admin-auth/api";
+import { AdminWarmupToggle } from "./AdminWarmupToggle";
 import styles from "./AdminSidebar.module.css";
 
 type IconComponent = React.ComponentType<React.SVGProps<SVGSVGElement>>;
@@ -133,11 +138,40 @@ function isSubItemActive(pathname: string, href: string, parentHref: string): bo
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const admin = useAdminSessionStore((s) => s.admin);
+  const clearAdmin = useAdminSessionStore((s) => s.clearAdmin);
+  const mobileNavOpen = useAdminUiStore((s) => s.mobileNavOpen);
+  const closeMobileNav = useAdminUiStore((s) => s.closeMobileNav);
   const [isTabletExpanded, setIsTabletExpanded] = useState(false);
   const [hoveredHref, setHoveredHref] = useState<string | null>(null);
 
+  // 라우트 이동 시 모바일 드로어는 자동으로 닫는다(메뉴 클릭 후 페이지로 넘어가면 닫힘).
+  useEffect(() => {
+    closeMobileNav();
+  }, [pathname, closeMobileNav]);
+
   const isActive = (href: string) => isHrefActive(pathname, href);
+
+  // 모바일 드로어 상단의 계정/로그아웃 — 상단바(AdminTopNav) 우측이 모바일에서
+  // 숨겨지므로 그 기능을 여기로 옮겨온다. 로그아웃 로직은 AdminTopNav 와 동일.
+  const gradeLabel = admin?.is_master ? "마스터" : "관리자";
+  const canSeeWarmup =
+    !!admin &&
+    (admin.is_master ||
+      (admin.allowed_pages?.includes("/admin/feature/openai-warmup") ?? false));
+
+  const handleLogout = async () => {
+    try {
+      await adminLogout();
+    } finally {
+      clearAdmin();
+      queryClient.clear();
+      closeMobileNav();
+      router.replace("/admin/login");
+    }
+  };
 
   // 본 관리자 권한으로 접근 불가한 항목은 사이드바에서 숨긴다.
   // children 이 있으면, 접근 가능한 child 가 하나라도 있을 때만 부모를 노출.
@@ -153,21 +187,36 @@ export function AdminSidebar() {
 
   return (
     <>
-      {isTabletExpanded && (
+      {(isTabletExpanded || mobileNavOpen) && (
         <div
           className={styles.backdrop}
-          onClick={() => setIsTabletExpanded(false)}
+          onClick={() => {
+            setIsTabletExpanded(false);
+            closeMobileNav();
+          }}
           aria-hidden="true"
         />
       )}
 
       <nav
         aria-label="관리자 메뉴"
-        className={cx(styles.sidebar, isTabletExpanded && styles.sidebarExpanded)}
+        className={cx(
+          styles.sidebar,
+          isTabletExpanded && styles.sidebarExpanded,
+          mobileNavOpen && styles.sidebarMobileOpen,
+        )}
       >
         <div className={styles.brand}>
           <span className={styles.brandMark} aria-hidden="true" />
           <span className={styles.brandText}>관리자 콘솔</span>
+          <button
+            type="button"
+            className={styles.mobileClose}
+            onClick={closeMobileNav}
+            aria-label="메뉴 닫기"
+          >
+            <IconClose width="1.25rem" height="1.25rem" />
+          </button>
         </div>
 
         <div className={styles.toggleRow}>
@@ -186,6 +235,46 @@ export function AdminSidebar() {
             >
               <IconChevronRight width="1.125rem" height="1.125rem" />
             </span>
+          </button>
+        </div>
+
+        {/* 모바일 전용 — 상단바에서 내려온 계정/워밍업/로그아웃 영역.
+            데스크톱·태블릿에서는 CSS 로 숨긴다(display:none). */}
+        <div className={styles.mobileAccount}>
+          {admin && (
+            <Link
+              href="/admin/account"
+              className={styles.mobileAccountCard}
+              aria-label="관리자 계정 정보 수정"
+            >
+              <span className={styles.mobileAccountEmail}>{admin.email}</span>
+              <span
+                className={
+                  admin.is_master
+                    ? styles.mobileMasterBadge
+                    : styles.mobileAdminBadge
+                }
+              >
+                {gradeLabel}
+              </span>
+            </Link>
+          )}
+
+          {canSeeWarmup && (
+            <div className={styles.mobileWarmupRow}>
+              <span className={styles.mobileRowLabel}>AI 워밍업</span>
+              <AdminWarmupToggle canSee={canSeeWarmup} />
+            </div>
+          )}
+
+          <button
+            type="button"
+            className={styles.mobileLogoutBtn}
+            onClick={() => {
+              void handleLogout();
+            }}
+          >
+            로그아웃
           </button>
         </div>
 

@@ -120,10 +120,6 @@ function AdminAuthenticatedShell({
       <div className={styles.adminBody}>
         <AdminTopNav />
         {!hideRebuildBanner && <RebuildBanner />}
-        {/* 모바일 경고 — 숨기는 대신 안내 (UX-DR23) */}
-        <div className={styles.mobileWarning}>
-          <p>데스크톱에서 최적 사용 가능합니다.</p>
-        </div>
         <main id="admin-main" tabIndex={-1} className={styles.adminMain}>
           {allowedHere ? children : <AdminAccessDenied />}
         </main>

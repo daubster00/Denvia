@@ -371,6 +371,9 @@
 
 .table {
   width: 100%;
+  /* 좁은 화면에서 칼럼이 찌그러져 헤더/배지가 세로로 깨지지 않도록 최소 폭을
+     확보한다. .tableWrap 이 overflow-x: auto 라 넘치면 좌우로 스크롤된다. */
+  min-width: 900px;
   border-collapse: collapse;
   /* 답변이 길어도 칼럼 폭이 고정되도록 — colgroup 폭을 그대로 따른다. */
   table-layout: fixed;

@@ -78,19 +78,6 @@
   overflow: hidden;
 }
 
-.mobileWarning {
-  display: none;
-  padding: 8px 16px;
-  background-color: #fef3c7;
-  border-bottom: 1px solid #fde68a;
-}
-
-.mobileWarning p {
-  font-size: var(--admin-text-sm);
-  color: #92400e;
-  margin: 0;
-}
-
 .adminMain {
   flex: 1;
   overflow: auto;
@@ -102,10 +89,34 @@
   margin-right: auto;
 }
 
-@media (max-width: 767px) {
-  .mobileWarning {
-    display: block;
-  }
+/*
+ * 얇고 연한 가로/세로 스크롤바 (#123)
+ * 화면이 좁아져 표·넓은 콘텐츠가 가로로 넘칠 때 좌우로 스와이프해 볼 수 있게,
+ * 관리자 셸 안의 모든 스크롤 영역(메인 + 페이지 내부 스크롤 컨테이너)에 공통 적용.
+ * Firefox: scrollbar-width/-color, Chromium/Safari: ::-webkit-scrollbar.
+ */
+.adminShell,
+.adminShell :global(*) {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+.adminShell :global(*)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.adminShell :global(*)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.adminShell :global(*)::-webkit-scrollbar-thumb {
+  background-color: #e5e7eb;
+  border-radius: 999px;
+}
+
+.adminShell :global(*)::-webkit-scrollbar-thumb:hover {
+  background-color: #d1d5db;
 }
 
 /* 접근 권한 없음 (Story 10.5) */

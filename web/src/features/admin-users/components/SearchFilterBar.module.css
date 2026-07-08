@@ -100,3 +100,40 @@
   opacity: 0.5;
   cursor: progress;
 }
+
+/* ─── 모바일 (<768px) ─────────────────────────────
+   검색창은 한 줄 전체, 가입일 범위 박스는 화면을 넘지 않게
+   래핑 + 두 날짜 입력칸이 폭을 반씩 나눠 갖도록 조정. */
+@media (max-width: 767px) {
+  .bar {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .search {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .select {
+    flex: 1 1 45%;
+    min-width: 0;
+  }
+
+  .dateRange {
+    width: 100%;
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+  }
+
+  .dateInput {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .resetButton,
+  .refreshButton {
+    flex: 1 1 45%;
+  }
+}

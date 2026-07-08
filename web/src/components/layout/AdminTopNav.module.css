@@ -11,10 +11,43 @@
   flex-shrink: 0;
 }
 
+.left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 햄버거 — 모바일(<768px)에서만 노출 */
+.hamburger {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #374151;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.hamburger:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.hamburger:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
 .right {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 /* 계정 영역 — 클릭 가능한 영역임을 시각적으로 알려준다. */
@@ -107,4 +140,22 @@
 .logoutBtn:hover {
   background-color: #f9fafb;
   border-color: #d1d5db;
+}
+
+/* ─── 모바일 (<768px) ─────────────────────────── */
+@media (max-width: 767px) {
+  .header {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .hamburger {
+    display: inline-flex;
+  }
+
+  /* 모바일에선 워밍업·계정·로그아웃을 상단바에서 숨기고
+     좌측 햄버거 메뉴(드로어) 안으로 옮긴다. → 헤더엔 햄버거+로고만 남음 */
+  .right {
+    display: none;
+  }
 }

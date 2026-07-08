@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { IconMenu } from "@wanteddev/wds-icon";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
+import { useAdminUiStore } from "@/stores/admin-ui-store";
 import { adminLogout } from "@/features/admin-auth/api";
 import { LogoLink } from "@/components/brand/LogoLink";
 import { AdminWarmupToggle } from "./AdminWarmupToggle";
@@ -13,6 +15,7 @@ export function AdminTopNav() {
   const router = useRouter();
   const admin = useAdminSessionStore((s) => s.admin);
   const clearAdmin = useAdminSessionStore((s) => s.clearAdmin);
+  const toggleMobileNav = useAdminUiStore((s) => s.toggleMobileNav);
   const queryClient = useQueryClient();
 
   const handleLogout = async () => {
@@ -38,7 +41,17 @@ export function AdminTopNav() {
 
   return (
     <header className={styles.header}>
-      <LogoLink href="/admin" ariaLabel="관리자 대시보드" />
+      <div className={styles.left}>
+        <button
+          type="button"
+          className={styles.hamburger}
+          onClick={toggleMobileNav}
+          aria-label="메뉴 열기"
+        >
+          <IconMenu width="1.5rem" height="1.5rem" />
+        </button>
+        <LogoLink href="/admin" ariaLabel="관리자 대시보드" />
+      </div>
 
       <div className={styles.right}>
         <AdminWarmupToggle canSee={canSeeWarmup} />
