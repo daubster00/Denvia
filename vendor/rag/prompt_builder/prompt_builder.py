@@ -54,6 +54,7 @@ PROMPT_MODULES = {
             "협면", "설면", "근심", "원심", "교합면", "절단면", "인접면",
             "buccal", "lingual", "mesial", "distal", "occlusal", "incisal",
             "(b)", "(l)", "(m)", "(d)", "(o)", "(i)",
+            "od", "mb", "db",
             "mod", "do", "mo", "od",  # 치면 조합 표기
         ],
         "text": """
@@ -261,6 +262,26 @@ PROMPT_MODULES = {
 """
     },
 
+    "보험레진_와동분류": {
+        "keywords_combo": {
+            "set1": [
+                "전치부","구치부","전치","구치",
+                "협면", "설면", "근심", "원심", "교합면", "절단면", "인접면",
+                "교합", "절단", "인접",
+                "buccal", "lingual", "mesial", "distal", "occlusal", "incisal",
+                "b", "l", "m", "d", "o", "i",
+                "mod", "do", "mo", "od","mb","db"
+            ],
+            "independent": ["와동", "몇", "급", "레진"]
+        },
+        "text": """
+급수에 대한 계산은 아래의 내용을 토대로 진행하여라.
+- G.V. Black의 와동의분류 및 와동급수 1급,2급,6급class에 대한 설명 구치부기준. 와동의분류 및 와동급수 설명중 구치부의 1급,2급,6급 class 에 대한 설명으로#14,15,24,25,34,35,44,45는 소구치이며 ,#16,17,26,27,36,37,46,47은 대구치이다. 보험레진을 소구치와 대구치의 인접면 즉 근심면,원심면 이 포함되지 않은 상태에서 교합면,협면,설면 이렇게 3부위에 한정되어 와동형성 후 보험레진이 진행 되는경우는 1급와동으로 분류되며, 소구치,대구치의 인접면(근심면,원심면)이 포함되어 레진치료가 진행되는 경우는 무조건 2급으로 산정된다. 모든 치아의 교합측 2/3부위에 와동형성 후 진행하는 보험레진은 1급와동으로 분류된다. 소구치,대구치의 다른 면 치료 없이 교두부위만 와동형성 후 보험레진 진행한 경우는 6급으로 분류된다. 면수는 처치 한 부위의 면의 수를 합하여 면수로 청구 하면 된다.
+- G.V. Black의 와동의분류 및 와동급수 1급,3급, 4급,6급class에 대한 설명 전치부 기준. 와동의분류 및 와동급수 전치부에 1급,3급,4급,6급 class 에 대한 설명으로 #11,12,13,21,22,23,31,32,33,41,42,43은 전치부 치식 이며 보험레진을 전치부의 설면만 와동형성 후 보험레진 진행시 1급 와동으로 분류하며, 전치부의 인접면을 포함하여 진행하는 경우 3급와동으로 분류되나 단 3급와동으로 분류되기 위해서는 절단연이 포함되어서는 안된다. 전치부에 절단연과 인접면을 포함하여 와동형성 후 레진을 진행하는 경우 4급와동으로 분류된다. 또한 전치부의 절단연만 레진치료가 들어가는 경우는 6급와동으로 분류된다. 면수는 처치 한 부위의 면의 수를 합하여 면수로 청구 하면 된다.
+- G.V. Black의 와동의분류 및 와동급수 5급class에 대한 설명 모든치아 기준. 보험레진에서 5급class에 대한 설명으로 모든 치아의 모든면 즉 치식 #18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28,48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38의 협면 치경측 3분의1부위에 위치하는 와동을 치료한 경우 5급와동으로 분류되면 처치한 면수만큼 면이 청구된다.
+"""
+    },
+
     # ------------------------------------------------------------
     # [신규 양식 예시] group_keywords + required_keywords
     # group_keywords 중 1개 이상 + required_keywords 중 1개 이상 매칭 시 주입
@@ -385,6 +406,13 @@ def build_prompt_template(query):
         PROMPT_MODULES["치주낭측정검사_횟수산정"]["keywords_combo"]["independent"]
     )
 
+    resin_active = "keywords_combo" in PROMPT_MODULES.get("보험레진_와동분류", {}) and \
+        _match_periodontal(
+            query,
+            PROMPT_MODULES["보험레진_와동분류"]["keywords_combo"]["set1"],
+            PROMPT_MODULES["보험레진_와동분류"]["keywords_combo"]["independent"]
+        )
+
     for module_name, module_data in PROMPT_MODULES.items():
         if "group_keywords" in module_data and "required_keywords" in module_data:
             matched = _match_group_and_keywords(
@@ -414,6 +442,8 @@ def build_prompt_template(query):
             if anesthesia_active and module_name in ["치식_위치", "치면_방향"]:
                 continue
             if perio_exam_active and module_name in ["치식_위치", "치면_방향"]:
+                continue
+            if resin_active and module_name in ["치식_위치", "치면_방향"]:
                 continue
             parts.append(module_data["text"])
             injected.append(module_name)
