@@ -47,10 +47,28 @@ function dateLabel(value: string): string {
   });
 }
 
-function resolveRange(unit: SelectableUnit, day: string, month: string, year: string) {
-  if (unit === "day") return { from: day, to: day };
-  if (unit === "month") return { from: `${month}-01`, to: lastDayOfMonth(month) };
-  return { from: `${year}-01-01`, to: `${year}-12-31` };
+interface ResolvedQuery {
+  /** 실제로 API 에 보낼 집계 단위(차트를 그리는 데이터 granularity). */
+  fetchUnit: SignupsUnit;
+  from: string;
+  to: string;
+}
+
+/**
+ * "사용자가 고른 단위(unit)"와 "실제로 조회·렌더할 데이터 단위(fetchUnit)"를 분리한다.
+ * 월을 고르면 그 달 전체를 '일(day)' 버킷으로 받아 일자별 추이를 그리고,
+ * 합산값은 프론트에서 집계한다(#122).
+ */
+function resolveQuery(
+  unit: SelectableUnit,
+  day: string,
+  month: string,
+  year: string,
+): ResolvedQuery {
+  if (unit === "day") return { fetchUnit: "day", from: day, to: day };
+  if (unit === "month")
+    return { fetchUnit: "day", from: `${month}-01`, to: lastDayOfMonth(month) };
+  return { fetchUnit: "year", from: `${year}-01-01`, to: `${year}-12-31` };
 }
 
 export default function SignupsPage() {
@@ -60,8 +78,8 @@ export default function SignupsPage() {
   const [selectedYear, setSelectedYear] = useState<string>(() =>
     String(new Date().getFullYear()),
   );
-  const range = useMemo(
-    () => resolveRange(unit, selectedDay, selectedMonth, selectedYear),
+  const query = useMemo(
+    () => resolveQuery(unit, selectedDay, selectedMonth, selectedYear),
     [selectedDay, selectedMonth, selectedYear, unit],
   );
 
@@ -70,11 +88,19 @@ export default function SignupsPage() {
   }
 
   const { data, error, refetch, isLoading, isFetching } = useQuery({
-    queryKey: ["admin", "analytics", "signups", { unit, ...range }],
+    // fetchUnit + from/to 가 실제 요청을 유일하게 식별한다.
+    // (일 단일일 vs 월의 일자 범위는 from/to 로 이미 구분됨)
+    queryKey: [
+      "admin",
+      "analytics",
+      "signups",
+      { unit: query.fetchUnit, from: query.from, to: query.to },
+    ],
     queryFn: () =>
       fetchSignups({
-        unit,
-        ...range,
+        unit: query.fetchUnit,
+        from: query.from,
+        to: query.to,
       }),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
@@ -182,7 +208,12 @@ export default function SignupsPage() {
           </button>
         </section>
       )}
-      {data && <SignupsTrendChart data={data} />}
+      {data && (
+        <SignupsTrendChart
+          data={data}
+          monthSummary={unit === "month" ? { yearMonth: selectedMonth } : null}
+        />
+      )}
     </section>
   );
 }

@@ -20,6 +20,22 @@
   border: 0;
 }
 
+.summaryCaption {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.summaryMonth {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.summaryHighlight {
+  color: #7c3aed;
+  font-weight: 700;
+}
+
 .emptyState {
   text-align: center;
   padding: 48px 16px;
