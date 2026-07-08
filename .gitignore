@@ -87,10 +87,17 @@ _bmad-output*.zip
 # - 벤더 디렉토리(vendor/)는 제3자 라이브러리 원본이라 예외로 둠
 .claude/
 _bmad/
+.agents/
 **/CLAUDE.md
 **/AGENTS.md
 !vendor/**
+# 단, 벤더 예외(!vendor/**)로 노출되는 파이썬 캐시·에디터 설정은 다시 제외
+vendor/**/__pycache__/
+vendor/**/.vscode/
 .codex
+
+# 세션 임시 작업 산출물 (CLAUDE.md: outputs/ 는 세션 종료 시 사라지는 임시 파일)
+outputs/
 
 # 프로젝트 문서 (운영/아키텍처/ADR/런북 등 — 추적 제외)
 docs/
