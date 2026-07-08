@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { formatKRW } from "@/lib/format-currency";
 import { fetchUserTokens, type UserTokensRow } from "../api/analytics";
 import {
@@ -19,8 +20,6 @@ const QUERY_KEY = [
   "user-tokens-top",
   { range: "month", per_page: TOP_N },
 ] as const;
-
-const ROW_DISABLED_TITLE = "사용자 상세는 Epic 6에서 제공됩니다";
 
 export function TokenTopUsersWidget() {
   const { data, isLoading, error, refetch } = useQuery({
@@ -61,17 +60,17 @@ function TopUsersList({ items }: { items: UserTokensRow[] }) {
             : 0;
         const tokens = row.total_input_tokens + row.total_output_tokens;
         return (
-          <li
-            key={row.user_id}
-            className={`${styles.row} ${styles.rowDisabled}`}
-            title={ROW_DISABLED_TITLE}
-            data-disabled="true"
-          >
+          <li key={row.user_id} className={styles.row}>
             <span className={styles.rank} aria-label={`${idx + 1}위`}>
               {idx + 1}
             </span>
             <div className={styles.email}>
-              <span>{row.email}</span>
+              <Link
+                href={`/admin/users/${row.user_id}`}
+                className={styles.emailLink}
+              >
+                {row.email}
+              </Link>
               <div
                 className={styles.barTrack}
                 role="progressbar"

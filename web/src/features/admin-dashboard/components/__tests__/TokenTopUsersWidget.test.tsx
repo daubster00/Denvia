@@ -75,8 +75,14 @@ describe("TokenTopUsersWidget", () => {
     expect(await screen.findByText("a@x.com")).toBeTruthy();
     expect(screen.getByText("b@x.com")).toBeTruthy();
     expect(screen.getByText("e@x.com")).toBeTruthy();
-    const link = screen.getByRole("link");
-    expect(link.getAttribute("href")).toBe("/admin/dashboard/token-breakdown");
+    // 각 행의 이메일은 사용자 상세로 이동하는 링크
+    const emailLink = screen.getByText("a@x.com").closest("a");
+    expect(emailLink?.getAttribute("href")).toBe("/admin/users/1");
+    // 위젯 하단 상세 보기 링크는 그대로 유지
+    const detailLink = screen
+      .getAllByRole("link")
+      .find((l) => l.getAttribute("href") === "/admin/dashboard/token-breakdown");
+    expect(detailLink).toBeTruthy();
 
     expect(fetchUserTokens).toHaveBeenCalledWith({ range: "month", per_page: 5 });
   });
@@ -96,7 +102,7 @@ describe("TokenTopUsersWidget", () => {
     expect(await screen.findByText("이번 기간에 질의 기록이 없습니다.")).toBeTruthy();
   });
 
-  it("row data-disabled + Epic 6 안내 title", async () => {
+  it("이메일 클릭 → 해당 사용자 상세(/admin/users/{id})로 이동", async () => {
     const { fetchUserTokens } = await import("../../api/analytics");
     (fetchUserTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       items: [makeRow({ user_id: 9, email: "z@x.com" })],
@@ -107,11 +113,10 @@ describe("TokenTopUsersWidget", () => {
       year_month: "2026-04",
       usd_to_krw: 1400,
     });
-    const { container } = renderWithQuery(<TokenTopUsersWidget />);
+    renderWithQuery(<TokenTopUsersWidget />);
     await screen.findByText("z@x.com");
-    const item = container.querySelector("li[data-disabled='true']");
-    expect(item).not.toBeNull();
-    expect(item?.getAttribute("title")).toBe("사용자 상세는 Epic 6에서 제공됩니다");
+    const emailLink = screen.getByText("z@x.com").closest("a");
+    expect(emailLink?.getAttribute("href")).toBe("/admin/users/9");
   });
 
   it("API 실패 → 오류 + 재시도", async () => {

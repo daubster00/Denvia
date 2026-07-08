@@ -22,8 +22,16 @@
   border-bottom: none;
 }
 
-.rowDisabled {
-  cursor: not-allowed;
+.emailLink {
+  color: #2563eb;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emailLink:hover {
+  text-decoration: underline;
 }
 
 .rank {
