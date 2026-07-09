@@ -7,7 +7,8 @@
 
 권한 분기 (FR62 / Story 10.4 AC-3·AC-5):
 - master         → 전체 actor 가시 + `actor_id=system` 옵션 허용
-- operator       → 본인 + 활성 sub_operator 작성 로그만 가시. 다른 actor_id 입력 시 403.
+- operator       → 본인 + 활성 부관리자(전체 열람 등급이 아닌 관리자, 커스텀 g_* 포함)
+                   작성 로그만 가시. 다른 actor_id 입력 시 403.
 - sub_operator   → require_admin_grade 단계에서 이미 차단됨 (여기 도달 불가).
 
 민감 필드 마스킹 (NFR-S2 / AC-4):
@@ -31,7 +32,7 @@ from typing import Any, Literal
 
 import structlog
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.audit_log import AuditLog
@@ -67,6 +68,13 @@ _MAX_EXPORT_ROWS = 10_000
 
 # 시스템 자동 액션 식별용 — AC-6. anomaly_tasks._expire_blocks 분기에서 발생.
 _SYSTEM_ACTION_CODES = ("user.block_auto_expired", "admin.account.unblocked")
+
+# 전체 열람 등급 — operator 가 볼 수 있는 "부관리자(하위)" 판정의 여집합.
+# operator 의 가시 범위는 본인 + '전체 열람 등급이 아닌' 모든 활성 관리자다.
+# 실서버 부관리자는 문자열 "sub_operator" 가 아니라 커스텀 코드(g_1038039a 등)를
+# 쓰므로, 특정 문자열 매칭이 아니라 '전체 열람 등급이 아님' 으로 판정해야 한다.
+# (qa_review_service.FULL_ACCESS_GRADES 와 동일 원리.)
+_FULL_ACCESS_GRADES = ("master", "operator")
 
 
 def _master_actor_subquery():
@@ -139,7 +147,9 @@ async def _visible_actor_ids(db: AsyncSession, actor: User) -> list[int] | None:
     """actor 등급에 따라 조회 가능한 actor_user_id 목록.
 
     - master → None (전체 가시)
-    - operator → 본인 + 활성 sub_operator id 리스트
+    - operator → 본인 + 활성 부관리자(=전체 열람 등급이 아닌 관리자) id 리스트.
+      실서버 부관리자는 커스텀 등급 코드(g_1038039a 등)를 쓰므로 문자열
+      "sub_operator" 매칭이 아니라 '전체 열람 등급이 아님' 으로 판정한다.
     - sub_operator → 빈 리스트 (이론상 도달 불가, 방어용)
     """
     grade = getattr(actor, "admin_grade", None)
@@ -151,7 +161,13 @@ async def _visible_actor_ids(db: AsyncSession, actor: User) -> list[int] | None:
                 select(User.id).where(
                     User.role == "admin",
                     User.withdrawn_at.is_(None),
-                    or_(User.id == actor.id, User.admin_grade == "sub_operator"),
+                    or_(
+                        User.id == actor.id,
+                        and_(
+                            User.admin_grade.is_not(None),
+                            User.admin_grade.not_in(_FULL_ACCESS_GRADES),
+                        ),
+                    ),
                 )
             )
         ).scalars().all()
