@@ -263,41 +263,40 @@ async def _load_runtime_params() -> dict:
         DEFAULT_CHAT_MODEL,
     )
 
+    # #129: 프롬프트 블록 10개 전부를 mget 대상으로. 키 목록은 BLOCK_IDS 로 생성해 brittle 인덱스 제거.
+    from api.src.models.prompt_module_config import BLOCK_IDS
+
     try:
         r = aioredis.from_url(
             settings.redis_url,
             db=REDIS_DB_RUNTIME_CONFIG,
             decode_responses=True,
         )
+        base_keys = [
+            "runtime:rag_k",
+            "runtime:rag_temperature",
+            "runtime:max_tokens",
+            "runtime:chat_model",
+        ]
+        prompt_keys = [f"runtime:prompt:{bid}" for bid in BLOCK_IDS]
         async with r:
-            keys = await r.mget(
-                "runtime:rag_k",
-                "runtime:rag_temperature",
-                "runtime:max_tokens",
-                "runtime:prompt:BASE",
-                "runtime:prompt:치식_위치",
-                "runtime:prompt:치면_방향",
-                "runtime:prompt:마취_산정",
-                "runtime:prompt:브릿지",
-                "runtime:chat_model",
-            )
-        chat_model_raw = keys[8]
+            keys = await r.mget(*base_keys, *prompt_keys)
+
+        chat_model_raw = keys[3]
         chat_model = (
             chat_model_raw
             if chat_model_raw in ALLOWED_CHAT_MODELS
             else DEFAULT_CHAT_MODEL
         )
-        return {
+        result = {
             "rag_k": int(keys[0]) if keys[0] else 5,
             "rag_temperature": float(keys[1]) if keys[1] else 0.0,
             "max_tokens": int(keys[2]) if keys[2] else 1024,
-            "prompt_BASE": keys[3],
-            "prompt_치식_위치": keys[4],
-            "prompt_치면_방향": keys[5],
-            "prompt_마취_산정": keys[6],
-            "prompt_브릿지": keys[7],
             "chat_model": chat_model,
         }
+        for bid, raw in zip(BLOCK_IDS, keys[len(base_keys):]):
+            result[f"prompt_{bid}"] = raw
+        return result
     except Exception as e:
         logger.warning("query_runner.runtime_params_load_failed", error=str(e))
         return {
@@ -337,9 +336,10 @@ async def stream_rag_answer(
     t_runtime_loaded_ms = int((time.perf_counter() - t0) * 1000)
 
     # 프롬프트 오버라이드 구성 (async context에서 읽어 클로저로 전달)
-    block_ids = ("BASE", "치식_위치", "치면_방향", "마취_산정", "브릿지")
+    from api.src.models.prompt_module_config import BLOCK_IDS
+
     overrides: dict[str, PromptOverride] = {}
-    for bid in block_ids:
+    for bid in BLOCK_IDS:
         raw = runtime.get(f"prompt_{bid}")
         if raw:
             try:
@@ -347,6 +347,7 @@ async def stream_rag_answer(
                 overrides[bid] = PromptOverride(
                     content=parsed.get("content", ""),
                     enabled=parsed.get("enabled", True),
+                    trigger_config=parsed.get("trigger_config"),
                 )
             except Exception:
                 pass  # 파싱 실패 시 해당 블록 fallback
@@ -505,9 +506,10 @@ async def warmup_once() -> dict:
     runtime = await _load_runtime_params()
 
     # 프롬프트 오버라이드 로딩은 실제 chat 과 동일하게 — 분기 코드를 데움.
-    block_ids = ("BASE", "치식_위치", "치면_방향", "마취_산정", "브릿지")
+    from api.src.models.prompt_module_config import BLOCK_IDS
+
     overrides: dict[str, PromptOverride] = {}
-    for bid in block_ids:
+    for bid in BLOCK_IDS:
         raw = runtime.get(f"prompt_{bid}")
         if raw:
             try:
@@ -515,6 +517,7 @@ async def warmup_once() -> dict:
                 overrides[bid] = PromptOverride(
                     content=parsed.get("content", ""),
                     enabled=parsed.get("enabled", True),
+                    trigger_config=parsed.get("trigger_config"),
                 )
             except Exception:
                 pass

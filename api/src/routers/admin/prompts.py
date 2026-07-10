@@ -45,7 +45,8 @@ async def update_prompt(
     db: AsyncSession = Depends(get_session),
 ) -> PromptUpdateResponse:
     return await prompt_config_service.update_prompt(
-        request, block_id, body.content, body.enabled, admin, db
+        request, block_id, body.content, body.enabled, admin, db,
+        trigger_config=body.trigger_config,
     )
 
 

@@ -33,11 +33,60 @@ def get_trigger_keywords(block_id: str) -> list[str]:
 
 
 class PromptOverride:
-    """단일 프롬프트 블록의 오버라이드 값."""
+    """단일 프롬프트 블록의 오버라이드 값.
 
-    def __init__(self, content: str, enabled: bool) -> None:
+    trigger_config 가 주어지면 발동조건(키워드 매칭)까지 오버라이드한다(#129).
+    None 이면 vendor 파일의 기본 발동조건을 그대로 쓴다.
+    """
+
+    def __init__(
+        self,
+        content: str,
+        enabled: bool,
+        trigger_config: dict | None = None,
+    ) -> None:
         self.content = content
         self.enabled = enabled
+        self.trigger_config = trigger_config
+
+
+def _file_trigger_config(block_id: str, module: dict) -> dict:
+    """vendor 모듈 dict → trigger_config 형태(mode + 키워드 리스트)."""
+    if block_id == "BASE":
+        return {"mode": "base"}
+    if "keywords_all" in module:
+        return {"mode": "keywords_all", "keywords_all": module["keywords_all"]}
+    if "keywords_combo" in module:
+        combo = module["keywords_combo"]
+        return {
+            "mode": "keywords_combo",
+            "set1": combo["set1"],
+            "independent": combo["independent"],
+        }
+    if "group_keywords" in module and "required_keywords" in module:
+        return {
+            "mode": "group",
+            "group_keywords": module["group_keywords"],
+            "required_keywords": module["required_keywords"],
+        }
+    return {"mode": "keywords", "keywords": module.get("keywords", [])}
+
+
+def _match_trigger_config(query: str, cfg: dict, matchers: dict) -> bool:
+    """trigger_config(mode + 키워드) 로 발동 여부를 판정. vendor 매칭 함수 재사용."""
+    mode = cfg.get("mode")
+    if mode == "base":
+        return True
+    if mode == "keywords_all":
+        return matchers["all"](query, cfg.get("keywords_all") or [])
+    if mode == "keywords_combo":
+        return matchers["perio"](query, cfg.get("set1") or [], cfg.get("independent") or [])
+    if mode == "group":
+        return matchers["group"](
+            query, cfg.get("group_keywords") or [], cfg.get("required_keywords") or []
+        )
+    # 기본(keywords) — 알 수 없는 mode 도 안전하게 keywords 매칭으로 처리.
+    return matchers["kw"](query, cfg.get("keywords") or [])
 
 
 def build_prompt_with_overrides(
@@ -47,6 +96,7 @@ def build_prompt_with_overrides(
     """vendor/rag build_prompt_template 로직을 DB/Redis 오버라이드로 재현한다.
 
     overrides가 None이거나 비어있으면 vendor/rag 기본값 fallback.
+    각 모듈의 발동조건은 override.trigger_config 가 있으면 그것을, 없으면 vendor 파일값을 쓴다.
     """
     if not overrides:
         from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
@@ -62,6 +112,20 @@ def build_prompt_with_overrides(
             _match_periodontal,
         )
 
+        matchers = {
+            "kw": _match_keywords,
+            "all": _match_keywords_all,
+            "perio": _match_periodontal,
+            "group": _match_group_and_keywords,
+        }
+
+        def _eff_cfg(block_id: str) -> dict:
+            """유효 발동조건 = override.trigger_config 우선, 없으면 vendor 파일값."""
+            ov = overrides.get(block_id)
+            if ov is not None and ov.trigger_config:
+                return ov.trigger_config
+            return _file_trigger_config(block_id, PROMPT_MODULES.get(block_id, {}))
+
         parts: list[str] = []
 
         base_override = overrides.get("BASE")
@@ -70,54 +134,25 @@ def build_prompt_with_overrides(
         elif base_override.enabled:
             parts.append(base_override.content)
 
-        # 브릿지/치주치료/마취 모듈이 활성화되면 치식_위치/치면_방향 블록은 주입하지 않는다.
+        # 브릿지/치주치료/마취/치주낭 모듈이 활성화되면 치식_위치/치면_방향 블록은 주입하지 않는다.
         # (vendor build_prompt_template과 동일한 동작 — 각 모듈 본문의 자체 표기·산정 규칙과 충돌 방지)
-        bridge_active = _match_keywords(query, PROMPT_MODULES["브릿지"]["keywords"])
-        periodontal_active = (
-            "keywords_combo" in PROMPT_MODULES.get("치주치료_산정", {})
-            and _match_periodontal(
-                query,
-                PROMPT_MODULES["치주치료_산정"]["keywords_combo"]["set1"],
-                PROMPT_MODULES["치주치료_산정"]["keywords_combo"]["independent"],
-            )
+        # 편집된 발동조건을 반영하려면 배제 판정도 유효 config 로 계산해야 한다.
+        bridge_active = _match_trigger_config(query, _eff_cfg("브릿지"), matchers)
+        periodontal_active = _match_trigger_config(query, _eff_cfg("치주치료_산정"), matchers)
+        anesthesia_active = _match_trigger_config(query, _eff_cfg("마취_산정"), matchers)
+        perio_exam_active = _match_trigger_config(
+            query, _eff_cfg("치주낭측정검사_횟수산정"), matchers
         )
-        anesthesia_active = _match_keywords(query, PROMPT_MODULES["마취_산정"]["keywords"])
-        perio_exam_active = (
-            "keywords_combo" in PROMPT_MODULES.get("치주낭측정검사_횟수산정", {})
-            and _match_periodontal(
-                query,
-                PROMPT_MODULES["치주낭측정검사_횟수산정"]["keywords_combo"]["set1"],
-                PROMPT_MODULES["치주낭측정검사_횟수산정"]["keywords_combo"]["independent"],
-            )
+        suppress_positional = (
+            bridge_active or periodontal_active or anesthesia_active or perio_exam_active
         )
 
         injected: list[str] = []
         for module_name, module_data in PROMPT_MODULES.items():
-            # vendor build_prompt_template과 동일한 매칭 방식 4종 분기
-            if "group_keywords" in module_data and "required_keywords" in module_data:
-                matched = _match_group_and_keywords(
-                    query, module_data["group_keywords"], module_data["required_keywords"]
-                )
-            elif "keywords_all" in module_data:
-                matched = _match_keywords_all(query, module_data["keywords_all"])
-            elif "keywords_combo" in module_data:
-                matched = _match_periodontal(
-                    query,
-                    module_data["keywords_combo"]["set1"],
-                    module_data["keywords_combo"]["independent"],
-                )
-            else:
-                matched = _match_keywords(query, module_data["keywords"])
-
+            matched = _match_trigger_config(query, _eff_cfg(module_name), matchers)
             if not matched:
                 continue
-            if bridge_active and module_name in ("치식_위치", "치면_방향"):
-                continue
-            if periodontal_active and module_name in ("치식_위치", "치면_방향"):
-                continue
-            if anesthesia_active and module_name in ("치식_위치", "치면_방향"):
-                continue
-            if perio_exam_active and module_name in ("치식_위치", "치면_방향"):
+            if suppress_positional and module_name in ("치식_위치", "치면_방향"):
                 continue
 
             override = overrides.get(module_name)

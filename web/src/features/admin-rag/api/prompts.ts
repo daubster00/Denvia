@@ -2,9 +2,28 @@ import { z } from "zod";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** 모듈 발동조건(트리거 키워드). mode 별로 쓰는 리스트가 다르다. */
+export type TriggerMode =
+  | "base"
+  | "keywords"
+  | "keywords_all"
+  | "keywords_combo"
+  | "group";
+
+export interface TriggerConfig {
+  mode: TriggerMode;
+  keywords?: string[];
+  keywords_all?: string[];
+  set1?: string[];
+  independent?: string[];
+  group_keywords?: string[];
+  required_keywords?: string[];
+}
+
 export interface PromptBlock {
   block_id: string;
   trigger_keywords: string[];
+  trigger_config?: TriggerConfig | null;
   content: string;
   enabled: boolean;
   updated_at: string;
@@ -41,6 +60,13 @@ export const modelParamsSchema = z.object({
 export type PromptUpdateInput = z.infer<typeof promptUpdateSchema>;
 export type ModelParamsInput = z.infer<typeof modelParamsSchema>;
 
+/** PUT 페이로드 = 글 내용 + 켜기/끄기 + (선택) 발동조건. */
+export interface PromptUpdatePayload {
+  content: string;
+  enabled: boolean;
+  trigger_config?: TriggerConfig | null;
+}
+
 export async function fetchPrompts(): Promise<PromptsListResponse> {
   const res = await fetch(`${API_BASE}/api/v1/admin/rag/prompts`, { credentials: "include" });
   if (!res.ok) throw new Error("프롬프트 조회 실패");
@@ -49,7 +75,7 @@ export async function fetchPrompts(): Promise<PromptsListResponse> {
 
 export async function updatePromptBlock(
   blockId: string,
-  data: PromptUpdateInput,
+  data: PromptUpdatePayload,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/admin/rag/prompts/${encodeURIComponent(blockId)}`, {
     method: "PUT",
