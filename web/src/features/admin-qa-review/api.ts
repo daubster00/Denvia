@@ -238,6 +238,58 @@ export function buildQaReviewExportUrl(
   return `${API_BASE}${BASE_PATH}/export${qs ? `?${qs}` : ""}`;
 }
 
+// ── 부관리자 활동 집계 (#130-③ 급여 산정용, master/operator 전용) ────────────
+
+/** 부관리자 1명의 기간 활동 요약(굿/베드/피드백 개수). */
+export interface QaReviewerActivityRow {
+  reviewer_id: number;
+  reviewer_email: string | null;
+  good_count: number;
+  bad_count: number;
+  feedback_count: number;
+}
+
+/** 특정 부관리자 검토 상세 1건 — 표시 라벨 포함. */
+export interface QaReviewerActivityDetailItem {
+  qa_log_id: number;
+  rating: "good" | "bad" | null;
+  has_feedback: boolean;
+  /** '굿' / '굿(피드백작성)' / '베드' / '베드(피드백작성)' / '미평가'. */
+  label: string;
+  comment: string | null;
+  rated_at: string | null;
+}
+
+export interface QaReviewerActivityResponse {
+  date_from: string;
+  date_to: string;
+  reviewers: QaReviewerActivityRow[];
+  /** reviewer_id 를 지정한 경우에만 채워진다(그 외 null). */
+  detail: QaReviewerActivityDetailItem[] | null;
+}
+
+export interface FetchQaReviewerActivityParams {
+  date_from: string; // YYYY-MM-DD
+  date_to: string; // YYYY-MM-DD
+  reviewer_id?: number;
+}
+
+export async function fetchQaReviewerActivity(
+  params: FetchQaReviewerActivityParams,
+): Promise<QaReviewerActivityResponse> {
+  const query = new URLSearchParams();
+  query.set("date_from", params.date_from);
+  query.set("date_to", params.date_to);
+  if (params.reviewer_id != null) {
+    query.set("reviewer_id", String(params.reviewer_id));
+  }
+  const res = await fetch(`${API_BASE}${BASE_PATH}/activity?${query.toString()}`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`qa-review activity fetch failed: ${res.status}`);
+  return res.json() as Promise<QaReviewerActivityResponse>;
+}
+
 // ── 설정 (master/operator 전용) ──────────────────────────────────────────────
 
 export interface QaReviewSettings {

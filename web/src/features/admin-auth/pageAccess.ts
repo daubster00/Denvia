@@ -60,6 +60,10 @@ export function resolveAdminPageRoute(pathname: string): ResolvedRoute {
     return "/admin/rag";
   }
 
+  // 부관리자 활동 리포트(급여 산정용 데이터) — 전체 열람 등급(master/operator)만.
+  // /admin/qa-review 매트릭스보다 먼저 매칭해야 함(부관리자에게 노출되면 안 됨).
+  if (pathname.startsWith("/admin/qa-review/activity")) return "admins";
+
   // 알림톡 관리(/admin/alimtalk) — 단일 페이지, children 없음
   if (pathname === "/admin/alimtalk" || pathname.startsWith("/admin/alimtalk/")) {
     return "/admin/alimtalk";

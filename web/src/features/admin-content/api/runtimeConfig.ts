@@ -23,6 +23,27 @@ export const runtimeConfigFormSchema = z.object({
     .int("정수만 입력 가능합니다")
     .min(0, "0 이상이어야 합니다")
     .max(99999, "99999 이하여야 합니다"),
+  // #130 ① — 질문 전송 시 화면 중앙 안내 팝업 설정.
+  qa_notice_enabled: z.boolean(),
+  qa_notice_text: z.string().max(500, "500자 이하로 입력해주세요"),
+  qa_notice_font_size: z
+    .number({ invalid_type_error: "숫자를 입력해주세요" })
+    .int("정수만 입력 가능합니다")
+    .min(10, "10 이상이어야 합니다")
+    .max(40, "40 이하여야 합니다"),
+  qa_notice_color: z
+    .string()
+    .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "#RRGGBB 형식으로 입력해주세요"),
+  qa_notice_font_weight: z
+    .number({ invalid_type_error: "숫자를 입력해주세요" })
+    .int("정수만 입력 가능합니다")
+    .min(100, "100 이상이어야 합니다")
+    .max(900, "900 이하여야 합니다"),
+  qa_notice_width: z
+    .number({ invalid_type_error: "숫자를 입력해주세요" })
+    .int("정수만 입력 가능합니다")
+    .min(280, "280 이상이어야 합니다")
+    .max(720, "720 이하여야 합니다"),
 });
 
 export type RuntimeConfigFormInput = z.infer<typeof runtimeConfigFormSchema>;
@@ -34,6 +55,12 @@ export interface RuntimeConfigResponse {
   free_delay_seconds: number;
   free_delay_notice_text: string;
   pro_monthly_quota: number;
+  qa_notice_enabled: boolean;
+  qa_notice_text: string;
+  qa_notice_font_size: number;
+  qa_notice_color: string;
+  qa_notice_font_weight: number;
+  qa_notice_width: number;
 }
 
 async function parseError(res: Response): Promise<ApiError> {

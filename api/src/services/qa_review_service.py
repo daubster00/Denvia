@@ -680,6 +680,142 @@ async def get_export_rows(
 
 
 # =============================================================================
+# 부관리자 활동 집계 (#130-③ 급여 산정용 리포트)
+# =============================================================================
+
+
+def _activity_label(rating: str | None, has_feedback: bool) -> str:
+    """굿/베드 + 피드백(코멘트) 유무 → 급여 리포트 표시 라벨.
+
+    - 굿 + 피드백 = '굿(피드백작성)'
+    - 굿          = '굿'
+    - 베드 + 피드백 = '베드(피드백작성)'
+    - 베드         = '베드'
+    - 그 외(미평가) = '미평가'
+    """
+    if rating == "good":
+        return "굿(피드백작성)" if has_feedback else "굿"
+    if rating == "bad":
+        return "베드(피드백작성)" if has_feedback else "베드"
+    return "미평가"
+
+
+async def get_reviewer_activity(
+    session: AsyncSession,
+    *,
+    date_from: date,
+    date_to: date,
+    reviewer_id: int | None,
+) -> dict[str, Any]:
+    """부관리자별 검토 활동 집계(굿/베드/피드백) — 급여 산정용.
+
+    기준: hidden_at IS NULL, updated_at(마지막 평가/메모 저장 시각)이 KST [from,to] 구간.
+    - reviewer_id=None → 모든 부관리자별 요약 리스트.
+    - reviewer_id 지정 → 그 사람 요약 + 검토 상세 리스트(각 항목 표시 라벨).
+
+    피드백(feedback) = comment 가 비어있지 않은 검토 건수.
+    """
+    if date_from > date_to:
+        date_from = date_to
+    start_kst = _kst_dt(date_from)
+    end_exclusive_kst = _kst_dt(date_to) + timedelta(days=1)
+
+    rater = aliased(User)  # rated_by_admin_id → email
+
+    # comment 가 NULL 이 아니고 공백만도 아닌 경우를 '피드백 있음' 으로 본다.
+    has_feedback_expr = and_(
+        QAReview.comment.is_not(None),
+        func.length(func.trim(QAReview.comment)) > 0,
+    )
+
+    base_conds = [
+        QAReview.hidden_at.is_(None),
+        QAReview.rated_by_admin_id.is_not(None),
+        QAReview.updated_at >= start_kst,
+        QAReview.updated_at < end_exclusive_kst,
+    ]
+
+    # ── 부관리자별 요약(GROUP BY rated_by_admin_id) ──────────────────────────
+    summary_conds = list(base_conds)
+    if reviewer_id is not None:
+        summary_conds.append(QAReview.rated_by_admin_id == reviewer_id)
+
+    good_case = case((QAReview.rating == "good", 1), else_=0)
+    bad_case = case((QAReview.rating == "bad", 1), else_=0)
+    feedback_case = case((has_feedback_expr, 1), else_=0)
+
+    summary_rows = (
+        await session.execute(
+            select(
+                QAReview.rated_by_admin_id.label("reviewer_id"),
+                rater.email.label("reviewer_email"),
+                func.coalesce(func.sum(good_case), 0).label("good_count"),
+                func.coalesce(func.sum(bad_case), 0).label("bad_count"),
+                func.coalesce(func.sum(feedback_case), 0).label("feedback_count"),
+            )
+            .select_from(QAReview)
+            .join(rater, QAReview.rated_by_admin_id == rater.id)
+            .where(*summary_conds)
+            .group_by(QAReview.rated_by_admin_id, rater.email)
+            .order_by(rater.email)
+        )
+    ).all()
+
+    reviewers = [
+        {
+            "reviewer_id": int(r.reviewer_id),
+            "reviewer_email": r.reviewer_email,
+            "good_count": int(r.good_count),
+            "bad_count": int(r.bad_count),
+            "feedback_count": int(r.feedback_count),
+        }
+        for r in summary_rows
+    ]
+
+    result: dict[str, Any] = {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "reviewers": reviewers,
+        "detail": None,
+    }
+
+    # ── 특정 부관리자 지정 시 상세 리스트 ────────────────────────────────────
+    if reviewer_id is not None:
+        detail_rows = (
+            await session.execute(
+                select(
+                    QAReview.qa_log_id,
+                    QAReview.rating,
+                    QAReview.comment,
+                    QAReview.updated_at,
+                )
+                .where(
+                    *base_conds,
+                    QAReview.rated_by_admin_id == reviewer_id,
+                )
+                .order_by(QAReview.updated_at.desc())
+            )
+        ).all()
+
+        detail_items: list[dict[str, Any]] = []
+        for r in detail_rows:
+            has_fb = bool(r.comment and r.comment.strip())
+            detail_items.append(
+                {
+                    "qa_log_id": int(r.qa_log_id),
+                    "rating": r.rating,
+                    "has_feedback": has_fb,
+                    "label": _activity_label(r.rating, has_fb),
+                    "comment": r.comment,
+                    "rated_at": _to_kst_iso(r.updated_at),
+                }
+            )
+        result["detail"] = detail_items
+
+    return result
+
+
+# =============================================================================
 # 설정 (단일행)
 # =============================================================================
 

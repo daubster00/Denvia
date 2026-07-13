@@ -36,6 +36,11 @@ from api.src.services.analytics_service import (
     get_feedback_items_total,
     get_feedback_series,
     get_feedback_summary,
+    get_qa_record_years,
+    get_qa_records_export_rows,
+    get_qa_records_items,
+    get_qa_records_total,
+    _qa_records_default_window,
     get_questions_export_rows,
     get_questions_items,
     get_questions_items_total,
@@ -988,6 +993,247 @@ async def questions_export(
         truncated=truncated,
         unit=unit,
         sort=sort,
+    )
+
+    headers: dict[str, str] = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    if truncated:
+        headers["X-Truncated"] = "true"
+
+    return StreamingResponse(buf, media_type=content_type, headers=headers)
+
+
+# =============================================================================
+# #130-② — 가입유형별·연차별 질문기록 조회 + 엑셀 다운로드 (협업 의뢰용 리포트)
+# =============================================================================
+
+QaRecordSegment = Literal["doctor", "hygienist", "student_other"]
+
+_QA_RECORDS_DETAIL_LIMIT = EXPORT_DETAIL_LIMIT  # 5000
+
+
+def _resolve_qa_records_window(
+    from_: date | None,
+    to: date | None,
+) -> tuple[datetime, datetime, date, date]:
+    """KST half-open interval [start, end_exclusive) + 사용자 from/to.
+
+    미지정 시 기본 최근 30일 (질문 통계 관례와 동일한 KST 처리).
+    """
+    default_from, default_to = _qa_records_default_window()
+    f = from_ if from_ is not None else default_from
+    t = to if to is not None else default_to
+    start_kst = _kst_datetime(f)
+    end_exclusive_kst = _kst_datetime(t) + timedelta(days=1)
+    return start_kst, end_exclusive_kst, f, t
+
+
+class QaRecordYearsResponse(BaseModel):
+    segment: QaRecordSegment | None
+    years: list[int]
+
+
+@router.get("/qa-records/years", response_model=QaRecordYearsResponse)
+async def qa_record_years(
+    response: Response,
+    segment: QaRecordSegment | None = Query(None),
+    include_withdrawn: bool = Query(False),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> QaRecordYearsResponse:
+    """선택한 가입유형(없으면 전체) 가입자들이 실제 가진 연차 목록(오름차순).
+
+    실제 존재하는 연차만 반환하므로 프론트 연차 드롭다운 선택지로 그대로 쓴다.
+    """
+    years = await get_qa_record_years(
+        db, segment=segment, include_withdrawn=include_withdrawn
+    )
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.analytics.qa_records.years.viewed",
+        actor_user_id=actor.id,
+        segment=segment,
+        year_count=len(years),
+    )
+    return QaRecordYearsResponse(segment=segment, years=years)
+
+
+class QaRecordItem(BaseModel):
+    qa_log_id: int
+    user_id: int | None
+    email_masked: str
+    segment: str | None
+    segment_label: str
+    years_of_experience: int | None
+    question_text: str
+    created_at_kst: str
+
+
+class QaRecordsResponse(BaseModel):
+    segment: QaRecordSegment | None
+    year: int | None
+    from_: str = Field(alias="from")
+    to: str
+    items: list[QaRecordItem]
+    page: int
+    per_page: int
+    total: int
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get(
+    "/qa-records",
+    response_model=QaRecordsResponse,
+    response_model_by_alias=True,
+)
+async def qa_records(
+    response: Response,
+    segment: QaRecordSegment | None = Query(None),
+    year: int | None = Query(None, ge=0, le=100),
+    from_: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> QaRecordsResponse:
+    start_kst, end_exclusive_kst, from_date, to_date = _resolve_qa_records_window(
+        from_, to
+    )
+    total = await get_qa_records_total(
+        db,
+        start_kst=start_kst,
+        end_exclusive_kst=end_exclusive_kst,
+        segment=segment,
+        year=year,
+    )
+    items_data = await get_qa_records_items(
+        db,
+        start_kst=start_kst,
+        end_exclusive_kst=end_exclusive_kst,
+        segment=segment,
+        year=year,
+        page=page,
+        per_page=per_page,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.analytics.qa_records.viewed",
+        actor_user_id=actor.id,
+        segment=segment,
+        year=year,
+        page=page,
+        total=total,
+    )
+    return QaRecordsResponse(
+        segment=segment,
+        year=year,
+        from_=from_date.isoformat(),
+        to=to_date.isoformat(),
+        items=[QaRecordItem(**it) for it in items_data],
+        page=page,
+        per_page=per_page,
+        total=total,
+    )
+
+
+@router.get("/qa-records/export")
+async def qa_records_export(
+    segment: QaRecordSegment | None = Query(None),
+    year: int | None = Query(None, ge=0, le=100),
+    from_: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    import openpyxl
+
+    start_kst, end_exclusive_kst, from_date, to_date = _resolve_qa_records_window(
+        from_, to
+    )
+    total = await get_qa_records_total(
+        db,
+        start_kst=start_kst,
+        end_exclusive_kst=end_exclusive_kst,
+        segment=segment,
+        year=year,
+    )
+    rows, truncated = await get_qa_records_export_rows(
+        db,
+        start_kst=start_kst,
+        end_exclusive_kst=end_exclusive_kst,
+        segment=segment,
+        year=year,
+        limit=_QA_RECORDS_DETAIL_LIMIT,
+    )
+
+    wb = openpyxl.Workbook()
+    ws_sum = wb.active
+    ws_sum.title = "Summary"
+    ws_sum.append(["항목", "값"])
+    ws_sum.append(
+        [
+            "가입유형",
+            SEGMENT_LABELS_KR.get(segment, "전체") if segment else "전체",
+        ]
+    )
+    ws_sum.append(["연차", f"{year}년차" if year is not None else "전체"])
+    ws_sum.append(
+        ["기간 (KST)", f"{from_date.isoformat()} ~ {to_date.isoformat()}"]
+    )
+    ws_sum.append(["총 질문 수", total])
+    ws_sum.append(["행 제한 (Detail)", _QA_RECORDS_DETAIL_LIMIT])
+    ws_sum.append(["잘림 여부", "예" if truncated else "아니오"])
+
+    ws_det = wb.create_sheet("Detail")
+    if truncated:
+        ws_det.append([f"※ {_QA_RECORDS_DETAIL_LIMIT}행으로 제한됨"])
+    ws_det.append(
+        [
+            "qa_log_id",
+            "계정(마스킹)",
+            "가입유형",
+            "연차",
+            "질문",
+            "작성일시(KST)",
+        ]
+    )
+    for r in rows:
+        ws_det.append(
+            [
+                _excel_safe_cell(r["qa_log_id"]),
+                _excel_safe_cell(r["email_masked"]),
+                _excel_safe_cell(r["segment_label"]),
+                _excel_safe_cell(r["years_of_experience"]),
+                _excel_safe_cell(r["question_text"]),
+                _excel_safe_cell(r["created_at_kst"]),
+            ]
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    seg_tag = segment or "all"
+    year_tag = str(year) if year is not None else "all"
+    filename = (
+        f"qa_records_{seg_tag}_{year_tag}_"
+        f"{from_date.isoformat()}_{to_date.isoformat()}.xlsx"
+    )
+    content_type = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    logger.info(
+        "admin.analytics.qa_records.exported",
+        actor_user_id=actor.id,
+        segment=segment,
+        year=year,
+        row_count=len(rows),
+        truncated=truncated,
     )
 
     headers: dict[str, str] = {

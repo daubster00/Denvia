@@ -16,6 +16,7 @@ export type ActionGroupKey =
   | "popup"
   | "cs-refund"
   | "rag-prompt"
+  | "qa-review"
   | "ops-settings";
 
 export interface ActionGroup {
@@ -66,6 +67,12 @@ export const ACTION_GROUPS: ActionGroup[] = [
     label: "RAG·프롬프트",
     chipColor: "#16a34a",
     prefixes: ["rag.", "prompt."],
+  },
+  {
+    key: "qa-review",
+    label: "질의응답 검토",
+    chipColor: "#0d9488",
+    prefixes: ["qa_review."],
   },
   {
     key: "ops-settings",

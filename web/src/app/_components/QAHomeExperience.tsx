@@ -12,6 +12,11 @@ import { useQAStream } from "@/features/qa/hooks/useQAStream";
 import { useQuota } from "@/features/qa/hooks/useQuota";
 import { postClientEvent } from "@/features/qa/api/events";
 import { PopupCarousel } from "@/features/inbox/components/PopupCarousel";
+import { QANoticeModal } from "@/features/qa/components/QANoticeModal";
+import {
+  dismissQaNoticeForToday,
+  isQaNoticeDismissedForToday,
+} from "@/features/qa/lib/qa-notice-dismissal";
 import styles from "./QAHomeExperience.module.css";
 
 export function AuthenticatedQAExperience() {
@@ -31,6 +36,16 @@ export function AuthenticatedQAExperience() {
   const lastUserTextRef = useRef<string>("");
   const { data: quotaData } = useQuota();
 
+  // #130 ① — 질문 전송 안내 팝업. 매 질문마다 노출되며 답변 스트리밍을 막지 않는다.
+  const [noticeOpen, setNoticeOpen] = useState(false);
+
+  // 관리자가 팝업을 켜뒀고, "오늘 하루 보지 않기"로 차단되지 않았을 때만 노출한다.
+  const maybeShowNotice = useCallback(() => {
+    if (!quotaData?.qa_notice_enabled) return;
+    if (isQaNoticeDismissedForToday()) return;
+    setNoticeOpen(true);
+  }, [quotaData?.qa_notice_enabled]);
+
   const handleReset = useCallback(() => {
     stream.abort();
     clearMessages();
@@ -42,10 +57,13 @@ export function AuthenticatedQAExperience() {
     lastUserTextRef.current = text;
     setInputValue("");
     if (pathname === "/") {
+      // 홈에서 보낸 질문은 /chat 도착 후 아래 effect 가 팝업을 띄운다.
       setPendingHomeQuestion(text);
       router.push("/chat");
       return;
     }
+    // 팝업을 먼저 띄우고(전송과 동시), 뒤에서 스트림은 계속 진행한다.
+    maybeShowNotice();
     await stream.submit(text);
   }
 
@@ -54,8 +72,9 @@ export function AuthenticatedQAExperience() {
     if (!pendingHomeQuestion) return;
     const text = pendingHomeQuestion;
     setPendingHomeQuestion(null);
+    maybeShowNotice();
     void stream.submit(text);
-  }, [pathname, pendingHomeQuestion, setPendingHomeQuestion, stream]);
+  }, [pathname, pendingHomeQuestion, setPendingHomeQuestion, stream, maybeShowNotice]);
 
   const isStreaming = messages.some(
     (m) => m.role === "assistant" && m.status === "pending"
@@ -97,6 +116,22 @@ export function AuthenticatedQAExperience() {
           quotaData={quotaData}
         />
       )}
+      {/* #130 ① — 질문 전송 안내 팝업. /chat 에서만, 관리자 설정 값으로 렌더. */}
+      {!isHero && quotaData ? (
+        <QANoticeModal
+          open={noticeOpen}
+          text={quotaData.qa_notice_text}
+          fontSize={quotaData.qa_notice_font_size}
+          color={quotaData.qa_notice_color}
+          fontWeight={quotaData.qa_notice_font_weight}
+          width={quotaData.qa_notice_width}
+          onConfirm={() => setNoticeOpen(false)}
+          onDismissToday={() => {
+            dismissQaNoticeForToday();
+            setNoticeOpen(false);
+          }}
+        />
+      ) : null}
     </>
   );
 }

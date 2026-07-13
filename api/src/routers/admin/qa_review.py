@@ -24,7 +24,7 @@ import io
 from datetime import date
 
 import structlog
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +47,9 @@ from api.src.schemas.admin.qa_review import (
     EffectivePeriod,
     RateRequest,
     ReviewActionResponse,
+    ReviewerActivityDetailItem,
+    ReviewerActivityResponse,
+    ReviewerActivityRow,
     ReviewItem,
     ReviewListResponse,
     ReviewSeriesItem,
@@ -171,6 +174,68 @@ async def review_summary(
     return ReviewSummaryResponse(
         summary=ReviewSummary(**data["summary"]),
         series=[ReviewSeriesItem(**s) for s in data["series"]],
+    )
+
+
+# ── 부관리자 활동 집계 (#130-③ 급여 산정용, master/operator 전용) ────────────
+@router.get(
+    "/activity",
+    response_model=ReviewerActivityResponse,
+    dependencies=[Depends(require_admin_grade("master", "operator"))],
+)
+async def reviewer_activity(
+    response: Response,
+    date_from: date = Query(..., description="집계 시작일(KST, 포함)"),
+    date_to: date = Query(..., description="집계 종료일(KST, 포함)"),
+    reviewer_id: int | None = Query(
+        None, description="지정 시 그 부관리자만 집계 + 검토 상세 반환"
+    ),
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> ReviewerActivityResponse:
+    """부관리자별 굿/베드/피드백 활동을 기간으로 집계한다.
+
+    타인의 급여 산정 데이터이므로 전체 열람 등급(master/operator)만 접근 가능.
+    부관리자(sub_operator + 커스텀 등급)는 is_period_restricted 로 403 차단한다.
+    (라우트 dependencies 의 require_admin_grade 가 1차 차단하지만, 커스텀 등급까지
+     확실히 막기 위해 서비스 판정 헬퍼로 이중 방어한다.)
+    """
+    viewer_grade = getattr(actor, "admin_grade", None)
+    if qa_review_service.is_period_restricted(viewer_grade):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "QA_REVIEW_ACTIVITY_FORBIDDEN",
+                "message": "부관리자 활동 리포트는 전체 열람 등급만 조회할 수 있습니다.",
+            },
+        )
+
+    data = await qa_review_service.get_reviewer_activity(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        reviewer_id=reviewer_id,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    logger.info(
+        "admin.qa_review.activity.viewed",
+        actor_user_id=actor.id,
+        viewer_grade=viewer_grade,
+        reviewer_id=reviewer_id,
+        date_from=data["date_from"],
+        date_to=data["date_to"],
+        reviewer_count=len(data["reviewers"]),
+    )
+    detail = (
+        [ReviewerActivityDetailItem(**d) for d in data["detail"]]
+        if data["detail"] is not None
+        else None
+    )
+    return ReviewerActivityResponse(
+        date_from=data["date_from"],
+        date_to=data["date_to"],
+        reviewers=[ReviewerActivityRow(**r) for r in data["reviewers"]],
+        detail=detail,
     )
 
 

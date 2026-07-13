@@ -18,6 +18,14 @@ class QuotaResponse(BaseModel):
     delay_seconds: float
     # 답변 지연 안내문구 — 관리자 콘텐츠 페이지에서 편집. 빈 문자열이면 미노출.
     free_delay_notice_text: str
+    # #130 ① — 질문 전송 시 화면 중앙 안내 팝업 설정 (모든 로그인 사용자 공통).
+    # 프론트는 qa_notice_enabled 이면서 "오늘 하루 보지 않기"(localStorage) 미차단일 때만 노출.
+    qa_notice_enabled: bool
+    qa_notice_text: str
+    qa_notice_font_size: int
+    qa_notice_color: str
+    qa_notice_font_weight: int
+    qa_notice_width: int
 
 
 class UsageSummaryResponse(BaseModel):

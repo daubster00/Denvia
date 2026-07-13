@@ -6,6 +6,7 @@ QA flow는 ``api.src.services.qa_service`` 의 ``_resolve_*`` helper로 동일 �
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -33,6 +34,14 @@ KEY_FREE_DELAY = "runtime:free_delay"
 KEY_FREE_DELAY_NOTICE_TEXT = "runtime:free_delay_notice_text"
 # Pro 월 질문 한도 — KST 월초 기준 리셋. qa_service 의 monthly INCR 카운터와 한 쌍.
 KEY_PRO_MONTHLY_QUOTA = "runtime:pro_monthly_quota"
+# #130 ① — 질문 전송 시 화면 중앙 안내 팝업. 관리자가 문구/스타일/가로폭을 편집한다.
+# "오늘 하루 보지 않기"(localStorage) 는 프론트가 KST 자정 기준으로 처리하므로 서버 무관.
+KEY_QA_NOTICE_ENABLED = "runtime:qa_notice_enabled"
+KEY_QA_NOTICE_TEXT = "runtime:qa_notice_text"
+KEY_QA_NOTICE_FONT_SIZE = "runtime:qa_notice_font_size"
+KEY_QA_NOTICE_COLOR = "runtime:qa_notice_color"
+KEY_QA_NOTICE_FONT_WEIGHT = "runtime:qa_notice_font_weight"
+KEY_QA_NOTICE_WIDTH = "runtime:qa_notice_width"
 # Story 7.1 — 쪽지함 미리보기 동시 노출 최대 개수 (관리자 CS 페이지에서 편집).
 KEY_INBOX_PREVIEW_MAX_COUNT = "runtime:inbox_preview_max_count"
 # 관리자 설정 — RAG 본 체인에서 사용할 채팅 모델 (기본 o4-mini, 화이트리스트 강제).
@@ -51,6 +60,53 @@ DEFAULT_INBOX_PREVIEW_MAX_COUNT = 1
 INBOX_PREVIEW_MAX_COUNT_MIN = 1
 INBOX_PREVIEW_MAX_COUNT_MAX = 5
 
+# #130 ① — QA 안내 팝업 기본값 + 검증 범위.
+DEFAULT_QA_NOTICE_ENABLED = True
+DEFAULT_QA_NOTICE_TEXT = (
+    "현재 질문하신 내용에 대한 정보만 제공하며 이전에 질문하신 내용을 참고하여 "
+    "정보를 제공하지 않습니다. Denvia는 매 질문을 항상 새로운 독립질문으로 처리합니다."
+)
+QA_NOTICE_TEXT_MAX_LEN = 500
+DEFAULT_QA_NOTICE_FONT_SIZE = 16
+QA_NOTICE_FONT_SIZE_MIN = 10
+QA_NOTICE_FONT_SIZE_MAX = 40
+DEFAULT_QA_NOTICE_COLOR = "#111111"
+DEFAULT_QA_NOTICE_FONT_WEIGHT = 500
+QA_NOTICE_FONT_WEIGHT_MIN = 100
+QA_NOTICE_FONT_WEIGHT_MAX = 900
+DEFAULT_QA_NOTICE_WIDTH = 420
+QA_NOTICE_WIDTH_MIN = 280
+QA_NOTICE_WIDTH_MAX = 720
+
+# hex 색상 검증용 정규식 (#rgb / #rrggbb 허용). 위반 시 기본값으로 폴백.
+_HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def _normalize_qa_notice_text(raw: str | bytes | None) -> str:
+    """QA 안내 팝업 문구 정규화 — 미설정/공백만이면 기본값, 길이 상한 강제."""
+    if raw is None:
+        return DEFAULT_QA_NOTICE_TEXT
+    value = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+    stripped = value.strip()
+    if not stripped:
+        return DEFAULT_QA_NOTICE_TEXT
+    return stripped[:QA_NOTICE_TEXT_MAX_LEN]
+
+
+def _normalize_qa_notice_color(raw: str | bytes | None) -> str:
+    """hex 색상 정규화 — 형식 위반 시 기본값."""
+    if raw is None:
+        return DEFAULT_QA_NOTICE_COLOR
+    value = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+    stripped = value.strip()
+    if not _HEX_COLOR_RE.match(stripped):
+        return DEFAULT_QA_NOTICE_COLOR
+    return stripped
+
+
+def _clamp(raw: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, raw))
+
 # ADR-0002 §결정 2: RAG 인수자 튜닝값 o4-mini 가 기본값. 관리자가 명시적으로 바꿀 때만 override.
 DEFAULT_CHAT_MODEL = "o4-mini"
 # 허용 모델 화이트리스트 — 알 수 없는 값이 들어오면 reject(400). 응답 속도/품질/비용 특성은 admin UI에서 안내.
@@ -60,6 +116,18 @@ ALLOWED_CHAT_MODELS: tuple[str, ...] = (
     "gpt-4o",        # 빠르고 똑똑, 가격 중상
     "gpt-4-turbo",   # 매우 똑똑, 첫 토큰 약간 느림
 )
+
+
+@dataclass(frozen=True)
+class QaNoticeConfig:
+    """#130 ① — QA 안내 팝업 설정 묶음 (관리자 편집 + /me/quota 전달)."""
+
+    enabled: bool
+    text: str
+    font_size: int      # px
+    color: str          # hex (#rgb | #rrggbb)
+    font_weight: int    # 100~900
+    width: int          # px
 
 
 def _to_bool(raw: str | None, default: bool) -> bool:
@@ -100,6 +168,40 @@ async def get_pro_monthly_quota(redis_runtime: AsyncRedis) -> int:
     return _to_int(raw, DEFAULT_PRO_MONTHLY_QUOTA)
 
 
+async def get_qa_notice_config(redis_runtime: AsyncRedis) -> "QaNoticeConfig":
+    """QA 안내 팝업 설정 조회 — /me/quota 응답 및 관리자 GET 공용.
+
+    fail-safe: Redis 미설정/손상값이면 각 필드 기본값으로 폴백한다.
+    """
+    enabled_raw = await redis_runtime.get(KEY_QA_NOTICE_ENABLED)
+    text_raw = await redis_runtime.get(KEY_QA_NOTICE_TEXT)
+    font_size_raw = await redis_runtime.get(KEY_QA_NOTICE_FONT_SIZE)
+    color_raw = await redis_runtime.get(KEY_QA_NOTICE_COLOR)
+    font_weight_raw = await redis_runtime.get(KEY_QA_NOTICE_FONT_WEIGHT)
+    width_raw = await redis_runtime.get(KEY_QA_NOTICE_WIDTH)
+
+    return QaNoticeConfig(
+        enabled=_to_bool(enabled_raw, DEFAULT_QA_NOTICE_ENABLED),
+        text=_normalize_qa_notice_text(text_raw),
+        font_size=_clamp(
+            _to_int(font_size_raw, DEFAULT_QA_NOTICE_FONT_SIZE),
+            QA_NOTICE_FONT_SIZE_MIN,
+            QA_NOTICE_FONT_SIZE_MAX,
+        ),
+        color=_normalize_qa_notice_color(color_raw),
+        font_weight=_clamp(
+            _to_int(font_weight_raw, DEFAULT_QA_NOTICE_FONT_WEIGHT),
+            QA_NOTICE_FONT_WEIGHT_MIN,
+            QA_NOTICE_FONT_WEIGHT_MAX,
+        ),
+        width=_clamp(
+            _to_int(width_raw, DEFAULT_QA_NOTICE_WIDTH),
+            QA_NOTICE_WIDTH_MIN,
+            QA_NOTICE_WIDTH_MAX,
+        ),
+    )
+
+
 async def get_runtime_config(redis_runtime: AsyncRedis) -> RuntimeConfigResponse:
     show_raw = await redis_runtime.get(KEY_SHOW_SUBSCRIBE)
     quota_raw = await redis_runtime.get(KEY_FREE_DAILY_QUOTA)
@@ -107,6 +209,7 @@ async def get_runtime_config(redis_runtime: AsyncRedis) -> RuntimeConfigResponse
     delay_raw = await redis_runtime.get(KEY_FREE_DELAY)
     notice_raw = await redis_runtime.get(KEY_FREE_DELAY_NOTICE_TEXT)
     pro_monthly_raw = await redis_runtime.get(KEY_PRO_MONTHLY_QUOTA)
+    qa_notice = await get_qa_notice_config(redis_runtime)
 
     return RuntimeConfigResponse(
         show_subscribe_button=_to_bool(show_raw, DEFAULT_SHOW_SUBSCRIBE),
@@ -115,6 +218,12 @@ async def get_runtime_config(redis_runtime: AsyncRedis) -> RuntimeConfigResponse
         free_delay_seconds=_to_int(delay_raw, DEFAULT_FREE_DELAY_SECONDS),
         free_delay_notice_text=_normalize_notice_text(notice_raw),
         pro_monthly_quota=_to_int(pro_monthly_raw, DEFAULT_PRO_MONTHLY_QUOTA),
+        qa_notice_enabled=qa_notice.enabled,
+        qa_notice_text=qa_notice.text,
+        qa_notice_font_size=qa_notice.font_size,
+        qa_notice_color=qa_notice.color,
+        qa_notice_font_weight=qa_notice.font_weight,
+        qa_notice_width=qa_notice.width,
     )
 
 
@@ -133,6 +242,27 @@ async def update_runtime_config(
     await redis_runtime.set(KEY_FREE_DELAY_NOTICE_TEXT, notice_normalized)
     await redis_runtime.set(KEY_PRO_MONTHLY_QUOTA, str(body.pro_monthly_quota))
 
+    # #130 ① — QA 안내 팝업 6종 저장. 문구/색상은 정규화, 숫자는 clamp 후 SET.
+    qa_notice_text = _normalize_qa_notice_text(body.qa_notice_text)
+    qa_notice_color = _normalize_qa_notice_color(body.qa_notice_color)
+    qa_notice_font_size = _clamp(
+        body.qa_notice_font_size, QA_NOTICE_FONT_SIZE_MIN, QA_NOTICE_FONT_SIZE_MAX
+    )
+    qa_notice_font_weight = _clamp(
+        body.qa_notice_font_weight, QA_NOTICE_FONT_WEIGHT_MIN, QA_NOTICE_FONT_WEIGHT_MAX
+    )
+    qa_notice_width = _clamp(
+        body.qa_notice_width, QA_NOTICE_WIDTH_MIN, QA_NOTICE_WIDTH_MAX
+    )
+    await redis_runtime.set(
+        KEY_QA_NOTICE_ENABLED, "true" if body.qa_notice_enabled else "false"
+    )
+    await redis_runtime.set(KEY_QA_NOTICE_TEXT, qa_notice_text)
+    await redis_runtime.set(KEY_QA_NOTICE_FONT_SIZE, str(qa_notice_font_size))
+    await redis_runtime.set(KEY_QA_NOTICE_COLOR, qa_notice_color)
+    await redis_runtime.set(KEY_QA_NOTICE_FONT_WEIGHT, str(qa_notice_font_weight))
+    await redis_runtime.set(KEY_QA_NOTICE_WIDTH, str(qa_notice_width))
+
     after = RuntimeConfigResponse(
         show_subscribe_button=body.show_subscribe_button,
         free_daily_quota=body.free_daily_quota,
@@ -140,6 +270,12 @@ async def update_runtime_config(
         free_delay_seconds=body.free_delay_seconds,
         free_delay_notice_text=notice_normalized,
         pro_monthly_quota=body.pro_monthly_quota,
+        qa_notice_enabled=body.qa_notice_enabled,
+        qa_notice_text=qa_notice_text,
+        qa_notice_font_size=qa_notice_font_size,
+        qa_notice_color=qa_notice_color,
+        qa_notice_font_weight=qa_notice_font_weight,
+        qa_notice_width=qa_notice_width,
     )
 
     request.state.audit_target_type = "runtime_config"

@@ -527,6 +527,110 @@ export async function fetchSegmentsExport(
 }
 
 // ---------------------------------------------------------------------------
+// #130-② 가입유형별·연차별 질문기록 조회 + 엑셀 다운로드 (협업 의뢰용 리포트)
+// ---------------------------------------------------------------------------
+
+export type QaRecordSegment = "doctor" | "hygienist" | "student_other";
+
+export interface QaRecordYearsResponse {
+  segment: QaRecordSegment | null;
+  years: number[];
+}
+
+export async function fetchQaRecordYears(
+  params: { segment?: QaRecordSegment } = {},
+): Promise<QaRecordYearsResponse> {
+  const query = new URLSearchParams();
+  if (params.segment) query.set("segment", params.segment);
+  const qs = query.toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/qa-records/years${qs ? `?${qs}` : ""}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`qa-record years fetch failed: ${res.status}`);
+  return res.json() as Promise<QaRecordYearsResponse>;
+}
+
+export interface QaRecordItem {
+  qa_log_id: number;
+  user_id: number | null;
+  email_masked: string;
+  segment: string | null;
+  segment_label: string;
+  years_of_experience: number | null;
+  question_text: string;
+  created_at_kst: string;
+}
+
+export interface QaRecordsResponse {
+  segment: QaRecordSegment | null;
+  year: number | null;
+  from: string;
+  to: string;
+  items: QaRecordItem[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface FetchQaRecordsParams {
+  segment?: QaRecordSegment;
+  year?: number;
+  from?: string;
+  to?: string;
+  page?: number;
+  per_page?: number;
+}
+
+function buildQaRecordsQuery(params: FetchQaRecordsParams): URLSearchParams {
+  const query = new URLSearchParams();
+  if (params.segment) query.set("segment", params.segment);
+  if (params.year != null) query.set("year", String(params.year));
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.page) query.set("page", String(params.page));
+  if (params.per_page) query.set("per_page", String(params.per_page));
+  return query;
+}
+
+export async function fetchQaRecords(
+  params: FetchQaRecordsParams = {},
+): Promise<QaRecordsResponse> {
+  const qs = buildQaRecordsQuery(params).toString();
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/analytics/qa-records${qs ? `?${qs}` : ""}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error(`qa-records fetch failed: ${res.status}`);
+  return res.json() as Promise<QaRecordsResponse>;
+}
+
+export function buildQaRecordsExportUrl(
+  params: Omit<FetchQaRecordsParams, "page" | "per_page">,
+): string {
+  const query = buildQaRecordsQuery(params);
+  const qs = query.toString();
+  return `${API_BASE}/api/v1/admin/analytics/qa-records/export${qs ? `?${qs}` : ""}`;
+}
+
+export async function fetchQaRecordsExport(
+  params: Omit<FetchQaRecordsParams, "page" | "per_page">,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(buildQaRecordsExportUrl(params), {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`qa-records export failed: ${res.status}`);
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return {
+    blob: await res.blob(),
+    filename:
+      match?.[1] ??
+      `qa_records_${params.from || "all"}_${params.to || "all"}.xlsx`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Story 5.5: 매출 + 토큰비용 차액 + 엑셀 export
 // ---------------------------------------------------------------------------
 

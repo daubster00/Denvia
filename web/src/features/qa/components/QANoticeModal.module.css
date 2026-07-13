@@ -1,0 +1,86 @@
+/* #130 ① — 질문 전송 안내 팝업. ConfirmDialog overlay 패턴 재사용. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.dialog {
+  background-color: #fff;
+  border-radius: 14px;
+  padding: 28px 24px 20px;
+  width: 100%;
+  /* 관리자 설정 가로폭 — QANoticeModal 이 --qa-notice-width 를 주입 */
+  max-width: var(--qa-notice-width, 420px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.text {
+  margin: 0;
+  /* 관리자 설정 글자 크기/색상/두께 — QANoticeModal 이 CSS 변수를 주입 */
+  font-size: var(--qa-notice-font-size, 16px);
+  color: var(--qa-notice-color, #111111);
+  font-weight: var(--qa-notice-font-weight, 500);
+  line-height: 1.6;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirmBtn {
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  background-color: #2563eb;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirmBtn:hover {
+  background-color: #1d4ed8;
+}
+
+.confirmBtn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.dismissBtn {
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dismissBtn:hover {
+  color: #374151;
+}
+
+.dismissBtn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

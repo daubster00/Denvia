@@ -492,6 +492,12 @@ export default function QaReviewPage() {
               >
                 설정
               </button>
+              <Link
+                href="/admin/qa-review/activity"
+                className={styles.actionLink}
+              >
+                부관리자 활동 리포트
+              </Link>
               <Link href="/admin/admins/logs" className={styles.actionLink}>
                 수정기록 로그
               </Link>

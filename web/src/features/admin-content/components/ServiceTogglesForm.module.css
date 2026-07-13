@@ -102,6 +102,44 @@
   color: var(--color-neutral-700, #404040);
 }
 
+.colorInput {
+  width: 44px;
+  height: 36px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  background: #fff;
+  cursor: pointer;
+}
+
+.colorInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.colorTextInput {
+  width: 96px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-neutral-300, #d4d4d8);
+  background: #fff;
+  font-size: 14px;
+  color: var(--color-neutral-900, #18181b);
+  font-variant-numeric: tabular-nums;
+}
+
+.colorTextInput:focus {
+  outline: 2px solid var(--color-brand-500, #3b82f6);
+  outline-offset: 1px;
+}
+
+.colorTextInput:disabled {
+  background: var(--color-neutral-100, #f4f4f5);
+  color: var(--color-neutral-500, #71717a);
+  cursor: not-allowed;
+}
+
 .toggle {
   position: relative;
   display: inline-flex;

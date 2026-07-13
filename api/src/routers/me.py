@@ -87,6 +87,9 @@ async def get_my_quota(
         redis_runtime, "runtime:free_delay_enabled", default=True
     )
 
+    # #130 ① — QA 안내 팝업 설정은 모든 로그인 사용자(무료/유료/관리자) 공통으로 내려준다.
+    qa_notice = await runtime_config_service.get_qa_notice_config(redis_runtime)
+
     if current_user.subscription_status == "admin":
         return QuotaResponse(
             subscription_status="admin",
@@ -98,6 +101,12 @@ async def get_my_quota(
             show_subscribe_button=False,
             delay_seconds=0.0,
             free_delay_notice_text="",
+            qa_notice_enabled=qa_notice.enabled,
+            qa_notice_text=qa_notice.text,
+            qa_notice_font_size=qa_notice.font_size,
+            qa_notice_color=qa_notice.color,
+            qa_notice_font_weight=qa_notice.font_weight,
+            qa_notice_width=qa_notice.width,
         )
 
     raw = await redis_quota.get(_today_key_kst(current_user.id))
@@ -134,6 +143,12 @@ async def get_my_quota(
         show_subscribe_button=show_subscribe,
         delay_seconds=float(delay),
         free_delay_notice_text=notice_text,
+        qa_notice_enabled=qa_notice.enabled,
+        qa_notice_text=qa_notice.text,
+        qa_notice_font_size=qa_notice.font_size,
+        qa_notice_color=qa_notice.color,
+        qa_notice_font_weight=qa_notice.font_weight,
+        qa_notice_width=qa_notice.width,
     )
 
 

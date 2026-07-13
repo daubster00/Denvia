@@ -1436,6 +1436,202 @@ async def get_revenue_variance_series(
     }
 
 
+# =============================================================================
+# #130-② — 가입유형별·연차별 질문기록 조회 + 엑셀 다운로드 (협업 의뢰용 리포트)
+# =============================================================================
+#
+# 가입유형(segment) 선택 → 그 유형 가입자가 실제 가진 연차(years_of_experience)만
+# 선택지 노출 → 기간(from~to, KST) 지정 → 그 대상들의 질문(qa_logs) 일괄 조회.
+# users INNER JOIN qa_logs. admin 행·탈퇴자는 기본 제외.
+
+QA_RECORDS_SEGMENTS = VALID_SEGMENTS_CANONICAL  # ("doctor", "hygienist", "student_other")
+
+
+def _qa_records_default_window() -> tuple[date, date]:
+    """질문기록 조회 기본 기간 — 최근 30일 (KST)."""
+    today_kst = datetime.now(KST).date()
+    return today_kst - timedelta(days=30), today_kst
+
+
+async def get_qa_record_years(
+    session: AsyncSession,
+    *,
+    segment: str | None,
+    include_withdrawn: bool = False,
+) -> list[int]:
+    """주어진 segment(없으면 전체) 가입자들이 실제 가진 distinct 연차 오름차순.
+
+    NULL 연차는 제외. admin 행 제외. 기본적으로 탈퇴자 제외.
+    실제 존재하는 연차만 내려주므로(예: 1,4,5) 프론트 드롭다운 선택지로 그대로 쓴다.
+    """
+    conds = [User.role != "admin", User.years_of_experience.is_not(None)]
+    if not include_withdrawn:
+        conds.append(User.withdrawn_at.is_(None))
+    if segment is not None:
+        conds.append(User.segment == segment)
+
+    stmt = (
+        select(User.years_of_experience)
+        .where(*conds)
+        .distinct()
+        .order_by(User.years_of_experience.asc())
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return [int(y) for y in rows if y is not None]
+
+
+def _qa_records_conditions(
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    segment: str | None,
+    year: int | None,
+    include_withdrawn: bool,
+) -> list:
+    """items/total/export 공통 WHERE 조건. users INNER JOIN qa_logs 전제."""
+    conds = [
+        User.role != "admin",
+        QALog.created_at >= start_kst,
+        QALog.created_at < end_exclusive_kst,
+    ]
+    if not include_withdrawn:
+        conds.append(User.withdrawn_at.is_(None))
+    if segment is not None:
+        conds.append(User.segment == segment)
+    if year is not None:
+        conds.append(User.years_of_experience == year)
+    return conds
+
+
+async def get_qa_records_total(
+    session: AsyncSession,
+    *,
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    segment: str | None,
+    year: int | None,
+    include_withdrawn: bool = False,
+) -> int:
+    conds = _qa_records_conditions(
+        start_kst, end_exclusive_kst, segment, year, include_withdrawn
+    )
+    total = (
+        await session.execute(
+            select(func.count(QALog.id)).join(User, User.id == QALog.user_id).where(*conds)
+        )
+    ).scalar_one()
+    return int(total)
+
+
+async def get_qa_records_items(
+    session: AsyncSession,
+    *,
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    segment: str | None,
+    year: int | None,
+    page: int,
+    per_page: int,
+    include_withdrawn: bool = False,
+) -> list[dict]:
+    """항목별 질문기록 (최신순). email 은 마스킹해서 내려준다."""
+    conds = _qa_records_conditions(
+        start_kst, end_exclusive_kst, segment, year, include_withdrawn
+    )
+    rows = (
+        await session.execute(
+            select(
+                QALog.id,
+                QALog.user_id,
+                User.email,
+                User.segment,
+                User.years_of_experience,
+                QALog.question_text,
+                QALog.created_at,
+            )
+            .join(User, User.id == QALog.user_id)
+            .where(*conds)
+            .order_by(QALog.created_at.desc(), QALog.id.desc())
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+        )
+    ).all()
+
+    from datetime import timezone
+
+    result: list[dict] = []
+    for qa_id, user_id, email, seg, years, question_text, created_at in rows:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        result.append(
+            {
+                "qa_log_id": int(qa_id),
+                "user_id": int(user_id) if user_id is not None else None,
+                "email_masked": mask_email(email) if email else "",
+                "segment": seg,
+                "segment_label": SEGMENT_LABELS_KR.get(seg or "", ""),
+                "years_of_experience": int(years) if years is not None else None,
+                "question_text": question_text,
+                "created_at_kst": created_at.astimezone(KST).isoformat(),
+            }
+        )
+    return result
+
+
+async def get_qa_records_export_rows(
+    session: AsyncSession,
+    *,
+    start_kst: datetime,
+    end_exclusive_kst: datetime,
+    segment: str | None,
+    year: int | None,
+    include_withdrawn: bool = False,
+    limit: int = EXPORT_DETAIL_LIMIT,
+) -> tuple[list[dict], bool]:
+    """엑셀 Detail 시트용 전체 행. (rows, truncated) 반환. limit+1 fetch 패턴."""
+    conds = _qa_records_conditions(
+        start_kst, end_exclusive_kst, segment, year, include_withdrawn
+    )
+    raw = (
+        await session.execute(
+            select(
+                QALog.id,
+                User.email,
+                User.segment,
+                User.years_of_experience,
+                QALog.question_text,
+                QALog.created_at,
+            )
+            .join(User, User.id == QALog.user_id)
+            .where(*conds)
+            .order_by(QALog.created_at.desc(), QALog.id.desc())
+            .limit(limit + 1)
+        )
+    ).all()
+
+    truncated = len(raw) > limit
+    raw = raw[:limit]
+
+    from datetime import timezone
+
+    rows: list[dict] = []
+    for qa_id, email, seg, years, question_text, created_at in raw:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        rows.append(
+            {
+                "qa_log_id": int(qa_id),
+                "email_masked": mask_email(email) if email else "",
+                "segment_label": SEGMENT_LABELS_KR.get(seg or "", ""),
+                "years_of_experience": int(years) if years is not None else "",
+                "question_text": question_text,
+                "created_at_kst": created_at.astimezone(KST).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+            }
+        )
+    return rows, truncated
+
+
 async def get_revenue_variance_export_rows(
     session: AsyncSession,
     *,

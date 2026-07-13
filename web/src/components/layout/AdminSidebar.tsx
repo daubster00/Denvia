@@ -39,7 +39,16 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { icon: IconApps as IconComponent, label: "대시보드", href: "/admin" },
+  {
+    icon: IconApps as IconComponent,
+    label: "대시보드",
+    href: "/admin",
+    children: [
+      { label: "대시보드 홈", href: "/admin" },
+      // #130-② 가입유형·연차별 질문기록 리포트(협업사 요청 데이터 + 엑셀)
+      { label: "가입유형·연차별 질문기록", href: "/admin/dashboard/analytics/qa-records" },
+    ],
+  },
   { icon: IconPersons as IconComponent, label: "고객관리", href: "/admin/users" },
   {
     icon: IconCircleBlock as IconComponent,
@@ -92,7 +101,17 @@ const MENU_ITEMS: MenuItem[] = [
   },
   { icon: IconWrite as IconComponent, label: "수정요청", href: "/admin/board" },
   // #113 — 질의응답 검토(굿/베드). 부운영자도 접근(권한 매트릭스로 게이팅).
-  { icon: IconBubble as IconComponent, label: "질의응답 검토", href: "/admin/qa-review" },
+  // #130-③ 부관리자 활동 리포트는 전체열람 등급(master/operator)만 — pageAccess 에서 "admins"로 게이팅되어
+  // 부관리자에게는 이 child 가 자동 숨김된다.
+  {
+    icon: IconBubble as IconComponent,
+    label: "질의응답 검토",
+    href: "/admin/qa-review",
+    children: [
+      { label: "질의응답 검토", href: "/admin/qa-review" },
+      { label: "부관리자 활동 리포트", href: "/admin/qa-review/activity" },
+    ],
+  },
   // master/operator 만 보이는 항목. sub_operator 가 클릭해도 백엔드 403.
   // children: 관리자 목록 / 등급 관리 / 페이지 권한 / 활동 로그.
   // 권한 매트릭스 수정도 master/operator 동일(2026-05-28 SSOT 갱신).

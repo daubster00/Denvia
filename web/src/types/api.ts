@@ -23,6 +23,13 @@ export interface QuotaResponse {
   delay_seconds: number;
   /** 빈 문자열이면 안내 영역 미렌더(관리자가 지연 토글 OFF로 두었거나 문구가 비어있을 때) */
   free_delay_notice_text: string;
+  /** #130 ① — 질문 전송 시 화면 중앙 안내 팝업 설정 (모든 로그인 사용자 공통) */
+  qa_notice_enabled: boolean;
+  qa_notice_text: string;
+  qa_notice_font_size: number;
+  qa_notice_color: string;
+  qa_notice_font_weight: number;
+  qa_notice_width: number;
 }
 
 export interface SessionUser {

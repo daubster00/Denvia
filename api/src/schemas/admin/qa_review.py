@@ -128,6 +128,41 @@ class BulkDeleteResponse(BaseModel):
 
 
 # =============================================================================
+# 부관리자 활동 집계 (#130-③ 급여 산정용)
+# =============================================================================
+
+
+class ReviewerActivityRow(BaseModel):
+    """부관리자 1명의 기간 활동 요약."""
+
+    reviewer_id: int
+    reviewer_email: str | None = None
+    good_count: int
+    bad_count: int
+    feedback_count: int
+
+
+class ReviewerActivityDetailItem(BaseModel):
+    """특정 부관리자 검토 상세 1건 — 표시 라벨 포함."""
+
+    qa_log_id: int
+    rating: Literal["good", "bad"] | None = None
+    has_feedback: bool
+    # '굿' / '굿(피드백작성)' / '베드' / '베드(피드백작성)' / '미평가'
+    label: str
+    comment: str | None = None
+    rated_at: str | None = None
+
+
+class ReviewerActivityResponse(BaseModel):
+    date_from: str
+    date_to: str
+    reviewers: list[ReviewerActivityRow]
+    # reviewer_id 를 지정한 경우에만 채워진다(그 외 None).
+    detail: list[ReviewerActivityDetailItem] | None = None
+
+
+# =============================================================================
 # 설정
 # =============================================================================
 

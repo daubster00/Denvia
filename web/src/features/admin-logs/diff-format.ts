@@ -87,6 +87,12 @@ const FIELD_LABELS: Record<string, string> = {
   free_delay_seconds: "무료 응답 지연 시간(초)",
   free_delay_notice_text: "무료 지연 안내 문구",
   pro_monthly_quota: "Pro 월 한도",
+  qa_notice_enabled: "질문 안내 팝업 표시",
+  qa_notice_text: "질문 안내 팝업 문구",
+  qa_notice_font_size: "질문 안내 팝업 글자 크기",
+  qa_notice_color: "질문 안내 팝업 글자 색상",
+  qa_notice_font_weight: "질문 안내 팝업 글자 두께",
+  qa_notice_width: "질문 안내 팝업 가로폭",
 
   // SEO
   site_name: "사이트 이름",

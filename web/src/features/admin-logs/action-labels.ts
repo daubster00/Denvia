@@ -61,6 +61,13 @@ export const ACTION_LABELS: Record<string, string> = {
   "seo_config.asset_upload": "SEO 이미지 업로드",
   "pg_config.update": "결제(PG) 설정 변경",
 
+  // 질의응답 검토 (#113 / #130)
+  "qa_review.rate": "질의응답 평가",
+  "qa_review.comment": "질의응답 코멘트",
+  "qa_review.complete": "질의응답 검토완료",
+  "qa_review.bulk_delete": "질의응답 삭제",
+  "qa_review.settings": "질의응답 검토설정",
+
   // 관리자 계정 (Story 10.3 / 10.5)
   "admin.account.approved": "관리자 승인",
   "admin.account.blocked": "관리자 차단",

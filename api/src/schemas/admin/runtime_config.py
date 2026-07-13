@@ -21,6 +21,13 @@ class RuntimeConfigResponse(BaseModel):
     free_delay_notice_text: str
     # Pro 구독자가 한 달 동안 사용할 수 있는 질문 횟수 상한 (KST 월초 기준 리셋).
     pro_monthly_quota: int
+    # #130 ① — 질문 전송 시 화면 중앙 안내 팝업 설정.
+    qa_notice_enabled: bool
+    qa_notice_text: str
+    qa_notice_font_size: int   # px (10~40)
+    qa_notice_color: str       # hex (#rgb | #rrggbb)
+    qa_notice_font_weight: int  # 100~900
+    qa_notice_width: int       # px (280~720)
 
 
 class RuntimeConfigUpdateRequest(BaseModel):
@@ -30,6 +37,13 @@ class RuntimeConfigUpdateRequest(BaseModel):
     free_delay_seconds: int = Field(ge=0)
     free_delay_notice_text: str = Field(max_length=200)
     pro_monthly_quota: int = Field(ge=0, le=99999)
+    # #130 ① — QA 안내 팝업. 서버에서 추가 clamp/정규화 후 SET.
+    qa_notice_enabled: bool
+    qa_notice_text: str = Field(max_length=500)
+    qa_notice_font_size: int = Field(ge=10, le=40)
+    qa_notice_color: str = Field(max_length=7)
+    qa_notice_font_weight: int = Field(ge=100, le=900)
+    qa_notice_width: int = Field(ge=280, le=720)
 
 
 class ChatModelConfigResponse(BaseModel):
