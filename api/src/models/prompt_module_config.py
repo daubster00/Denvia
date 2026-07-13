@@ -7,8 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
 
-# #129: 프롬프트 모듈 10개 전부를 관리자 웹에서 직접 편집(글 내용 + 발동조건).
+# #129: 프롬프트 모듈 전부를 관리자 웹에서 직접 편집(글 내용 + 발동조건).
 # seed 순서 = vendor PROMPT_MODULES 등장 순서 (프롬프트 조립 순서 보존용).
+# 게시판 #131(2026-07-13): 즉처/충전·치경부마모 2개 모듈 추가 → 12개.
 BLOCK_IDS = (
     "BASE",
     "치식_위치",
@@ -20,6 +21,8 @@ BLOCK_IDS = (
     "초진,재진",
     "보험레진_와동분류",
     "임플란트_치근면처치술",
+    "즉처,충전 개념",
+    "치경부마모",
 )
 
 
