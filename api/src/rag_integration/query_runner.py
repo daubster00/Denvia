@@ -263,8 +263,10 @@ async def _load_runtime_params() -> dict:
         DEFAULT_CHAT_MODEL,
     )
 
-    # #129: 프롬프트 블록 10개 전부를 mget 대상으로. 키 목록은 BLOCK_IDS 로 생성해 brittle 인덱스 제거.
+    # 블록 목록은 Redis 순서 인덱스(runtime:prompt:__order__)에서 동적으로 읽는다.
+    # 관리자가 추가/삭제한 블록까지 반영. 인덱스가 없으면(부팅 직후 등) 원본 BLOCK_IDS 폴백.
     from api.src.models.prompt_module_config import BLOCK_IDS
+    from api.src.services.prompt_config_service import PROMPT_ORDER_KEY
 
     try:
         r = aioredis.from_url(
@@ -278,8 +280,15 @@ async def _load_runtime_params() -> dict:
             "runtime:max_tokens",
             "runtime:chat_model",
         ]
-        prompt_keys = [f"runtime:prompt:{bid}" for bid in BLOCK_IDS]
         async with r:
+            order_raw = await r.get(PROMPT_ORDER_KEY)
+            try:
+                order = json.loads(order_raw) if order_raw else None
+            except (ValueError, TypeError):
+                order = None
+            if not isinstance(order, list) or not order:
+                order = list(BLOCK_IDS)
+            prompt_keys = [f"runtime:prompt:{bid}" for bid in order]
             keys = await r.mget(*base_keys, *prompt_keys)
 
         chat_model_raw = keys[3]
@@ -293,8 +302,9 @@ async def _load_runtime_params() -> dict:
             "rag_temperature": float(keys[1]) if keys[1] else 0.0,
             "max_tokens": int(keys[2]) if keys[2] else 1024,
             "chat_model": chat_model,
+            "_prompt_order": order,
         }
-        for bid, raw in zip(BLOCK_IDS, keys[len(base_keys):]):
+        for bid, raw in zip(order, keys[len(base_keys):]):
             result[f"prompt_{bid}"] = raw
         return result
     except Exception as e:
@@ -304,6 +314,7 @@ async def _load_runtime_params() -> dict:
             "rag_temperature": 0.0,
             "max_tokens": 1024,
             "chat_model": DEFAULT_CHAT_MODEL,
+            "_prompt_order": list(BLOCK_IDS),
         }
 
 
@@ -339,7 +350,7 @@ async def stream_rag_answer(
     from api.src.models.prompt_module_config import BLOCK_IDS
 
     overrides: dict[str, PromptOverride] = {}
-    for bid in BLOCK_IDS:
+    for bid in runtime.get("_prompt_order") or BLOCK_IDS:
         raw = runtime.get(f"prompt_{bid}")
         if raw:
             try:
@@ -348,6 +359,7 @@ async def stream_rag_answer(
                     content=parsed.get("content", ""),
                     enabled=parsed.get("enabled", True),
                     trigger_config=parsed.get("trigger_config"),
+                    suppresses=parsed.get("suppresses"),
                 )
             except Exception:
                 pass  # 파싱 실패 시 해당 블록 fallback
@@ -509,7 +521,7 @@ async def warmup_once() -> dict:
     from api.src.models.prompt_module_config import BLOCK_IDS
 
     overrides: dict[str, PromptOverride] = {}
-    for bid in BLOCK_IDS:
+    for bid in runtime.get("_prompt_order") or BLOCK_IDS:
         raw = runtime.get(f"prompt_{bid}")
         if raw:
             try:
@@ -518,6 +530,7 @@ async def warmup_once() -> dict:
                     content=parsed.get("content", ""),
                     enabled=parsed.get("enabled", True),
                     trigger_config=parsed.get("trigger_config"),
+                    suppresses=parsed.get("suppresses"),
                 )
             except Exception:
                 pass

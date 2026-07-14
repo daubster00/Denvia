@@ -27,6 +27,10 @@ export interface PromptBlock {
   content: string;
   enabled: boolean;
   updated_at: string;
+  /** 상호배제(예외처리) — 이 블록이 켜지면 함께 숨길 블록 id 목록. */
+  suppresses?: string[] | null;
+  /** 원본(빌트인) 블록은 끄기만, 관리자 생성 블록만 완전 삭제 가능. */
+  deletable: boolean;
 }
 
 export interface PromptsListResponse {
@@ -60,11 +64,12 @@ export const modelParamsSchema = z.object({
 export type PromptUpdateInput = z.infer<typeof promptUpdateSchema>;
 export type ModelParamsInput = z.infer<typeof modelParamsSchema>;
 
-/** PUT 페이로드 = 글 내용 + 켜기/끄기 + (선택) 발동조건. */
+/** PUT 페이로드 = 글 내용 + 켜기/끄기 + (선택) 발동조건 + (선택) 예외처리. */
 export interface PromptUpdatePayload {
   content: string;
   enabled: boolean;
   trigger_config?: TriggerConfig | null;
+  suppresses?: string[] | null;
 }
 
 export async function fetchPrompts(): Promise<PromptsListResponse> {
@@ -86,6 +91,39 @@ export async function updatePromptBlock(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.detail?.code ?? err?.code ?? "저장 실패");
+  }
+}
+
+/** POST 페이로드 = 블록 이름 + 내용 + 켜기/끄기 + 발동조건(필수). */
+export interface PromptCreatePayload {
+  block_id: string;
+  content: string;
+  enabled: boolean;
+  trigger_config: TriggerConfig;
+  suppresses?: string[] | null;
+}
+
+export async function createPromptBlock(data: PromptCreatePayload): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/rag/prompts`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.detail?.code ?? err?.code ?? "생성 실패");
+  }
+}
+
+export async function deletePromptBlock(blockId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/rag/prompts/${encodeURIComponent(blockId)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.detail?.code ?? err?.code ?? "삭제 실패");
   }
 }
 

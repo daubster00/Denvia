@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchModelParams, fetchPrompts } from "@/features/admin-rag/api/prompts";
 import { ModelParamForm } from "@/features/admin-rag/components/ModelParamForm";
+import { NewPromptBlockForm } from "@/features/admin-rag/components/NewPromptBlockForm";
 import { PromptBlockCard } from "@/features/admin-rag/components/PromptBlockCard";
 import styles from "./page.module.css";
 
@@ -18,6 +19,8 @@ export default function PromptManagementPage() {
     queryFn: fetchPrompts,
     staleTime: 60_000,
   });
+
+  const allBlockIds = (promptsQuery.data?.blocks ?? []).map((b) => b.block_id);
 
   return (
     <div className={styles.page}>
@@ -36,6 +39,7 @@ export default function PromptManagementPage() {
 
       <section className={styles.section}>
         <h2 className={styles.subheading}>프롬프트 블록</h2>
+        <NewPromptBlockForm allBlockIds={allBlockIds} />
         {promptsQuery.isLoading && (
           <p className={styles.statusText}>불러오는 중...</p>
         )}
@@ -43,7 +47,7 @@ export default function PromptManagementPage() {
           <p className={styles.errorText}>프롬프트 목록을 불러오지 못했습니다.</p>
         )}
         {promptsQuery.data?.blocks.map((block) => (
-          <PromptBlockCard key={block.block_id} block={block} />
+          <PromptBlockCard key={block.block_id} block={block} allBlockIds={allBlockIds} />
         ))}
       </section>
     </div>

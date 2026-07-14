@@ -25,6 +25,10 @@ BLOCK_IDS = (
     "치경부마모",
 )
 
+# 인수받은 RAG 자산의 원본 블록 — 관리자는 끄기(비활성화)만 가능하고 물리 삭제는 막는다.
+# 관리자가 직접 만든 블록만 완전 삭제 가능(create_prompt_block/delete_prompt_block).
+BUILTIN_BLOCK_IDS = frozenset(BLOCK_IDS)
+
 
 class PromptModuleConfig(Base):
     __tablename__ = "prompt_module_configs"
@@ -41,6 +45,9 @@ class PromptModuleConfig(Base):
     #   {"mode":"keywords_combo","set1":[...],"independent":[...]}
     #   {"mode":"group","group_keywords":[...],"required_keywords":[...]}
     trigger_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # 상호배제(예외처리) — 이 블록이 활성화되면 함께 숨길 다른 블록 id 목록(#95).
+    #   예: 브릿지 → ["치식_위치","치면_방향"]. NULL/[] = 배제 없음.
+    suppresses: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     updated_by_admin_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )

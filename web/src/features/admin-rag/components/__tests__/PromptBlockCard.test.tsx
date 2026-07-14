@@ -5,6 +5,7 @@ import { PromptBlockCard } from "../PromptBlockCard";
 
 vi.mock("../../api/prompts", () => ({
   updatePromptBlock: vi.fn(),
+  deletePromptBlock: vi.fn(),
   promptUpdateSchema: {
     parse: vi.fn(),
   },
@@ -25,6 +26,7 @@ const mockBlock = {
   content: "기본 프롬프트 내용",
   enabled: true,
   updated_at: "2026-04-28T00:00:00Z",
+  deletable: false,
 };
 
 const mockBlockWithKeywords = {
@@ -33,6 +35,7 @@ const mockBlockWithKeywords = {
   content: "치식 관련 내용",
   enabled: true,
   updated_at: "2026-04-28T00:00:00Z",
+  deletable: false,
 };
 
 describe("PromptBlockCard", () => {
@@ -41,13 +44,13 @@ describe("PromptBlockCard", () => {
   });
 
   it("초기 렌더: Accordion 헤더만 보임, 본문 숨김", () => {
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     expect(screen.getByText("BASE")).toBeDefined();
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("헤더 클릭 → Accordion 펼침, textarea와 체크박스 렌더", () => {
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("BASE").closest("button")!;
     fireEvent.click(header);
     expect(screen.getByRole("textbox")).toBeDefined();
@@ -55,7 +58,7 @@ describe("PromptBlockCard", () => {
   });
 
   it("트리거 키워드 Chip 렌더 (keywords가 있을 때)", () => {
-    renderWithQuery(<PromptBlockCard block={mockBlockWithKeywords} />);
+    renderWithQuery(<PromptBlockCard block={mockBlockWithKeywords} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("치식_위치").closest("button")!;
     fireEvent.click(header);
     expect(screen.getByText("치식")).toBeDefined();
@@ -63,14 +66,14 @@ describe("PromptBlockCard", () => {
   });
 
   it("BASE 블록 — trigger_keywords 빈 배열이면 Chip 없음", () => {
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("BASE").closest("button")!;
     fireEvent.click(header);
     expect(screen.queryByText("치식")).toBeNull();
   });
 
   it("[저장] 클릭 → ConfirmDialog 오픈", async () => {
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("BASE").closest("button")!;
     fireEvent.click(header);
 
@@ -88,7 +91,7 @@ describe("PromptBlockCard", () => {
   it("ConfirmDialog 취소 → API 호출 없음", async () => {
     const { updatePromptBlock } = await import("../../api/prompts");
 
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("BASE").closest("button")!;
     fireEvent.click(header);
 
@@ -113,7 +116,7 @@ describe("PromptBlockCard", () => {
     const { updatePromptBlock } = await import("../../api/prompts");
     (updatePromptBlock as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
 
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("BASE").closest("button")!;
     fireEvent.click(header);
 
@@ -138,7 +141,7 @@ describe("PromptBlockCard", () => {
   });
 
   it("[취소] 버튼 클릭 → 폼 reset", () => {
-    renderWithQuery(<PromptBlockCard block={mockBlock} />);
+    renderWithQuery(<PromptBlockCard block={mockBlock} allBlockIds={["BASE", "치식_위치"]} />);
     const header = screen.getByText("BASE").closest("button")!;
     fireEvent.click(header);
 

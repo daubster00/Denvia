@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.models.model_param_config import ModelParamConfig
-from api.src.models.prompt_module_config import PromptModuleConfig
+from api.src.models.prompt_module_config import BUILTIN_BLOCK_IDS, PromptModuleConfig
 from api.src.models.user import User
 from api.src.rag_integration.prompt_injection import get_trigger_keywords
 from api.src.schemas.admin.prompts import (
@@ -39,6 +39,12 @@ _TRIGGER_REQUIRED_LISTS = {
 }
 # vendor 가 정규식으로 취급하는 키워드 접두사 (그 외는 문자열 리터럴 매칭).
 _REGEX_PREFIXES = (r"\b", r"\d", "#", r"i\d")
+
+# 블록 조립 순서를 담는 Redis 키 — query_runner 가 이 목록으로 어떤 블록이 존재하는지 파악한다.
+# 값은 JSON 배열(DB id 오름차순 = [BASE, 원본 블록…, 관리자 추가 블록…]).
+PROMPT_ORDER_KEY = "runtime:prompt:__order__"
+# block_id 최대 길이 (prompt_module_configs.block_id 컬럼 = String(40)).
+MAX_BLOCK_ID_LEN = 40
 
 
 def _flatten_trigger(cfg: dict | None) -> list[str]:
@@ -95,6 +101,57 @@ def _validate_trigger_config(block_id: str, cfg: TriggerConfig) -> None:
                 except re.error:
                     _fail("PROMPT_TRIGGER_REGEX_INVALID", keyword=kw)
 
+async def _validate_suppresses(
+    db: AsyncSession, block_id: str, suppresses: list[str]
+) -> list[str]:
+    """상호배제(예외처리) 대상 검증 → 정리된 목록 반환. 위반 시 HTTP 422 {code}.
+
+    각 대상은 (1) 실존 블록, (2) 자기 자신 아님, (3) BASE 아님(BASE 는 항상 포함).
+    """
+    from fastapi import HTTPException
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in suppresses or []:
+        t = (raw or "").strip()
+        if not t or t in seen:
+            continue
+        if t == block_id:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROMPT_SUPPRESS_TARGET_INVALID", "target": t, "reason": "self"},
+            )
+        if t == "BASE":
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROMPT_SUPPRESS_TARGET_INVALID", "target": t, "reason": "base"},
+            )
+        seen.add(t)
+        cleaned.append(t)
+
+    if cleaned:
+        existing = set(
+            (
+                await db.execute(
+                    select(PromptModuleConfig.block_id).where(
+                        PromptModuleConfig.block_id.in_(cleaned)
+                    )
+                )
+            ).scalars().all()
+        )
+        for t in cleaned:
+            if t not in existing:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "PROMPT_SUPPRESS_TARGET_INVALID",
+                        "target": t,
+                        "reason": "unknown",
+                    },
+                )
+    return cleaned
+
+
 VALID_K_RANGE = (1, 20)
 VALID_TEMP_RANGE = (0.0, 1.0)
 VALID_TOKENS_RANGE = (256, 4096)
@@ -129,6 +186,9 @@ async def get_prompts(db: AsyncSession) -> PromptsListResponse:
                 content=row.content,
                 enabled=row.enabled,
                 updated_at=row.updated_at,
+                suppresses=row.suppresses,
+                # 원본(빌트인) 블록은 끄기만 가능, 관리자 생성 블록만 완전 삭제 가능.
+                deletable=row.block_id not in BUILTIN_BLOCK_IDS,
             )
         )
     return PromptsListResponse(blocks=blocks)
@@ -142,6 +202,7 @@ async def update_prompt(
     admin: User,
     db: AsyncSession,
     trigger_config: TriggerConfig | None = None,
+    suppresses: list[str] | None = None,
 ) -> PromptUpdateResponse:
     from fastapi import HTTPException
 
@@ -164,6 +225,12 @@ async def update_prompt(
     else:
         new_trigger = row.trigger_config
 
+    # 상호배제(예외처리) 편집(#95). 생략(None) 시 기존값 유지. []는 "배제 없음" 명시.
+    if suppresses is not None:
+        new_suppresses = await _validate_suppresses(db, block_id, suppresses)
+    else:
+        new_suppresses = row.suppresses
+
     before_hash = hashlib.sha256(row.content.encode()).hexdigest()[:12]
     before_enabled = row.enabled
     before_trigger_mode = (row.trigger_config or {}).get("mode")
@@ -171,6 +238,7 @@ async def update_prompt(
     row.content = content
     row.enabled = enabled
     row.trigger_config = new_trigger
+    row.suppresses = new_suppresses
     row.updated_by_admin_id = admin.id
     row.updated_at = datetime.now(tz=timezone.utc)
     await db.commit()
@@ -199,7 +267,12 @@ async def update_prompt(
             await r.set(
                 f"runtime:prompt:{block_id}",
                 json.dumps(
-                    {"content": content, "enabled": enabled, "trigger_config": new_trigger},
+                    {
+                        "content": content,
+                        "enabled": enabled,
+                        "trigger_config": new_trigger,
+                        "suppresses": new_suppresses,
+                    },
                     ensure_ascii=False,
                 ),
             )
@@ -218,8 +291,206 @@ async def update_prompt(
         content=row.content,
         enabled=row.enabled,
         trigger_config=TriggerConfig(**new_trigger) if new_trigger else None,
+        suppresses=new_suppresses,
         updated_at=row.updated_at,
     )
+
+
+async def _rebuild_order_index(db: AsyncSession, r: aioredis.Redis) -> None:
+    """DB 블록 목록(id 오름차순)을 Redis 순서 인덱스에 반영.
+
+    id 순서 = [BASE, 원본 블록…, 관리자 추가 블록(생성 순)…] → 조립 순서와 동일.
+    """
+    order = (
+        await db.execute(
+            select(PromptModuleConfig.block_id).order_by(PromptModuleConfig.id)
+        )
+    ).scalars().all()
+    await r.set(PROMPT_ORDER_KEY, json.dumps(list(order), ensure_ascii=False))
+
+
+async def sync_prompts_to_redis(db: AsyncSession) -> int:
+    """DB 전체 프롬프트 블록 → Redis 미러 + 순서 인덱스 (부팅 시 1회).
+
+    DB 가 SSOT 이므로 Redis 를 DB 로 덮어써 항상 일치시킨다. 관리자가 새로 만든
+    블록은 vendor 파일에 원본이 없어 Redis 가 비면 사라지므로, 이 동기화가 필수다.
+    반환값은 동기화한 블록 수(로그/헬스체크용).
+    """
+    rows = (
+        await db.execute(select(PromptModuleConfig).order_by(PromptModuleConfig.id))
+    ).scalars().all()
+    if not rows:
+        return 0
+
+    mapping: dict[str, str] = {}
+    order: list[str] = []
+    for row in rows:
+        order.append(row.block_id)
+        mapping[f"runtime:prompt:{row.block_id}"] = json.dumps(
+            {
+                "content": row.content,
+                "enabled": row.enabled,
+                "trigger_config": row.trigger_config,
+                "suppresses": row.suppresses,
+            },
+            ensure_ascii=False,
+        )
+    mapping[PROMPT_ORDER_KEY] = json.dumps(order, ensure_ascii=False)
+
+    r = await _get_redis()
+    async with r:
+        await r.mset(mapping)
+    logger.info("prompt_config.synced_to_redis", count=len(rows))
+    return len(rows)
+
+
+def _validate_new_block_id(block_id: str) -> str:
+    """관리자 신규 블록 block_id 검증 → 정리된 값 반환. 위반 시 HTTP 422 {code}."""
+    from fastapi import HTTPException
+
+    bid = (block_id or "").strip()
+    if not bid:
+        raise HTTPException(status_code=422, detail={"code": "PROMPT_BLOCK_ID_EMPTY"})
+    if len(bid) > MAX_BLOCK_ID_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "PROMPT_BLOCK_ID_TOO_LONG", "max": MAX_BLOCK_ID_LEN},
+        )
+    # BASE·원본 블록 이름, 내부 예약 접두사(__), Redis 키 구분자(:) 금지.
+    if bid == "BASE" or bid in BUILTIN_BLOCK_IDS or bid.startswith("__") or ":" in bid:
+        raise HTTPException(status_code=422, detail={"code": "PROMPT_BLOCK_ID_RESERVED"})
+    return bid
+
+
+async def create_prompt_block(
+    request: Request,
+    block_id: str,
+    content: str,
+    enabled: bool,
+    trigger_config: TriggerConfig | None,
+    admin: User,
+    db: AsyncSession,
+    suppresses: list[str] | None = None,
+) -> PromptUpdateResponse:
+    """관리자가 새 프롬프트 블록을 직접 생성. 발동조건 필수(vendor 폴백 없음)."""
+    from fastapi import HTTPException
+
+    bid = _validate_new_block_id(block_id)
+
+    if not content.strip():
+        raise HTTPException(status_code=422, detail={"code": "PROMPT_CONTENT_EMPTY"})
+
+    # 관리자 블록은 vendor 파일에 원본 발동조건이 없으므로 반드시 함께 받아야 한다.
+    if trigger_config is None:
+        raise HTTPException(status_code=422, detail={"code": "PROMPT_TRIGGER_REQUIRED"})
+    _validate_trigger_config(bid, trigger_config)  # base 모드 금지·키워드 비어있음 검증 포함
+
+    # 상호배제(예외처리) 대상 검증 — 대상은 이미 존재하는 다른 블록이어야 함(#95).
+    new_suppresses = (
+        await _validate_suppresses(db, bid, suppresses) if suppresses is not None else None
+    )
+
+    existing = (
+        await db.execute(
+            select(PromptModuleConfig).where(PromptModuleConfig.block_id == bid)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=422, detail={"code": "PROMPT_BLOCK_ID_DUPLICATE"})
+
+    new_trigger = trigger_config.model_dump(exclude_none=True)
+    now = datetime.now(tz=timezone.utc)
+    row = PromptModuleConfig(
+        block_id=bid,
+        content=content,
+        enabled=enabled,
+        trigger_config=new_trigger,
+        suppresses=new_suppresses,
+        updated_by_admin_id=admin.id,
+        updated_at=now,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+
+    request.state.audit_target_type = "prompt_block"
+    request.state.audit_target_id = bid
+    request.state.audit_diff = {
+        "created": {
+            "content_hash": hashlib.sha256(content.encode()).hexdigest()[:12],
+            "enabled": enabled,
+            "trigger_mode": new_trigger.get("mode"),
+        }
+    }
+
+    try:
+        r = await _get_redis()
+        async with r:
+            await r.set(
+                f"runtime:prompt:{bid}",
+                json.dumps(
+                    {
+                        "content": content,
+                        "enabled": enabled,
+                        "trigger_config": new_trigger,
+                        "suppresses": new_suppresses,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            await _rebuild_order_index(db, r)
+    except Exception as e:
+        logger.warning("prompt_config.redis_create_failed", block_id=bid, error=str(e))
+
+    logger.info("prompt_config.created", block_id=bid)
+    return PromptUpdateResponse(
+        block_id=bid,
+        content=content,
+        enabled=enabled,
+        trigger_config=TriggerConfig(**new_trigger),
+        suppresses=new_suppresses,
+        updated_at=row.updated_at,
+    )
+
+
+async def delete_prompt_block(
+    request: Request,
+    block_id: str,
+    admin: User,
+    db: AsyncSession,
+) -> None:
+    """관리자 생성 블록만 완전 삭제. 원본(빌트인) 블록은 끄기로만 처리(삭제 거부)."""
+    from fastapi import HTTPException
+
+    if block_id == "BASE" or block_id in BUILTIN_BLOCK_IDS:
+        raise HTTPException(
+            status_code=422, detail={"code": "PROMPT_BLOCK_BUILTIN_UNDELETABLE"}
+        )
+
+    row = (
+        await db.execute(
+            select(PromptModuleConfig).where(PromptModuleConfig.block_id == block_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=422, detail={"code": "PROMPT_BLOCK_NOT_FOUND"})
+
+    await db.delete(row)
+    await db.commit()
+
+    request.state.audit_target_type = "prompt_block"
+    request.state.audit_target_id = block_id
+    request.state.audit_diff = {"deleted": {"block_id": block_id}}
+
+    try:
+        r = await _get_redis()
+        async with r:
+            await r.delete(f"runtime:prompt:{block_id}")
+            await _rebuild_order_index(db, r)
+    except Exception as e:
+        logger.warning("prompt_config.redis_delete_failed", block_id=block_id, error=str(e))
+
+    logger.info("prompt_config.deleted", block_id=block_id)
 
 
 async def get_model_params(db: AsyncSession) -> ModelParamsResponse:

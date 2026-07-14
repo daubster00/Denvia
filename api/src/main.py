@@ -87,6 +87,18 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("lifespan.seed_admin.failed")
 
+    # 프롬프트 블록 DB → Redis 미러 동기화. DB 가 SSOT 이므로 부팅마다 Redis 를 맞춘다.
+    # 관리자가 새로 만든 블록은 vendor 파일에 원본이 없어 Redis 가 비면 사라지므로 필수.
+    try:
+        from api.src.models.base import async_session_factory
+        from api.src.services import prompt_config_service
+
+        async with async_session_factory() as _session:
+            _n = await prompt_config_service.sync_prompts_to_redis(_session)
+        _log.info("lifespan.prompt_sync.completed", blocks=_n)
+    except Exception:
+        _log.exception("lifespan.prompt_sync.failed")
+
     # RAG 인덱스 사전 로드 — 첫 사용자 질문에서 발생하던 수 초 지연 제거.
     # 실패해도 부팅은 진행(인덱스 없는 CI/일부 환경 대비) → 첫 질문 시 lazy init으로 자연 복구.
     try:

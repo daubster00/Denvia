@@ -269,3 +269,103 @@
 .saveBtn:hover:not(:disabled) {
   background: #4338ca;
 }
+
+.offBadge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.actionsSpacer {
+  flex: 1;
+}
+
+.deleteBtn {
+  padding: 8px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.deleteBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 예외처리(상호배제) 체크리스트 ── */
+.suppressList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.suppressItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+
+/* ── 새 블록 만들기 폼 ── */
+.newCard {
+  border: 1px dashed #c7d2fe;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+
+.newToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #eef2ff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4338ca;
+  text-align: left;
+}
+
+.newToggle:hover {
+  background: #e0e7ff;
+}
+
+.nameRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nameInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111827;
+  box-sizing: border-box;
+}
+
+.nameInput:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}

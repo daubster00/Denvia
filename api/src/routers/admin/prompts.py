@@ -1,11 +1,13 @@
 """프롬프트 블록 + 모델 파라미터 관리 라우터 — Story 8.4 (A-404)."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.src.deps.auth import require_admin, require_admin_page
 from api.src.middleware.audit_actions import (
     AUDIT_MODEL_PARAMS_EDIT,
+    AUDIT_PROMPT_CREATE,
+    AUDIT_PROMPT_DELETE,
     AUDIT_PROMPT_EDIT,
     audit_action,
 )
@@ -14,6 +16,7 @@ from api.src.models.user import User
 from api.src.schemas.admin.prompts import (
     ModelParamsResponse,
     ModelParamsUpdateRequest,
+    PromptCreateRequest,
     PromptsListResponse,
     PromptUpdateRequest,
     PromptUpdateResponse,
@@ -35,6 +38,30 @@ async def get_prompts(
     return await prompt_config_service.get_prompts(db)
 
 
+@router.post(
+    "/prompts",
+    response_model=PromptUpdateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@audit_action(AUDIT_PROMPT_CREATE)
+async def create_prompt(
+    body: PromptCreateRequest,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> PromptUpdateResponse:
+    return await prompt_config_service.create_prompt_block(
+        request,
+        body.block_id,
+        body.content,
+        body.enabled,
+        body.trigger_config,
+        admin,
+        db,
+        suppresses=body.suppresses,
+    )
+
+
 @router.put("/prompts/{block_id}", response_model=PromptUpdateResponse)
 @audit_action(AUDIT_PROMPT_EDIT)
 async def update_prompt(
@@ -47,7 +74,19 @@ async def update_prompt(
     return await prompt_config_service.update_prompt(
         request, block_id, body.content, body.enabled, admin, db,
         trigger_config=body.trigger_config,
+        suppresses=body.suppresses,
     )
+
+
+@router.delete("/prompts/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+@audit_action(AUDIT_PROMPT_DELETE)
+async def delete_prompt(
+    block_id: str,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    await prompt_config_service.delete_prompt_block(request, block_id, admin, db)
 
 
 @router.get("/model-params", response_model=ModelParamsResponse)

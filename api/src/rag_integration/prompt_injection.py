@@ -32,11 +32,22 @@ def get_trigger_keywords(block_id: str) -> list[str]:
         return []
 
 
+# vendor build_prompt_template 에 하드코딩돼 있던 상호배제(예외처리) 규칙.
+# override.suppresses 가 없을 때의 폴백 기본값 — 편집 전 라이브 동작을 그대로 재현한다(#95).
+_VENDOR_SUPPRESSES: dict[str, list[str]] = {
+    "브릿지": ["치식_위치", "치면_방향"],
+    "치주치료_산정": ["치식_위치", "치면_방향"],
+    "마취_산정": ["치식_위치", "치면_방향"],
+    "치주낭측정검사_횟수산정": ["치식_위치", "치면_방향"],
+}
+
+
 class PromptOverride:
     """단일 프롬프트 블록의 오버라이드 값.
 
     trigger_config 가 주어지면 발동조건(키워드 매칭)까지 오버라이드한다(#129).
     None 이면 vendor 파일의 기본 발동조건을 그대로 쓴다.
+    suppresses 는 이 블록이 활성화되면 함께 숨길 블록 id 목록(#95). None 이면 vendor 기본맵 폴백.
     """
 
     def __init__(
@@ -44,10 +55,12 @@ class PromptOverride:
         content: str,
         enabled: bool,
         trigger_config: dict | None = None,
+        suppresses: list[str] | None = None,
     ) -> None:
         self.content = content
         self.enabled = enabled
         self.trigger_config = trigger_config
+        self.suppresses = suppresses
 
 
 def _file_trigger_config(block_id: str, module: dict) -> dict:
@@ -134,34 +147,56 @@ def build_prompt_with_overrides(
         elif base_override.enabled:
             parts.append(base_override.content)
 
-        # 브릿지/치주치료/마취/치주낭 모듈이 활성화되면 치식_위치/치면_방향 블록은 주입하지 않는다.
-        # (vendor build_prompt_template과 동일한 동작 — 각 모듈 본문의 자체 표기·산정 규칙과 충돌 방지)
-        # 편집된 발동조건을 반영하려면 배제 판정도 유효 config 로 계산해야 한다.
-        bridge_active = _match_trigger_config(query, _eff_cfg("브릿지"), matchers)
-        periodontal_active = _match_trigger_config(query, _eff_cfg("치주치료_산정"), matchers)
-        anesthesia_active = _match_trigger_config(query, _eff_cfg("마취_산정"), matchers)
-        perio_exam_active = _match_trigger_config(
-            query, _eff_cfg("치주낭측정검사_횟수산정"), matchers
-        )
-        suppress_positional = (
-            bridge_active or periodontal_active or anesthesia_active or perio_exam_active
-        )
+        # 마스터 블록 목록 = vendor 원본 순서 + 관리자가 추가한 블록(override 에만 존재).
+        # 관리자 블록은 vendor 파일에 원본이 없으므로 overrides 삽입 순서를 그대로 이어붙인다.
+        # (query_runner 가 runtime:prompt:__order__ 순서로 overrides 를 만들어 넘긴다.)
+        vendor_ids = list(PROMPT_MODULES.keys())
+        extra_ids = [
+            bid for bid in overrides if bid != "BASE" and bid not in PROMPT_MODULES
+        ]
+        ordered_ids = vendor_ids + extra_ids
+
+        def _eff_enabled(block_id: str) -> bool:
+            """유효 활성 여부 = override 있으면 override.enabled, 없으면 vendor 기본(True)."""
+            ov = overrides.get(block_id)
+            return ov.enabled if ov is not None else True
+
+        def _eff_suppresses(block_id: str) -> list[str]:
+            """유효 상호배제 목록 = override.suppresses 우선, 없으면 vendor 기본맵(#95)."""
+            ov = overrides.get(block_id)
+            if ov is not None and ov.suppresses is not None:
+                return ov.suppresses
+            return _VENDOR_SUPPRESSES.get(block_id, [])
+
+        # 상호배제(예외처리) — 활성(활성화+발동조건 매칭)인 블록들의 suppresses 합집합을 숨긴다.
+        # 기존 하드코딩(브릿지/치주치료/마취/치주낭 → 치식_위치/치면_방향)을 데이터 기반으로 대체(#95).
+        # 미편집 블록은 vendor 기본맵으로 폴백하므로 편집 전 라이브 동작은 완전히 동일.
+        # (BASE 는 아래에서 별도로 항상 선주입되므로 이 집합에 들어와도 영향 없음.)
+        suppressed: set[str] = set()
+        for _bid in ordered_ids:
+            if _eff_enabled(_bid) and _match_trigger_config(query, _eff_cfg(_bid), matchers):
+                suppressed.update(_eff_suppresses(_bid))
 
         injected: list[str] = []
-        for module_name, module_data in PROMPT_MODULES.items():
+        for module_name in ordered_ids:
+            module_data = PROMPT_MODULES.get(module_name)
             matched = _match_trigger_config(query, _eff_cfg(module_name), matchers)
             if not matched:
                 continue
-            if suppress_positional and module_name in ("치식_위치", "치면_방향"):
+            if module_name in suppressed:
                 continue
 
             override = overrides.get(module_name)
             if override is not None:
                 if not override.enabled:
                     continue
-                parts.append(override.content)
+                content = override.content
+            elif module_data is not None:
+                content = module_data["text"]
             else:
-                parts.append(module_data["text"])
+                # 관리자 블록인데 override 가 사라짐(삭제됨) → 주입할 내용 없음.
+                continue
+            parts.append(content)
             injected.append(module_name)
 
         # vendor build_prompt_template과 동일한 최종 템플릿 (#110 클라이언트 compact 포맷)

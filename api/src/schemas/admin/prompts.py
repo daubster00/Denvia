@@ -32,6 +32,10 @@ class PromptBlockResponse(BaseModel):
     content: str
     enabled: bool
     updated_at: datetime
+    # 상호배제(예외처리) — 이 블록이 켜지면 함께 숨길 블록 id 목록(#95).
+    suppresses: list[str] | None = None
+    # 원본(빌트인) 블록은 끄기만, 관리자 생성 블록만 완전 삭제 가능(프론트 삭제 버튼 노출 판단).
+    deletable: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -45,6 +49,19 @@ class PromptUpdateRequest(BaseModel):
     enabled: bool = True
     # 발동조건 편집. 생략(None) 시 기존 trigger_config 유지(글 내용만 변경하는 구버전 호환).
     trigger_config: TriggerConfig | None = None
+    # 상호배제(예외처리) 편집. 생략(None) 시 기존 suppresses 유지. []는 "배제 없음"으로 명시 설정.
+    suppresses: list[str] | None = None
+
+
+class PromptCreateRequest(BaseModel):
+    """관리자 신규 블록 생성. block_id = 블록 이름(고유). 발동조건 필수(vendor 폴백 없음)."""
+
+    block_id: str = Field(min_length=1, max_length=40)
+    content: str = Field(min_length=1)
+    enabled: bool = True
+    trigger_config: TriggerConfig | None = None
+    # 상호배제(예외처리) — 이 블록이 켜지면 함께 숨길 블록 id 목록. 생략 시 배제 없음.
+    suppresses: list[str] | None = None
 
 
 class PromptUpdateResponse(BaseModel):
@@ -52,6 +69,7 @@ class PromptUpdateResponse(BaseModel):
     content: str
     enabled: bool
     trigger_config: TriggerConfig | None = None
+    suppresses: list[str] | None = None
     updated_at: datetime
 
 
