@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.src.models.qa_log import QALog
 from api.src.models.qa_review import QAReview
 from api.src.models.qa_review_settings import QAReviewSettings
+from api.src.models.qa_review_admin_setting import QAReviewAdminSetting
 from api.src.models.user import User
 from api.src.services.budget_service import KST
 
@@ -855,3 +856,149 @@ async def update_settings(
     row.updated_at = _now_utc()
     await session.flush()
     return {"sub_operator_max_lookback_days": int(row.sub_operator_max_lookback_days)}
+
+
+# =============================================================================
+# 부관리자별 조회 설정 (#132) — 초대된 부관리자 각각의 조회기간 + 강제 평가필터
+# =============================================================================
+
+# 부관리자별로 강제할 수 있는 평가 필터. 'all' = 제한 없음(부관리자가 자유 선택).
+_ALLOWED_SCOPES = frozenset({"all", "good", "bad", "unrated"})
+# 전역/개인 조회기간 상한 범위.
+_MIN_LOOKBACK_DAYS = 1
+_MAX_LOOKBACK_DAYS = 365
+
+
+def _is_configurable_admin(user: "User | None") -> bool:
+    """부관리자별 설정 대상 = role=admin · 탈퇴 아님 · 전체열람/승인대기 등급이 아님(제한 등급)."""
+    return (
+        user is not None
+        and user.role == "admin"
+        and user.withdrawn_at is None
+        and user.admin_grade is not None
+        and user.admin_grade not in ("master", "operator", "pending")
+    )
+
+
+async def resolve_restricted_limits(
+    session: AsyncSession, *, admin_id: int, global_days: int
+) -> tuple[int, str]:
+    """제한 등급 뷰어의 유효 (조회기간 일수, 강제 평가필터).
+
+    부관리자별 설정 행이 있으면 그 값을, 없으면 (전역 기본 일수, 'all')로 폴백한다.
+    """
+    row = (
+        await session.execute(
+            select(QAReviewAdminSetting).where(QAReviewAdminSetting.admin_id == admin_id)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return global_days, "all"
+    days = (
+        int(row.max_lookback_days)
+        if row.max_lookback_days is not None
+        else global_days
+    )
+    scope = row.rating_scope if row.rating_scope in _ALLOWED_SCOPES else "all"
+    return days, scope
+
+
+async def list_admin_review_settings(session: AsyncSession) -> dict[str, Any]:
+    """부관리자(제한 등급) 계정별 조회 설정 목록 + 전역 기본값."""
+    global_days = (await get_settings(session))["sub_operator_max_lookback_days"]
+
+    admins = (
+        await session.execute(
+            select(User.id, User.email, User.admin_grade)
+            .where(
+                User.role == "admin",
+                User.withdrawn_at.is_(None),
+                User.admin_grade.is_not(None),
+                User.admin_grade.not_in(["master", "operator", "pending"]),
+            )
+            .order_by(User.email)
+        )
+    ).all()
+
+    setting_rows = (
+        await session.execute(select(QAReviewAdminSetting))
+    ).scalars().all()
+    by_admin = {s.admin_id: s for s in setting_rows}
+
+    items: list[dict[str, Any]] = []
+    for a in admins:
+        s = by_admin.get(a.id)
+        items.append(
+            {
+                "admin_id": int(a.id),
+                "email": a.email,
+                "admin_grade": a.admin_grade,
+                "max_lookback_days": (
+                    int(s.max_lookback_days)
+                    if s is not None and s.max_lookback_days is not None
+                    else None
+                ),
+                "rating_scope": (
+                    s.rating_scope
+                    if s is not None and s.rating_scope in _ALLOWED_SCOPES
+                    else "all"
+                ),
+            }
+        )
+    return {"global_default_days": global_days, "admins": items}
+
+
+async def upsert_admin_review_setting(
+    session: AsyncSession,
+    *,
+    target_admin_id: int,
+    max_lookback_days: int | None,
+    rating_scope: str,
+    admin_id: int,
+) -> dict[str, Any]:
+    """부관리자 1명의 조회기간(None=전역기본)+강제 평가필터를 설정."""
+    from fastapi import HTTPException
+
+    if rating_scope not in _ALLOWED_SCOPES:
+        raise HTTPException(
+            status_code=422, detail={"code": "QA_REVIEW_SCOPE_INVALID", "scope": rating_scope}
+        )
+    if max_lookback_days is not None and not (
+        _MIN_LOOKBACK_DAYS <= max_lookback_days <= _MAX_LOOKBACK_DAYS
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "QA_REVIEW_DAYS_OUT_OF_RANGE", "received": max_lookback_days},
+        )
+
+    target = (
+        await session.execute(select(User).where(User.id == target_admin_id))
+    ).scalar_one_or_none()
+    if not _is_configurable_admin(target):
+        raise HTTPException(
+            status_code=422, detail={"code": "QA_REVIEW_TARGET_INVALID"}
+        )
+
+    row = (
+        await session.execute(
+            select(QAReviewAdminSetting).where(
+                QAReviewAdminSetting.admin_id == target_admin_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = QAReviewAdminSetting(admin_id=target_admin_id)
+        session.add(row)
+    row.max_lookback_days = max_lookback_days
+    row.rating_scope = rating_scope
+    row.updated_by_admin_id = admin_id
+    row.updated_at = _now_utc()
+    await session.flush()
+
+    return {
+        "admin_id": target_admin_id,
+        "email": target.email,
+        "admin_grade": target.admin_grade,
+        "max_lookback_days": max_lookback_days,
+        "rating_scope": rating_scope,
+    }

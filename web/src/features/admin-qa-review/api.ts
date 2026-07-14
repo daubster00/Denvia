@@ -78,6 +78,8 @@ export interface QaReviewListResponse {
   page_size: number;
   viewer_grade: string;
   effective_period: QaEffectivePeriod;
+  /** #132 — 관리자가 이 부관리자에게 강제한 평가필터. null 이면 자유 선택. */
+  forced_rating?: "good" | "bad" | "unrated" | null;
 }
 
 export interface FetchQaReviewListParams {
@@ -315,4 +317,42 @@ export async function updateQaReviewSettings(
   });
   if (!res.ok) throw new Error(`qa-review settings update failed: ${res.status}`);
   return res.json() as Promise<QaReviewSettings>;
+}
+
+// ── 부관리자별 조회 설정 (#132, master/operator 전용) ─────────────────────────
+
+/** 부관리자 1명의 조회 설정. max_lookback_days=null → 전역 기본값 사용. */
+export interface QaReviewAdminSettingRow {
+  admin_id: number;
+  email: string | null;
+  admin_grade: string | null;
+  max_lookback_days: number | null;
+  rating_scope: QaRatingFilter;
+}
+
+export interface QaReviewAdminSettingsList {
+  global_default_days: number;
+  admins: QaReviewAdminSettingRow[];
+}
+
+export async function fetchQaReviewAdminSettings(): Promise<QaReviewAdminSettingsList> {
+  const res = await fetch(`${API_BASE}${BASE_PATH}/settings/admins`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`qa-review admin settings fetch failed: ${res.status}`);
+  return res.json() as Promise<QaReviewAdminSettingsList>;
+}
+
+export async function updateQaReviewAdminSetting(
+  adminId: number,
+  payload: { max_lookback_days: number | null; rating_scope: QaRatingFilter },
+): Promise<QaReviewAdminSettingRow> {
+  const res = await fetch(`${API_BASE}${BASE_PATH}/settings/admins/${adminId}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`qa-review admin setting update failed: ${res.status}`);
+  return res.json() as Promise<QaReviewAdminSettingRow>;
 }

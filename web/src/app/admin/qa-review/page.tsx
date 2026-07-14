@@ -18,6 +18,7 @@ import { DashboardChart } from "@/features/admin-dashboard/components/DashboardC
 import { KPICard } from "@/features/admin-dashboard/components/KPICard";
 import { QaReviewRow } from "@/features/admin-qa-review/components/QaReviewRow";
 import { QaReviewModal } from "@/features/admin-qa-review/components/QaReviewModal";
+import { QaReviewAdminSettings } from "@/features/admin-qa-review/components/QaReviewAdminSettings";
 import {
   bulkDeleteQaReview,
   buildQaReviewExportUrl,
@@ -326,6 +327,12 @@ export default function QaReviewPage() {
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
   const currentLookback = settings?.sub_operator_max_lookback_days;
 
+  // #132 — 관리자가 이 부관리자에게 강제한 평가필터. 있으면 필터 바를 잠근다.
+  const forcedRating = data?.forced_rating ?? null;
+  const forcedRatingLabel = forcedRating
+    ? RATING_FILTERS.find((r) => r.value === forcedRating)?.label ?? forcedRating
+    : null;
+
   return (
     <section className={styles.page} aria-labelledby="qa-review-title">
       <header className={styles.header}>
@@ -401,20 +408,25 @@ export default function QaReviewPage() {
         )}
 
         <div className={styles.toggleGroup}>
-          {RATING_FILTERS.map((rf) => (
-            <button
-              key={rf.value}
-              type="button"
-              className={rating === rf.value ? styles.toggleBtnActive : styles.toggleBtn}
-              aria-pressed={rating === rf.value}
-              onClick={() => {
-                setRating(rf.value);
-                resetPage();
-              }}
-            >
-              {rf.label}
-            </button>
-          ))}
+          {RATING_FILTERS.map((rf) => {
+            const active = forcedRating ? rf.value === forcedRating : rating === rf.value;
+            return (
+              <button
+                key={rf.value}
+                type="button"
+                className={active ? styles.toggleBtnActive : styles.toggleBtn}
+                aria-pressed={active}
+                disabled={forcedRating != null}
+                onClick={() => {
+                  if (forcedRating != null) return;
+                  setRating(rf.value);
+                  resetPage();
+                }}
+              >
+                {rf.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className={styles.toggleGroup}>
@@ -446,6 +458,13 @@ export default function QaReviewPage() {
           aria-label="질문·답변 키워드 검색"
         />
       </div>
+
+      {/* #132 — 관리자가 볼 수 있는 평가를 고정한 경우 안내 */}
+      {forcedRatingLabel && (
+        <p className={styles.clampNotice} role="status">
+          관리자 설정에 따라 ‘{forcedRatingLabel}’ 만 조회할 수 있습니다.
+        </p>
+      )}
 
       {/* 부운영자 조회기간 상한에 걸렸을 때 안내 */}
       {effective?.clamped && (
@@ -507,7 +526,7 @@ export default function QaReviewPage() {
           {settingsOpen && (
             <div className={styles.settingsPanel}>
               <span className={styles.settingsLabel}>
-                부관리자 조회기간 상한
+                부관리자 공통 조회기간 (기본값)
               </span>
               <div className={styles.toggleGroup}>
                 {LOOKBACK_OPTIONS.map((opt) => {
@@ -531,6 +550,10 @@ export default function QaReviewPage() {
                   설정 저장에 실패했습니다.
                 </span>
               )}
+
+              {/* #132 — 부관리자별 독립 설정(조회기간 + 볼 수 있는 평가) */}
+              <span className={styles.settingsLabel}>부관리자별 개별 설정</span>
+              <QaReviewAdminSettings />
             </div>
           )}
 

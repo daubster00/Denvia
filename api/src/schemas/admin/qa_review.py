@@ -61,6 +61,8 @@ class ReviewListResponse(BaseModel):
     page_size: int
     viewer_grade: str | None = None
     effective_period: EffectivePeriod
+    # #132 — 부관리자에게 강제된 평가필터(관리자 설정). null 이면 자유 선택.
+    forced_rating: Literal["good", "bad", "unrated"] | None = None
 
 
 # =============================================================================
@@ -173,3 +175,29 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdateRequest(BaseModel):
     sub_operator_max_lookback_days: int = Field(ge=1, le=365)
+
+
+# =============================================================================
+# 부관리자별 조회 설정 (#132)
+# =============================================================================
+
+
+class AdminReviewSettingRow(BaseModel):
+    """부관리자 1명의 조회 설정. max_lookback_days=None → 전역 기본값 사용."""
+
+    admin_id: int
+    email: str | None = None
+    admin_grade: str | None = None
+    max_lookback_days: int | None = None
+    rating_scope: Literal["all", "good", "bad", "unrated"] = "all"
+
+
+class AdminReviewSettingsListResponse(BaseModel):
+    global_default_days: int
+    admins: list[AdminReviewSettingRow]
+
+
+class AdminReviewSettingUpdateRequest(BaseModel):
+    # None → 전역 기본값 사용. 값이 있으면 1~365 일.
+    max_lookback_days: int | None = Field(default=None, ge=1, le=365)
+    rating_scope: Literal["all", "good", "bad", "unrated"] = "all"

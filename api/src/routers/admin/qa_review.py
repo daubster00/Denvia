@@ -40,6 +40,9 @@ from api.src.middleware.audit_actions import (
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.admin.qa_review import (
+    AdminReviewSettingRow,
+    AdminReviewSettingsListResponse,
+    AdminReviewSettingUpdateRequest,
     BulkDeleteRequest,
     BulkDeleteResponse,
     CommentRequest,
@@ -93,13 +96,24 @@ async def list_reviews(
     settings = await qa_review_service.get_settings(db)
     max_lookback_days = settings["sub_operator_max_lookback_days"]
 
+    # #132 — 제한 등급 뷰어는 본인 설정(조회기간·강제 평가필터)을 적용한다.
+    effective_rating = rating
+    forced_rating: str | None = None
+    if qa_review_service.is_period_restricted(viewer_grade):
+        max_lookback_days, scope = await qa_review_service.resolve_restricted_limits(
+            db, admin_id=actor.id, global_days=max_lookback_days
+        )
+        if scope != "all":
+            effective_rating = scope
+            forced_rating = scope
+
     data = await qa_review_service.list_reviews(
         db,
         viewer_grade=viewer_grade,
         period=period,  # type: ignore[arg-type]
         date_from=date_from,
         date_to=date_to,
-        rating_filter=rating,  # type: ignore[arg-type]
+        rating_filter=effective_rating,  # type: ignore[arg-type]
         review_filter=review,  # type: ignore[arg-type]
         q=q,
         page=page,
@@ -139,6 +153,7 @@ async def list_reviews(
         page_size=page_size,
         viewer_grade=viewer_grade,
         effective_period=EffectivePeriod(**data["effective_period"]),
+        forced_rating=forced_rating,  # type: ignore[arg-type]
     )
 
 
@@ -459,3 +474,54 @@ async def update_settings(
         sub_operator_max_lookback_days=settings["sub_operator_max_lookback_days"],
     )
     return SettingsResponse(**settings)
+
+
+# ── 부관리자별 조회 설정 (#132, master/operator) ──────────────────────────────
+@router.get(
+    "/settings/admins",
+    response_model=AdminReviewSettingsListResponse,
+    dependencies=[Depends(require_admin_grade("master", "operator"))],
+)
+async def get_admin_settings(
+    response: Response,
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AdminReviewSettingsListResponse:
+    data = await qa_review_service.list_admin_review_settings(db)
+    await db.commit()  # get_settings 최초 조회 시 lazy 생성될 수 있어 커밋
+    response.headers["Cache-Control"] = "no-store"
+    return AdminReviewSettingsListResponse(
+        global_default_days=data["global_default_days"],
+        admins=[AdminReviewSettingRow(**a) for a in data["admins"]],
+    )
+
+
+@router.put(
+    "/settings/admins/{admin_id}",
+    response_model=AdminReviewSettingRow,
+    dependencies=[Depends(require_admin_grade("master", "operator"))],
+)
+@audit_action(AUDIT_QA_REVIEW_SETTINGS)
+async def update_admin_setting(
+    request: Request,
+    admin_id: int,
+    body: AdminReviewSettingUpdateRequest,
+    actor: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+) -> AdminReviewSettingRow:
+    row = await qa_review_service.upsert_admin_review_setting(
+        db,
+        target_admin_id=admin_id,
+        max_lookback_days=body.max_lookback_days,
+        rating_scope=body.rating_scope,
+        admin_id=actor.id,
+    )
+    await db.commit()
+    logger.info(
+        "admin.qa_review.admin_setting_updated",
+        actor_user_id=actor.id,
+        target_admin_id=admin_id,
+        max_lookback_days=body.max_lookback_days,
+        rating_scope=body.rating_scope,
+    )
+    return AdminReviewSettingRow(**row)
