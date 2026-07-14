@@ -217,7 +217,7 @@ function GroupRows({
                   {item.email}
                 </Link>
               ) : (
-                <span className={styles.accountAnon}>비회원</span>
+                <span className={styles.accountAnon}>탈퇴회원</span>
               )}
             </td>
             <td className={styles.td}>{formatKst(item.created_at)}</td>

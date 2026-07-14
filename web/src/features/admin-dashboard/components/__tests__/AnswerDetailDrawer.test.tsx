@@ -134,11 +134,11 @@ describe("AnswerDetailDrawer", () => {
     expect(link.getAttribute("href")).toBe("/admin/users/42");
   });
 
-  it("비회원(user_id=null)이면 링크 대신 '비회원' 표시", () => {
+  it("탈퇴회원(user_id=null)이면 링크 대신 '탈퇴회원' 표시", () => {
     const anon: FeedbackItem = { ...sampleItem, user_id: null, email: null };
     renderWithClient(<AnswerDetailDrawer item={anon} onClose={vi.fn()} />);
     expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByText("비회원")).toBeTruthy();
+    expect(screen.getByText("탈퇴회원")).toBeTruthy();
   });
 
   it("top-k 검색 문서가 로드되면 건수와 본문 렌더", async () => {

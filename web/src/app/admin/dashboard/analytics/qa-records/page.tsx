@@ -308,7 +308,7 @@ export default function QaRecordsAnalyticsPage() {
                   list.items.map((it) => (
                     <tr key={it.qa_log_id}>
                       <td>{formatDateTime(it.created_at_kst)}</td>
-                      <td>{it.email_masked || "(비회원)"}</td>
+                      <td>{it.email_masked || "(탈퇴회원)"}</td>
                       <td>{it.segment_label || "—"}</td>
                       <td className={styles.numCell}>
                         {it.years_of_experience != null

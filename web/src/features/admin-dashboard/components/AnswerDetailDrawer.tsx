@@ -163,7 +163,7 @@ export function AnswerDetailDrawer({ item, onClose }: AnswerDetailDrawerProps) {
                       {item.email}
                     </Link>
                   ) : (
-                    <span className={styles.accountAnon}>비회원</span>
+                    <span className={styles.accountAnon}>탈퇴회원</span>
                   )}
                 </div>
                 <div>

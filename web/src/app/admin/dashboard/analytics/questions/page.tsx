@@ -497,7 +497,7 @@ export default function QuestionsAnalyticsPage() {
                                 {it.email}
                               </Link>
                             ) : (
-                              it.email ?? "(비회원)"
+                              it.email ?? "(탈퇴회원)"
                             )}
                           </td>
                           <td>{segmentLabel(it.segment)}</td>
