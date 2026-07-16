@@ -70,6 +70,15 @@ class UserQALogDetail(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     cost_usd: Decimal | None = None
+    # USD 비용을 한화로 환산한 보조 필드 (UI 메타 표시용). cost_usd 가 None 이면 None.
+    # 질문분석 경로(FeedbackDetail)와 동일 시그니처 — 두 상세 드로어 표기 일치용.
+    cost_krw: int | None = None
+    # 환산에 적용된 USD→KRW 환율 + 근거 (실시간 한국수출입은행 환율, Redis 캐시).
+    usd_to_krw: int
+    # 환율이 마지막으로 자동 갱신된 시각(ISO8601 UTC) — 자동 갱신 전이면 None.
+    usd_to_krw_updated_at: str | None = None
+    # 환율 API 가 실제 데이터를 반환한 영업일(YYYY-MM-DD) — 자동 갱신 전이면 None.
+    usd_to_krw_search_date: str | None = None
     latency_ms: int | None = None
     created_at: datetime
 

@@ -24,7 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis as AsyncRedis
 
 from api.src.deps.auth import require_admin, require_admin_page
-from api.src.deps.redis import get_redis_quota, get_redis_rate_limit
+from api.src.deps.redis import (
+    get_redis_quota,
+    get_redis_rate_limit,
+    get_redis_runtime,
+)
 from api.src.middleware.audit_actions import (
     AUDIT_ADMIN_DM_SEND,
     AUDIT_ANOMALY_THROTTLE_CLEAR,
@@ -343,6 +347,7 @@ async def get_user_qa_log_detail(
     qa_log_id: int,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
 ) -> UserQALogDetail:
     """관리자용 단건 질의 상세 — '상세보기' 버튼.
 
@@ -352,7 +357,7 @@ async def get_user_qa_log_detail(
     """
     await _require_user_exists(db, user_id)
     detail = await admin_user_activity_service.get_user_qa_log_detail(
-        db, user_id=user_id, qa_log_id=qa_log_id
+        db, user_id=user_id, qa_log_id=qa_log_id, redis_runtime=redis_runtime
     )
     if detail is None:
         raise HTTPException(

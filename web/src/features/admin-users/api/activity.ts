@@ -40,6 +40,14 @@ export interface UserQALogDetail {
   input_tokens: number | null;
   output_tokens: number | null;
   cost_usd: string | null;
+  /** USD 비용을 한화로 환산한 보조 필드 (cost_usd 가 null 이면 null). */
+  cost_krw: number | null;
+  /** 환산에 적용된 USD→KRW 환율. */
+  usd_to_krw: number;
+  /** 환율이 마지막으로 자동 갱신된 시각(ISO8601 UTC) — 자동 갱신 전이면 null. */
+  usd_to_krw_updated_at: string | null;
+  /** 환율 API 가 실제 데이터를 반환한 영업일(YYYY-MM-DD) — 자동 갱신 전이면 null. */
+  usd_to_krw_search_date: string | null;
   latency_ms: number | null;
   created_at: string;
 }

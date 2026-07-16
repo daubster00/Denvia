@@ -54,11 +54,18 @@ def _stub_db_returning(value):
     return db
 
 
+def _fake_redis():
+    """모든 키 미설정 redis — get_usd_to_krw 가 기본 1400 폴백, 메타는 None."""
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    return redis
+
+
 @pytest.mark.asyncio
 async def test_returns_none_when_row_missing():
     db = _stub_db_returning(None)
     detail = await admin_user_activity_service.get_user_qa_log_detail(
-        db, user_id=7, qa_log_id=999
+        db, user_id=7, qa_log_id=999, redis_runtime=_fake_redis()
     )
     assert detail is None
 
@@ -73,7 +80,7 @@ async def test_maps_normalized_query_and_docs():
     db = _stub_db_returning(row)
 
     detail = await admin_user_activity_service.get_user_qa_log_detail(
-        db, user_id=7, qa_log_id=101
+        db, user_id=7, qa_log_id=101, redis_runtime=_fake_redis()
     )
 
     assert detail is not None
@@ -87,6 +94,11 @@ async def test_maps_normalized_query_and_docs():
     assert detail.rule_matched is False
     assert detail.input_tokens == 10
     assert detail.cost_usd == Decimal("0.001")
+    # 원화 환산: cost_usd(0.001) × 기본환율(1400) = 1.4 → 반올림 1원.
+    assert detail.usd_to_krw == 1400
+    assert detail.cost_krw == 1
+    assert detail.usd_to_krw_updated_at is None
+    assert detail.usd_to_krw_search_date is None
 
 
 @pytest.mark.asyncio
@@ -95,7 +107,7 @@ async def test_legacy_row_with_null_audit_fields_returns_empty_lists():
     db = _stub_db_returning(row)
 
     detail = await admin_user_activity_service.get_user_qa_log_detail(
-        db, user_id=7, qa_log_id=101
+        db, user_id=7, qa_log_id=101, redis_runtime=_fake_redis()
     )
 
     assert detail is not None
@@ -115,7 +127,7 @@ async def test_skips_invalid_doc_entries():
     db = _stub_db_returning(row)
 
     detail = await admin_user_activity_service.get_user_qa_log_detail(
-        db, user_id=7, qa_log_id=101
+        db, user_id=7, qa_log_id=101, redis_runtime=_fake_redis()
     )
 
     assert detail is not None
@@ -129,7 +141,7 @@ async def test_rule_matched_path_typically_has_no_docs():
     db = _stub_db_returning(row)
 
     detail = await admin_user_activity_service.get_user_qa_log_detail(
-        db, user_id=7, qa_log_id=101
+        db, user_id=7, qa_log_id=101, redis_runtime=_fake_redis()
     )
 
     assert detail is not None

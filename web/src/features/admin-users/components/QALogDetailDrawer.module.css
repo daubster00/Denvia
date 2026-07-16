@@ -192,6 +192,12 @@
   margin-right: 6px;
 }
 
+.metaNote {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: #9ca3af;
+}
+
 .loading,
 .error {
   padding: 32px 0;

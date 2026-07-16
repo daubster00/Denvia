@@ -7,6 +7,7 @@ import {
   type RetrievedDocItem,
   type UserQALogDetail,
 } from "@/features/admin-users/api/activity";
+import { formatKRW } from "@/lib/format-currency";
 import styles from "./QALogDetailDrawer.module.css";
 
 interface Props {
@@ -31,6 +32,31 @@ function fmt(value: string | null | undefined): string {
   } catch {
     return value;
   }
+}
+
+/**
+ * 원화 환산의 근거를 한 줄로 설명한다. 질문분석 상세 드로어(AnswerDetailDrawer)와 동일 표기.
+ */
+function exchangeRateNote(
+  usdToKrw: number,
+  searchDate: string | null,
+  updatedAt: string | null,
+): string {
+  const base = `환율 기준: 1 USD = ${formatKRW(usdToKrw)}`;
+  const parts: string[] = [];
+  if (searchDate) parts.push(`${searchDate} 환율`);
+  if (updatedAt) {
+    const dt = new Date(updatedAt);
+    if (!Number.isNaN(dt.getTime())) {
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      const hh = String(dt.getHours()).padStart(2, "0");
+      const mi = String(dt.getMinutes()).padStart(2, "0");
+      parts.push(`${mm}-${dd} ${hh}:${mi} 갱신`);
+    }
+  }
+  if (parts.length === 0) return `${base} (기본 적용 환율)`;
+  return `${base} (${parts.join(", ")})`;
 }
 
 function MetaPills({ metadata }: { metadata: Record<string, unknown> }) {
@@ -116,7 +142,20 @@ function DetailBody({ detail }: { detail: UserQALogDetail }) {
             <span className={styles.metaLabel}>비용(USD)</span>
             {detail.cost_usd ?? "—"}
           </div>
+          <div>
+            <span className={styles.metaLabel}>비용(원화 환산)</span>
+            {detail.cost_usd != null ? formatKRW(detail.cost_krw) : "—"}
+          </div>
         </div>
+        {detail.cost_usd != null && (
+          <p className={styles.metaNote}>
+            {exchangeRateNote(
+              detail.usd_to_krw,
+              detail.usd_to_krw_search_date,
+              detail.usd_to_krw_updated_at,
+            )}
+          </p>
+        )}
       </section>
 
       <section className={styles.section} data-testid="section-retrieved-docs">

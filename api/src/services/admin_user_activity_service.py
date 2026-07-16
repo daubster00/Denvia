@@ -14,8 +14,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import structlog
+from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +34,7 @@ from api.src.schemas.admin.user_activity import (
     UserQALogItem,
     UserQALogListResponse,
 )
+from api.src.services import runtime_config_service
 from api.src.services.budget_service import KST
 
 logger = structlog.get_logger(__name__)
@@ -123,11 +126,16 @@ async def get_user_qa_log_detail(
     *,
     user_id: int,
     qa_log_id: int,
+    redis_runtime: AsyncRedis,
 ) -> UserQALogDetail | None:
     """qa_logs 단건 상세 — 관리자 '상세보기' 전용.
 
     user_id × qa_log_id 교차 검증으로 다른 사용자의 로그 노출을 차단한다.
     반환은 normalized_query, retrieved_docs 포함 (본 마이그레이션 이전 행은 None).
+
+    비용은 USD 원본에 더해 원화 환산(cost_krw)도 함께 내려준다 — 질문분석 경로
+    (analytics feedback_detail)와 동일하게 실시간 환율 스냅샷을 적용. Redis 미설정 시
+    기본 1400 폴백이라 표기는 항상 가능.
     """
     row = (
         await db.execute(
@@ -149,6 +157,14 @@ async def get_user_qa_log_detail(
             )
         )
 
+    # USD 비용을 한화로 환산 — 실시간 환율(한국수출입은행, Redis 캐시) + 갱신 메타.
+    snapshot = await runtime_config_service.get_usd_to_krw_snapshot(redis_runtime)
+    cost_krw: int | None = None
+    if row.cost_usd is not None:
+        cost_krw = int(
+            (Decimal(str(row.cost_usd)) * Decimal(snapshot.rate)).quantize(Decimal("1"))
+        )
+
     return UserQALogDetail(
         qa_log_id=row.id,
         question_text=row.question_text or "",
@@ -161,6 +177,10 @@ async def get_user_qa_log_detail(
         input_tokens=row.input_tokens,
         output_tokens=row.output_tokens,
         cost_usd=row.cost_usd,
+        cost_krw=cost_krw,
+        usd_to_krw=snapshot.rate,
+        usd_to_krw_updated_at=snapshot.updated_at,
+        usd_to_krw_search_date=snapshot.search_date,
         latency_ms=row.latency_ms,
         created_at=row.created_at,
     )
