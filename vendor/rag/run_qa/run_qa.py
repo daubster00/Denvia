@@ -178,50 +178,59 @@ def _try_synonym_replace(token, syn_map):
 
 # ================== 🔁 스케일링 규칙 ==================
 
+# SC/스케일링 표기 후보 — 뒤에 영문/숫자가 붙으면 매칭 차단(게시판 #136)
+# "sc"가 "scaling"/"score"/"disc" 등 영어 단어 안에서 치석제거로 오치환되던 것을 방지.
+_SC_ALT = r'(?:sc|s\.c|s/c|스케일링|스켈링)(?![a-zA-Z0-9])'
+
+
 def apply_scaling_rules(text):
     """
     스케일링/SC 관련 동의어를 문맥에 따라 올바른 용어로 치환.
     normalize_query 이전에 원본에 적용.
     ※ preprocess(lower) 전에 호출되므로 대소문자 무시 플래그 사용.
+
+    게시판 #136 — 클라이언트 최신 run_qa 반영: 모든 SC 후보에 영문/숫자 경계
+    (_SC_ALT 의 뒤쪽 (?![a-zA-Z0-9]) + 단독 룰의 앞쪽 (?<![a-zA-Z0-9]))를 추가해
+    영어 단어 속 "sc"가 치석제거로 오치환되는 문제를 차단.
     """
     # 🔥 치주
     text = re.sub(
-        r'(치주)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(치주)\s*(' + _SC_ALT + r')',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
     # 🔥 전악
     text = re.sub(
-        r'(전악)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(전악)\s*(' + _SC_ALT + r')',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
     # 🔥 부분
     text = re.sub(
-        r'(부분)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(부분)\s*(' + _SC_ALT + r')',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
     # 🔥 건강/의료 보험 SC → 공백 정리만 (치환 없음, 다음 룰들이 처리)
     text = re.sub(
-        r'(건강|의료)(보험)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(건강|의료)(보험)\s*(' + _SC_ALT + r')',
         r'\1 \2\3', text, flags=re.IGNORECASE
     )
     # 🔥 연1회 보험/급여 SC → 연1회치석제거
     text = re.sub(
-        r'(연\s*1\s*회)\s*(보험|급여)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(연\s*1\s*회)\s*(보험|급여)\s*(' + _SC_ALT + r')',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
     # 🔥 연1회
     text = re.sub(
-        r'(연\s*1\s*회)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(연\s*1\s*회)\s*(' + _SC_ALT + r')',
         r'\1치석제거', text, flags=re.IGNORECASE
     )
     # 🔥 보험/급여 → 연1회치석제거 (단, "비보험"/"비급여"는 제외)
     text = re.sub(
-        r'(?<!비)(보험|급여)\s*(sc|s\.c|s/c|스케일링|스켈링)',
+        r'(?<!비)(보험|급여)\s*(' + _SC_ALT + r')',
         r'연1회치석제거', text, flags=re.IGNORECASE
     )
     # 🔥 기본 (단독 스케일링/스켈링/s.c/s/c/sc → 치석제거)
     text = re.sub(
-        r'(스케일링|스켈링|s\.c|s/c|sc)',
+        r'(?<![a-zA-Z0-9])' + _SC_ALT,
         '치석제거', text, flags=re.IGNORECASE
     )
     return text

@@ -11,6 +11,11 @@ const COMPANY = {
   phone: "010-2323-2753",
 };
 
+// 사업자 정보 란(대표자·회사명·사업자등록번호 등) 노출 여부 — 게시판 #135.
+// PG 심사용으로 노출했으나 토스 심사 취소·새 PG 검토 중이라 임시 숨김.
+// 새 PG 선정 시 true 로 되돌리면 원상 복원된다.
+const SHOW_BUSINESS_INFO = false;
+
 export function Footer() {
   const year = new Date().getFullYear();
 
@@ -27,42 +32,45 @@ export function Footer() {
           />
         </div>
 
-        <dl className={styles.infoGrid}>
-          <div className={styles.infoItem}>
-            <dt className={styles.label}>회사명</dt>
-            <dd className={styles.value}>{COMPANY.name}</dd>
-          </div>
-          <div className={styles.infoItem}>
-            <dt className={styles.label}>대표</dt>
-            <dd className={styles.value}>{COMPANY.representative}</dd>
-          </div>
-          <div className={styles.infoItem}>
-            <dt className={styles.label}>사업자등록번호</dt>
-            <dd className={styles.value}>{COMPANY.businessNumber}</dd>
-          </div>
-          <div className={styles.infoItem}>
-            <dt className={styles.label}>주소</dt>
-            <dd className={styles.value}>{COMPANY.address}</dd>
-          </div>
-          <div className={styles.infoItem}>
-            <dt className={styles.label}>연락처</dt>
-            <dd className={styles.value}>
-              <a href={`tel:${COMPANY.phone.replace(/-/g, "")}`}>
-                {COMPANY.phone}
-              </a>
-            </dd>
-          </div>
-          <div className={styles.infoItem}>
-            <dt className={styles.label}>이메일</dt>
-            <dd className={styles.value}>
-              <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a>
-            </dd>
-          </div>
-        </dl>
+        {SHOW_BUSINESS_INFO && (
+          <dl className={styles.infoGrid}>
+            <div className={styles.infoItem}>
+              <dt className={styles.label}>회사명</dt>
+              <dd className={styles.value}>{COMPANY.name}</dd>
+            </div>
+            <div className={styles.infoItem}>
+              <dt className={styles.label}>대표</dt>
+              <dd className={styles.value}>{COMPANY.representative}</dd>
+            </div>
+            <div className={styles.infoItem}>
+              <dt className={styles.label}>사업자등록번호</dt>
+              <dd className={styles.value}>{COMPANY.businessNumber}</dd>
+            </div>
+            <div className={styles.infoItem}>
+              <dt className={styles.label}>주소</dt>
+              <dd className={styles.value}>{COMPANY.address}</dd>
+            </div>
+            <div className={styles.infoItem}>
+              <dt className={styles.label}>연락처</dt>
+              <dd className={styles.value}>
+                <a href={`tel:${COMPANY.phone.replace(/-/g, "")}`}>
+                  {COMPANY.phone}
+                </a>
+              </dd>
+            </div>
+            <div className={styles.infoItem}>
+              <dt className={styles.label}>이메일</dt>
+              <dd className={styles.value}>
+                <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a>
+              </dd>
+            </div>
+          </dl>
+        )}
 
         <div className={styles.copyright}>
           <span className={styles.copyrightText}>
-            © {year} {COMPANY.name}. All rights reserved.
+            © {year}{" "}
+            {SHOW_BUSINESS_INFO ? COMPANY.name : "Denvia"}. All rights reserved.
           </span>
           <nav className={styles.legalLinks} aria-label="약관 및 정책">
             <Link href="/legal/terms" className={styles.legalLink}>
