@@ -130,6 +130,16 @@
   display: block;
 }
 
+/* 좌측 하단 고정 '문의 작성' 버튼(SupportWidget: bottom 24px + 높이 약 36px)이
+   차지하는 높이만큼 입력 영역 아래를 비워, "오늘 남은 질문" caption이 버튼 위에 놓이도록 한다.
+   → 세로 순서: caption → 문의 작성 버튼 (둘 다 좌측 정렬, 겹침 없음)
+   화면이 넓으면 버튼이 채팅 컬럼 왼쪽 바깥에 있어 겹치지 않으므로 여백을 추가하지 않는다. */
+@media (max-width: 1000px) {
+  .inputBottom {
+    padding-bottom: max(72px, calc(env(safe-area-inset-bottom, 0px) + 72px));
+  }
+}
+
 /* #86: 답변 지연 안내문구 — 채팅 화면 상단 중앙 오버레이.
    "생각중" 상태일 때만 렌더되며, 상단 패딩(72px) 영역에 떠서 메시지를 밀지 않는다.
    (관리자 콘텐츠 페이지에서 텍스트 편집) */

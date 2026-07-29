@@ -1,6 +1,6 @@
 "use client";
 
-/** SupportWidget — 우측 하단 고객 지원 위젯 (F-504). Story 4.5 + 0030 게시판화.
+/** SupportWidget — 좌측 하단 고객 지원 위젯 (F-504). Story 4.5 + 0030 게시판화.
  *
  * 클릭 시 즉시 작성 페이지(/my/inquiries/new)로 이동한다. 모달 형식 폐기.
  * 비로그인/관리자 화면에서는 미렌더 (기존 정책 유지).
