@@ -25,6 +25,7 @@ from api.src.services.qa_service import QAService
 def _make_rag_module_mock(
     rule_answer: str | None = None,
     procedures: list[str] | None = None,
+    periodontal_result=None,
 ):
     """rag.run_qa 모듈을 모킹한 ModuleType을 반환한다."""
     mock_mod = ModuleType("rag.run_qa")
@@ -33,6 +34,8 @@ def _make_rag_module_mock(
     mock_mod.normalize_query = lambda query, syn: query
     mock_mod.generate_rule_answer = lambda query: rule_answer
     mock_mod.extract_procedures = lambda query: procedures or []
+    # 게시판 #139/#140 — 치주낭측정 결정형 우회. 기본 None(미매칭 → 기존 분기 유지).
+    mock_mod.get_periodontal_result = lambda query: periodontal_result
     return mock_mod
 
 
@@ -142,6 +145,63 @@ async def test_stream_rule_path_yields_rule_matched_token_done():
     done_data = json.loads(events[2]["data"])
     assert done_data["rule_matched"] is True
     assert done_data["total_tokens"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 치주낭측정 경로 테스트 (게시판 #139/#140)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_stream_periodontal_path_yields_token_and_done():
+    """치주낭 경로: RAG 처럼 token 다회 + done. rule_matched=True, 검색 없음(docs 빈 리스트).
+
+    치주낭은 최우선 분기 — 장애인/RAG 보다 먼저 잡히고, 장애인 전용 rule_matched
+    이벤트(procedure_count)는 쏘지 않는다.
+    """
+    svc = QAService()
+    db = _make_db(log_id=15)
+    user = _make_user()
+
+    async def _mock_perio_stream(raw_query, count, detail, on_complete):
+        yield "1.5"
+        yield "회"
+        on_complete(TokenUsage(12, 3, 15, 0.001), "1.5회", [], "PERIO_PROMPT")
+
+    # 치주낭 매칭 → (count, detail). 장애인 룰도 있으나 치주낭이 최우선이어야 함.
+    rag_mock = _make_rag_module_mock(
+        rule_answer="장애인가산...",
+        procedures=["발치"],
+        periodontal_result=(1.5, {"방식": "2분의1악 병합"}),
+    )
+    rag_mock.normalize_query = lambda query, syn: "장애인 가산 11~17 치주낭 몇회"
+
+    with (
+        patch.dict("sys.modules", {"rag": MagicMock(), "rag.run_qa": rag_mock}),
+        patch("api.src.services.qa_service.query_runner.ensure_initialized", new_callable=AsyncMock),
+        patch(
+            "api.src.services.qa_service.query_runner.stream_periodontal_answer",
+            side_effect=_mock_perio_stream,
+        ),
+    ):
+        events = await _collect(
+            svc.stream(db=db, user=user, question_text="11~17 치주낭측정검사 몇회야?")
+        )
+
+    event_names = [ev["event"] for ev in events]
+    # 치주낭은 rule_matched 이벤트를 쏘지 않는다 — token/done 만.
+    assert "rule_matched" not in event_names
+    assert "token" in event_names
+    assert "done" in event_names
+    assert "error" not in event_names
+
+    tokens = [json.loads(ev["data"])["delta"] for ev in events if ev["event"] == "token"]
+    assert "".join(tokens) == "1.5회"
+
+    done_data = json.loads(next(ev["data"] for ev in events if ev["event"] == "done"))
+    assert done_data["qa_log_id"] == 15
+    assert done_data["total_tokens"] == 15
+    # 결정형 우회이므로 rule_matched=True (치주낭도 규칙 기반 집계)
+    assert done_data["rule_matched"] is True
 
 
 # ---------------------------------------------------------------------------

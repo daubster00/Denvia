@@ -483,6 +483,7 @@ class QAService:
             normalize_query,
             generate_rule_answer,
             extract_procedures,
+            get_periodontal_result,
         )
 
         t0 = time.perf_counter()
@@ -516,6 +517,9 @@ class QAService:
             normalized = await asyncio.to_thread(normalize_query, scaled, syn_dict)
             rule_answer = await asyncio.to_thread(generate_rule_answer, normalized)
             procedures = await asyncio.to_thread(extract_procedures, normalized)
+            # 게시판 #139/#140 — 치주낭측정검사 횟수 자동산정(최우선 결정형 우회).
+            # 트리거 a(치주낭)·b(치식)·c(몇/회/횟수) 3요인이 모두 걸릴 때만 not-None.
+            periodontal_result = await asyncio.to_thread(get_periodontal_result, normalized)
             t_prep_done_ms = int((time.perf_counter() - t0) * 1000)
             logger.info(
                 "qa.stream.prep_timings_ms",
@@ -528,18 +532,64 @@ class QAService:
             )
 
             # AC-2 분기 조건 (원본 CLI 기준, ADR-0002 §결정 1)
+            # 우선순위(클라이언트 139 순서): 치주낭측정 → 장애인가산 룰 → RAG.
+            use_periodontal = periodontal_result is not None
             use_rule = (
-                "장애인" in normalized
+                not use_periodontal
+                and "장애인" in normalized
                 and "가산" in normalized
                 and rule_answer is not None
             )
+            # 결정형 우회(치주낭·장애인가산)는 rule_matched=True 로 집계한다.
+            # 치주낭은 LLM 을 태우지만(계산값 그대로 출력) 성격상 규칙 기반 답변이다.
+            rule_matched_flag = use_periodontal or use_rule
 
             retrieved_docs_payload: list[dict] = []
             # 관리자 질문 상세 패널 — LLM 에 실제로 들어간 최종 프롬프트.
-            # 룰 경로는 LLM 호출 자체가 없으므로 None 유지.
+            # 장애인가산 룰 경로는 LLM 호출 자체가 없으므로 None 유지(치주낭은 프롬프트 기록).
             prompt_text_payload: str | None = None
 
-            if use_rule:
+            if use_periodontal:
+                # 치주낭측정 경로: 계산값(count)을 build_periodontal_llm_prompt 로 감싸
+                # LLM 스트리밍(RAG 검색 없음). UI 는 RAG 와 동일하게 token 다회 → done.
+                # (장애인 전용 rule_matched 이벤트/procedure_count 는 쏘지 않는다.)
+                count, detail = periodontal_result
+                accumulated_chunks_p: list[str] = []
+                usage_holder_p: list[TokenUsage] = []
+                docs_holder_p: list[list[dict]] = []
+                prompt_holder_p: list[str | None] = []
+
+                def _on_complete_p(
+                    u: TokenUsage,
+                    full: str,
+                    docs: list[dict],
+                    prompt: str | None = None,
+                ) -> None:
+                    usage_holder_p.append(u)
+                    docs_holder_p.append(docs)
+                    prompt_holder_p.append(prompt)
+
+                async for token in query_runner.stream_periodontal_answer(
+                    question_text, count, detail, _on_complete_p
+                ):
+                    if not first_token_logged:
+                        await catch_up_to_deadline(preflight_result, user_id=user.id)
+                        logger.info(
+                            "qa.stream.first_token_ms",
+                            qa_log_id=qa_log_id,
+                            user_id=user.id,
+                            path="periodontal",
+                            ttft_ms=int((time.perf_counter() - t0) * 1000),
+                        )
+                        first_token_logged = True
+                    accumulated_chunks_p.append(token)
+                    yield {"event": "token", "data": json.dumps({"delta": token})}
+
+                accumulated = "".join(accumulated_chunks_p)
+                usage = usage_holder_p[0] if usage_holder_p else TokenUsage(0, 0, 0, 0.0)
+                retrieved_docs_payload = docs_holder_p[0] if docs_holder_p else []
+                prompt_text_payload = prompt_holder_p[0] if prompt_holder_p else None
+            elif use_rule:
                 # 룰 응답 경로: rule_matched → token 1회 → done
                 # 체감 지연 보장 — 첫 사용자 가시 이벤트(rule_matched) 직전에 deadline 까지 대기.
                 await catch_up_to_deadline(preflight_result, user_id=user.id)
@@ -596,7 +646,7 @@ class QAService:
 
             # AC-4: qa_logs UPDATE
             log.answer_text = accumulated
-            log.rule_matched = use_rule
+            log.rule_matched = rule_matched_flag
             log.input_tokens = usage.input_tokens
             log.output_tokens = usage.output_tokens
             log.cost_usd = Decimal(str(usage.cost_usd))
@@ -633,7 +683,7 @@ class QAService:
                     "total_tokens": usage.total_tokens,
                     "cost_usd": float(usage.cost_usd),
                     "latency_ms": latency_ms,
-                    "rule_matched": use_rule,
+                    "rule_matched": rule_matched_flag,
                     **throttle_payload,
                 }),
             }
@@ -655,7 +705,8 @@ class QAService:
                 latency_ms=latency_ms,
                 total_tokens=usage.total_tokens,
                 cost_usd=float(usage.cost_usd),
-                rule_matched=use_rule,
+                rule_matched=rule_matched_flag,
+                path="periodontal" if use_periodontal else ("rule" if use_rule else "rag"),
                 procedure_count=len(procedures) if use_rule else 0,
             )
 

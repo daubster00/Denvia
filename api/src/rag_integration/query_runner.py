@@ -497,6 +497,105 @@ async def stream_rag_answer(
     on_complete(usage, full_text, docs, prompt_text)
 
 
+async def stream_periodontal_answer(
+    raw_query: str,
+    count,
+    detail: dict,
+    on_complete: callable,
+) -> AsyncIterator[str]:
+    """치주낭측정검사 횟수(결정형 계산값)를 LLM 스트리밍으로 그대로 출력한다 (게시판 #139/#140).
+
+    장애인가산 룰과 같은 "결정형 우회" 계열이지만, 클라이언트 설계(140)상 계산된
+    횟수를 ``build_periodontal_llm_prompt`` 로 감싸 LLM 이 값을 수정·누락 없이 그대로
+    출력하게 한다. RAG(FAISS 검색)는 타지 않는다 — retriever/RetrievalQA 없이 단일
+    LLM 호출만 스트리밍한다.
+
+    stream_rag_answer 와 동일한 asyncio.to_thread + Queue + FirstTokenTimeout 패턴을
+    공유해, 첫 토큰 45초 상한·토큰 사이 stall 방지(request_timeout)·usage 캡처를
+    똑같이 적용한다. docs 는 항상 빈 리스트(검색 없음), prompt_text 는 실제로 LLM 에
+    들어간 치주낭 프롬프트를 관리자 감사용으로 넘긴다.
+    """
+    from rag.run_qa import build_periodontal_llm_prompt  # type: ignore[import-untyped]
+    from langchain_core.callbacks.base import BaseCallbackHandler
+
+    await ensure_initialized()
+    runtime = await _load_runtime_params()
+
+    prompt = build_periodontal_llm_prompt(raw_query, count, detail)
+
+    token_queue: queue.Queue[str | None] = queue.Queue()
+    accumulated: list[str] = []
+    usage_holder: list[TokenUsage] = []
+    exc_holder: list[BaseException] = []
+    first_token_perf: list[float] = []
+
+    def _run_sync() -> None:
+        try:
+            class _QueueCallbackHandler(BaseCallbackHandler):
+                def on_llm_new_token(self, token: str, **kwargs) -> None:
+                    if not first_token_perf:
+                        first_token_perf.append(time.perf_counter())
+                    accumulated.append(token)
+                    token_queue.put(token)
+
+            handler = _QueueCallbackHandler()
+
+            # 결정형 값 출력이므로 재현성 우선 temperature=0(관리자 설정). reasoning 모델은
+            # build_chat_llm 내부에서 temperature 를 자동 제외한다. 모델은 관리자 선택값 사용.
+            llm = build_chat_llm(
+                streaming=True,
+                callbacks=None,
+                temperature=runtime["rag_temperature"],
+                max_tokens=runtime["max_tokens"],
+                model_name=runtime.get("chat_model"),
+            )
+
+            with capture_usage() as usage:
+                with_retry(llm.invoke)(
+                    prompt,
+                    config={"callbacks": [handler]},
+                )
+            usage_holder.append(usage)
+        except Exception as e:
+            exc_holder.append(e)
+        finally:
+            token_queue.put(None)  # sentinel
+
+    loop = asyncio.get_event_loop()
+    thread_task = loop.run_in_executor(None, _run_sync)
+
+    timed_out = False
+    try:
+        try:
+            first = await asyncio.wait_for(
+                loop.run_in_executor(None, token_queue.get),
+                timeout=FIRST_TOKEN_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            timed_out = True
+            raise FirstTokenTimeoutError(
+                f"첫 토큰이 {FIRST_TOKEN_TIMEOUT_SECONDS:.0f}초 내 도착하지 않음"
+            )
+        if first is not None:
+            yield first
+            while True:
+                token = await loop.run_in_executor(None, token_queue.get)
+                if token is None:
+                    break
+                yield token
+    finally:
+        if not timed_out:
+            await thread_task
+
+    if exc_holder:
+        raise exc_holder[0]
+
+    full_text = "".join(accumulated)
+    usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
+    # docs 는 항상 빈 리스트(검색 없음). prompt_text 는 치주낭 프롬프트 그대로(관리자 감사용).
+    on_complete(usage, full_text, [], prompt)
+
+
 async def warmup_once() -> dict:
     """워밍업 ping — 실제 ``stream_rag_answer`` 와 100% 동일한 RetrievalQA 경로로 1회 더미 호출.
 

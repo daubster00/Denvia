@@ -628,6 +628,11 @@ def get_syn_dict():
 # ADR-0002 허용 수정 (i): while True CLI 루프 → if __name__ == "__main__": 가드
 if __name__ == "__main__":
     from prompt_builder import build_prompt_template
+    # 게시판 #139/#140 — 치주낭측정검사 횟수 자동산정 모듈(장애인가산과 동일한 결정형 우회)
+    from periodontal_pocket_calc import (
+        get_periodontal_result,
+        build_periodontal_llm_prompt,
+    )
 
     init_rag()
 
@@ -641,13 +646,29 @@ if __name__ == "__main__":
         query = apply_scaling_rules(raw_query)
         query = normalize_query(query, get_syn_dict())
 
-        # ✅ 1. 룰 먼저 실행
+        # ✅ 0. 치주낭측정 트리거(a: 치주낭 · b: 치식 · c: 몇/회/횟수) 최우선 확인
+        periodontal_result = get_periodontal_result(query)
+
+        # ✅ 1. 장애인가산 룰
         rule_answer = generate_rule_answer(query)
 
         has_disability = "장애인" in query
         has_gasan = "가산" in query
 
-        if has_disability and has_gasan and (rule_answer is not None):
+        if periodontal_result is not None:
+            count, detail = periodontal_result
+            llm_prompt = build_periodontal_llm_prompt(raw_query, count, detail)
+
+            print(f"\n🔍 원본 질문: {raw_query}")
+            print(f"🔁 치환된 질문: {query}")
+
+            periodontal_llm = ChatOpenAI(model_name="o4-mini")
+            with get_openai_callback() as cb:
+                llm_response = periodontal_llm.invoke(llm_prompt)
+
+            print("\n🤖 답변:\n")
+            print(llm_response.content)
+        elif has_disability and has_gasan and (rule_answer is not None):
             print(f"\n🔍 원본 질문: {raw_query}")
             print(f"🔁 치환된 질문: {query}")
             print("\n🤖 답변:\n")

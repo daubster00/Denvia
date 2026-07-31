@@ -33,6 +33,9 @@
   line-height: 1.6;
   text-align: center;
   word-break: keep-all;
+  /* #137 — 관리자가 넣은 줄바꿈(엔터)을 화면에 그대로 반영.
+     기본 white-space:normal 은 개행을 공백으로 접어 한 줄로 나열되던 문제. */
+  white-space: pre-wrap;
 }
 
 .actions {
