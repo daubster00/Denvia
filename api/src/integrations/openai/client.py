@@ -37,11 +37,14 @@ LLM_REQUEST_TIMEOUT_SECONDS = 60.0
 
 
 def _is_reasoning_model(name: str) -> bool:
-    """o3-/o4- 계열은 reasoning 모델 — temperature 파라미터 미지원.
+    """o3-/o4-/gpt-5.x 계열은 reasoning 모델 — temperature 파라미터 미지원.
 
-    OpenAI API가 reasoning 모델에 temperature != 1 전달 시 400 반환.
+    OpenAI API가 이들 모델에 temperature != 1 전달 시 400(Unsupported value)을 반환한다.
+    (gpt-5.6-luna/terra/sol 실측 확인 2026-07: "Only the default (1) value is supported").
+    temperature 를 생략하면 어떤 모델이든 안전(기본값 사용)하므로, 판별이 애매하면
+    reasoning 으로 취급해 temperature 를 빼는 방향이 옳다 — 넣어서 400 나는 것보다 안전.
     """
-    return name.startswith("o3") or name.startswith("o4")
+    return name.startswith("o3") or name.startswith("o4") or name.startswith("gpt-5")
 
 
 # ChatOpenAI 인스턴스 모듈 전역 캐시 — 같은 옵션이면 같은 인스턴스 재사용해서

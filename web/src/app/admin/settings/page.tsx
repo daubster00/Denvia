@@ -62,6 +62,24 @@ const MODEL_DESCRIPTIONS: Record<string, { title: string; speed: string; quality
     quality: "매우 똑똑 · 긴 추론 가능",
     note: "정확성을 최우선으로 할 때 사용. 가격이 가장 비쌉니다.",
   },
+  "gpt-5.6-luna": {
+    title: "gpt-5.6-luna (5.6 중 가장 빠르고 저렴 · 추천)",
+    speed: "빠름 (현재 o4-mini의 약 2배)",
+    quality: "지시 준수·답변 품질 o4-mini 이상 · 비용은 약 34% 저렴",
+    note: "속도·비용·품질 균형이 가장 좋아 현재 모델을 대체하기에 가장 적합합니다.",
+  },
+  "gpt-5.6-terra": {
+    title: "gpt-5.6-terra (5.6 균형형)",
+    speed: "빠름 (첫 글자까지 1~2초대)",
+    quality: "품질 상위 · Luna보다 조금 더 정교",
+    note: "품질을 조금 더 높이고 싶을 때. 비용은 현재 모델의 약 1.4배입니다.",
+  },
+  "gpt-5.6-sol": {
+    title: "gpt-5.6-sol (5.6 최상위 · 프런티어)",
+    speed: "보통 (추론이 많으면 느려질 수 있음)",
+    quality: "최고 품질 · 가장 정교한 추론",
+    note: "정확성 최우선일 때만. 비용이 현재 모델의 약 3배로 가장 비쌉니다.",
+  },
 };
 
 function getModelDescription(model: string) {
