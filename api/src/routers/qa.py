@@ -17,6 +17,7 @@ from api.src.services.killswitch_service import is_any_total_block_active, is_au
 from api.src.services.prompt_config_service import DEFAULT_QUESTION_CHARS
 from api.src.services.qa_feedback_service import upsert_feedback
 from api.src.services.qa_service import QAService
+from api.src.utils.device import classify_device
 
 router = APIRouter(prefix="/api/v1/qa", tags=["qa"])
 
@@ -95,10 +96,23 @@ async def qa_stream(
             },
         )
 
+    # #141 — 재시도 재생: 직전(3분 이내)에 완성됐지만 연결이 끊겨 전송 못 한 같은 질문
+    # 답변이 있으면, OpenAI 재호출·질문 횟수 차감 없이 저장분을 그대로 재생한다.
+    replay_log = await _qa_service.find_replayable(
+        db, user=user, question_text=body.question_text
+    )
+    if replay_log is not None:
+        return EventSourceResponse(
+            _qa_service.stream_saved(db=db, log=replay_log),
+            media_type="text/event-stream",
+        )
+
     # 체감 지연 기준점 — 요청 진입 시점을 잡아 preflight 로 넘긴다.
     # "사용자 질문 보낸 시점 → 첫 토큰 도착" 총 경과가 관리자 딜레이값이 되도록 stream() 이 catch-up.
     t_received = time.perf_counter()
     ip = request.client.host if request.client else None
+    # #141 — 접속 기기 기록(mobile/pc/unknown). 연결 끊김이 어느 기기에서 잦은지 진단용.
+    device_type = classify_device(request.headers.get("user-agent"))
     preflight = await _qa_service.preflight(
         user=user,
         redis_quota=redis_quota,
@@ -115,6 +129,7 @@ async def qa_stream(
             question_text=body.question_text,
             redis_quota=redis_quota,
             preflight_result=preflight,
+            device_type=device_type,
         ),
         media_type="text/event-stream",
     )

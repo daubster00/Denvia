@@ -81,6 +81,14 @@ export function useQAStream() {
       }, TYPEWRITER_CHAR_INTERVAL_MS);
     };
 
+    // 중단 시점에 타자기 큐에 아직 안 찍힌 글자가 남아 있으면 화면에 마저 붙인다.
+    // 부분 답변을 한 글자라도 더 보존하기 위함 (게시판 #141).
+    const flushBuffer = () => {
+      if (charBuffer.length > 0) {
+        addToken(assistantId, charBuffer.splice(0).join(""));
+      }
+    };
+
     const cleanupTypewriter = () => {
       if (typewriterTimer !== null) {
         clearInterval(typewriterTimer);
@@ -189,6 +197,7 @@ export function useQAStream() {
             startTypewriter();
           }
           else if (ev.event === "error") {
+            flushBuffer();
             cleanupTypewriter();
             setError(assistantId, data.message);
           }
@@ -202,9 +211,12 @@ export function useQAStream() {
         await typewriterPromise;
       }
     } catch (err) {
+      flushBuffer();
       cleanupTypewriter();
       if ((err as Error).name !== "AbortError") {
-        setError(assistantId, "답변 생성에 실패했습니다. 다시 시도해주세요.");
+        // 대개 유저↔서버 연결이 중간에 끊긴 경우(프록시/네트워크). 지금까지 받은
+        // 부분 답변은 화면에 남겨두고(setError 가 content 를 지우지 않음) 안내만 붙인다.
+        setError(assistantId, "인터넷 연결이 끊겨 답변이 중단됐어요. 다시 시도해 주세요.");
       }
     }
   }

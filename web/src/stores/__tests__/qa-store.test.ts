@@ -74,10 +74,14 @@ describe("useQAStore — 신규 액션 (Story 2.2)", () => {
     expect(msg?.status).toBe("complete");
   });
 
-  it("setError가 content를 에러 메시지로 교체하고 status를 error로 변경한다", () => {
-    useQAStore.getState().setError(ASSISTANT_ID, "답변 생성에 실패했습니다.");
+  it("setError가 부분 답변(content)은 보존하고 errorMessage/status만 설정한다 (#141)", () => {
+    // 끊기기 전까지 받은 부분 답변이 있는 상태
+    useQAStore.getState().addToken(ASSISTANT_ID, "임플란트는");
+    useQAStore.getState().setError(ASSISTANT_ID, "인터넷 연결이 끊겨 답변이 중단됐어요.");
     const msg = useQAStore.getState().messages.find((m) => m.id === ASSISTANT_ID);
-    expect(msg?.content).toBe("답변 생성에 실패했습니다.");
+    // content 는 지워지지 않고 그대로 남아 있어야 한다 (과거엔 에러 문구로 교체됐음)
+    expect(msg?.content).toBe("임플란트는");
+    expect(msg?.errorMessage).toBe("인터넷 연결이 끊겨 답변이 중단됐어요.");
     expect(msg?.status).toBe("error");
   });
 

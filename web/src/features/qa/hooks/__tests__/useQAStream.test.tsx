@@ -106,7 +106,8 @@ describe("useQAStream", () => {
 
     const asst = useQAStore.getState().messages.find((m) => m.role === "assistant");
     expect(asst?.status).toBe("error");
-    expect(asst?.content).toBe("답변 생성이 일시 지연됩니다.");
+    // #141: 안내 문구는 errorMessage 로 가고 content(부분 답변)는 건드리지 않는다.
+    expect(asst?.errorMessage).toBe("답변 생성이 일시 지연됩니다.");
   });
 
   it("rule_matched 이벤트가 ruleMatched와 procedureCount를 설정한다", async () => {

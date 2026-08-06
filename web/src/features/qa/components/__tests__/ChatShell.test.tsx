@@ -121,8 +121,9 @@ describe("ChatShell — hero/inline 자동 전환 (AC-1)", () => {
         {
           id: "a1",
           role: "assistant",
-          content: "답변 생성에 실패했습니다.",
+          content: "임플란트 보험은",
           status: "error",
+          errorMessage: "인터넷 연결이 끊겨 답변이 중단됐어요. 다시 시도해 주세요.",
           timestamp: "2026-04-27T00:00:00.000Z",
         },
       ],
@@ -136,7 +137,7 @@ describe("ChatShell — hero/inline 자동 전환 (AC-1)", () => {
         onRetry={onRetry}
       />
     );
-    const retryBtn = screen.getByRole("button", { name: "재시도" });
+    const retryBtn = screen.getByRole("button", { name: "다시 시도" });
     retryBtn.click();
     expect(onRetry).toHaveBeenCalled();
   });

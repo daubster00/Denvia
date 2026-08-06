@@ -468,6 +468,7 @@ class QAService:
         *,
         redis_quota: Redis | None = None,
         preflight_result: PreflightResult | None = None,
+        device_type: str | None = None,
     ) -> AsyncIterator[dict]:
         """SSE 이벤트를 yield하는 async generator.
 
@@ -498,6 +499,7 @@ class QAService:
             answer_text=None,
             rule_matched=False,
             trace_id=trace_id,
+            device_type=device_type,  # #141 — 접속 기기(mobile/pc/unknown)
         )
         db.add(log)
         await db.flush()
@@ -505,6 +507,23 @@ class QAService:
         qa_log_id = log.id
         await db.commit()  # 별도 트랜잭션 — 스트리밍 중 락 회피
         t_log_insert_ms = int((time.perf_counter() - t0) * 1000)
+
+        # #141 — 생성 스레드가 완성 답변을 만든 순간(연결 끊김 여부 무관) 호출되는 콜백.
+        # 이벤트 루프에 백그라운드 저장 코루틴을 스케줄한다(스레드→루프, fire-and-forget).
+        # 유저가 끊겨 아래 정상 경로 UPDATE 가 못 돌아도 완성 답변이 DB에 남는다.
+        loop = asyncio.get_running_loop()
+
+        def _persist_full_from_thread(full_text: str, usage_bg: TokenUsage) -> None:
+            try:
+                latency_bg = int((time.perf_counter() - t0) * 1000)
+                asyncio.run_coroutine_threadsafe(
+                    self._guarded_persist_full(qa_log_id, full_text, usage_bg, latency_bg),
+                    loop,
+                )
+            except Exception as exc:  # pragma: no cover - 스케줄 실패는 극히 드묾
+                logger.warning(
+                    "qa.stream.persist_schedule_failed", qa_log_id=qa_log_id, error=str(exc)
+                )
 
         try:
             # RAG 자산 호출 — vendor/rag CLI 순서 보존 (ADR-0002 §결정 1·2)
@@ -525,6 +544,7 @@ class QAService:
                 "qa.stream.prep_timings_ms",
                 qa_log_id=qa_log_id,
                 user_id=user.id,
+                device_type=device_type,  # #141 — 끊김 진단용 접속 기기
                 log_insert_ms=t_log_insert_ms,
                 ensure_init_ms=t_init_ms - t_log_insert_ms,
                 rag_prep_5_steps_ms=t_prep_done_ms - t_init_ms,
@@ -570,7 +590,8 @@ class QAService:
                     prompt_holder_p.append(prompt)
 
                 async for token in query_runner.stream_periodontal_answer(
-                    question_text, count, detail, _on_complete_p
+                    question_text, count, detail, _on_complete_p,
+                    on_thread_complete=_persist_full_from_thread,
                 ):
                     if not first_token_logged:
                         await catch_up_to_deadline(preflight_result, user_id=user.id)
@@ -622,7 +643,9 @@ class QAService:
                     docs_holder.append(docs)
                     prompt_holder.append(prompt)
 
-                async for token in query_runner.stream_rag_answer(normalized, _on_complete):
+                async for token in query_runner.stream_rag_answer(
+                    normalized, _on_complete, on_thread_complete=_persist_full_from_thread
+                ):
                     if not first_token_logged:
                         # 체감 지연 보장 — 사용자가 보게 될 첫 토큰 emit 직전에 deadline 까지 대기.
                         await catch_up_to_deadline(preflight_result, user_id=user.id)
@@ -652,6 +675,10 @@ class QAService:
             log.cost_usd = Decimal(str(usage.cost_usd))
             log.latency_ms = latency_ms
             log.status = "completed"
+            # #141 — 여기까지 왔으면 클라가 연결돼 답변을 정상 수신 중이다. delivered=True 로
+            # 마킹해 재생 대상에서 제외한다(백그라운드 guarded persist 는 delivered=False 로
+            # 남기지만, 이 UPDATE 가 최종 권위로 True 를 확정한다).
+            log.delivered = True
             # 관리자 감사용 — 동의어 치환 후 쿼리와 top-k 문서 (rule 경로면 docs는 빈 리스트)
             log.normalized_query = normalized
             log.retrieved_docs = retrieved_docs_payload
@@ -765,3 +792,97 @@ class QAService:
             )
             yield {"event": "error", "data": json.dumps({"code": code, "message": message})}
             logger.error("qa.stream.failed", qa_log_id=qa_log_id, error=str(exc), exc_info=True)
+
+    async def _guarded_persist_full(
+        self,
+        qa_log_id: int,
+        full_text: str,
+        usage: TokenUsage,
+        latency_ms: int,
+    ) -> None:
+        """#141 — 백그라운드 스레드가 완성한 답변을, 아직 확정 안 된(in_progress) 행에
+        한해 저장한다. 유저 연결이 끊겨 정상 경로 UPDATE 가 못 돈 경우의 안전망.
+        delivered=False 로 남겨 재시도 재생 대상이 되게 한다. 정상 전송된 행
+        (status!='in_progress')은 WHERE 조건에서 걸러져 건드리지 않는다(멱등)."""
+        from sqlalchemy import text as _sql_text
+
+        from api.src.models.base import async_session_factory
+
+        try:
+            async with async_session_factory() as s:
+                res = await s.execute(
+                    _sql_text(
+                        "UPDATE qa_logs SET answer_text=:ans, status='completed', "
+                        "delivered=false, latency_ms=:lat, input_tokens=:it, "
+                        "output_tokens=:ot, cost_usd=:cost "
+                        "WHERE id=:id AND status='in_progress'"
+                    ),
+                    {
+                        "ans": full_text,
+                        "lat": latency_ms,
+                        "it": usage.input_tokens,
+                        "ot": usage.output_tokens,
+                        "cost": str(usage.cost_usd),
+                        "id": qa_log_id,
+                    },
+                )
+                await s.commit()
+            if res.rowcount:
+                # rowcount>0 = 정상 경로가 아직 확정 못 한 행을 백그라운드가 저장 = 끊김 케이스.
+                logger.info("qa.stream.persisted_undelivered", qa_log_id=qa_log_id)
+        except Exception as exc:  # pragma: no cover - 백그라운드 저장 실패는 로그만
+            logger.warning(
+                "qa.stream.guarded_persist_failed", qa_log_id=qa_log_id, error=str(exc)
+            )
+
+    async def find_replayable(
+        self,
+        db: AsyncSession,
+        *,
+        user: User,
+        question_text: str,
+    ) -> QALog | None:
+        """#141 — 최근(3분 이내) 같은 질문에 대해 '완성됐지만 전송 못 한'(delivered=False)
+        답변이 있으면 반환한다. 있으면 재시도 시 OpenAI 재호출·횟수 차감 없이 재생한다."""
+        from sqlalchemy import select
+
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=3)
+        stmt = (
+            select(QALog)
+            .where(
+                QALog.user_id == user.id,
+                QALog.question_text == question_text,
+                QALog.status == "completed",
+                QALog.delivered.is_(False),
+                QALog.created_at >= cutoff,
+            )
+            .order_by(QALog.created_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def stream_saved(self, db: AsyncSession, log: QALog) -> AsyncIterator[dict]:
+        """#141 — DB에 저장된 완성 답변을 그대로 재생(SSE)한다. OpenAI 호출·횟수 차감 없음.
+        재생 즉시 delivered=True 로 마킹해 중복 재생을 막는다."""
+        log.delivered = True
+        await db.commit()
+
+        answer = log.answer_text or ""
+        logger.info(
+            "qa.stream.replayed", qa_log_id=log.id, user_id=log.user_id, chars=len(answer)
+        )
+        # 프론트 타자기 애니메이션이 살아있도록 저장 답변을 한 토큰으로 흘려보낸다.
+        if answer:
+            yield {"event": "token", "data": json.dumps({"delta": answer})}
+        yield {
+            "event": "done",
+            "data": json.dumps({
+                "qa_log_id": log.id,
+                "total_tokens": (log.input_tokens or 0) + (log.output_tokens or 0),
+                "cost_usd": 0.0,
+                "latency_ms": 0,
+                "rule_matched": bool(log.rule_matched),
+                "replayed": True,
+            }),
+        }

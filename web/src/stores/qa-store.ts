@@ -11,6 +11,9 @@ export interface QAMessage {
   status: "pending" | "complete" | "error";
   ruleMatched?: boolean;
   procedureCount?: number;
+  // 스트림이 중간에 끊겼을 때(연결 단절 등) 노출할 안내 문구.
+  // content(지금까지 받은 부분 답변)는 지우지 않고 보존하고, 이 필드만 별도로 채운다.
+  errorMessage?: string;
   timestamp: string;
 }
 
@@ -62,10 +65,13 @@ export const useQAStore = create<QAStore>()(
             m.id === id ? { ...m, qaLogId, status: "complete" } : m
           ),
         })),
+      // 스트림 중단 시 — 지금까지 받은 부분 답변(content)은 그대로 두고,
+      // 안내 문구만 errorMessage 에 담는다. (과거엔 content 를 에러 문구로 통째
+      // 교체해 "나오던 답변이 사라지는" 현상이 있었다 — 게시판 #141.)
       setError: (id, message) =>
         set((s) => ({
           messages: s.messages.map((m) =>
-            m.id === id ? { ...m, content: message, status: "error" } : m
+            m.id === id ? { ...m, status: "error", errorMessage: message } : m
           ),
         })),
     }),

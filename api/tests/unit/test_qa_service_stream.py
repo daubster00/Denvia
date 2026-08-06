@@ -78,7 +78,7 @@ async def test_stream_rag_path_yields_token_and_done():
     db = _make_db(log_id=10)
     user = _make_user()
 
-    async def _mock_stream(query, on_complete):
+    async def _mock_stream(query, on_complete, on_thread_complete=None):
         yield "안녕"
         yield "하세요"
         on_complete(TokenUsage(5, 10, 15, 0.002), "안녕하세요", [], None)
@@ -162,7 +162,7 @@ async def test_stream_periodontal_path_yields_token_and_done():
     db = _make_db(log_id=15)
     user = _make_user()
 
-    async def _mock_perio_stream(raw_query, count, detail, on_complete):
+    async def _mock_perio_stream(raw_query, count, detail, on_complete, on_thread_complete=None):
         yield "1.5"
         yield "회"
         on_complete(TokenUsage(12, 3, 15, 0.001), "1.5회", [], "PERIO_PROMPT")
@@ -217,7 +217,7 @@ async def test_stream_exception_yields_error_event():
     db = _make_db(log_id=30)
     user = _make_user()
 
-    async def _mock_stream_raises(query, on_complete):
+    async def _mock_stream_raises(query, on_complete, on_thread_complete=None):
         raise openai.APITimeoutError("timeout")
         yield  # make it a generator
 
@@ -247,7 +247,7 @@ async def test_stream_first_token_timeout_yields_slow_question_error():
     db = _make_db(log_id=71)
     user = _make_user()
 
-    async def _mock_stream_timeout(query, on_complete):
+    async def _mock_stream_timeout(query, on_complete, on_thread_complete=None):
         raise FirstTokenTimeoutError("첫 토큰이 45초 내 도착하지 않음")
         yield  # make it a generator
 
@@ -286,7 +286,7 @@ async def test_stream_does_not_log_question_text(caplog):
     user = _make_user()
     sensitive = "매우민감한질문텍스트"
 
-    async def _mock_stream(query, on_complete):
+    async def _mock_stream(query, on_complete, on_thread_complete=None):
         yield "답변"
         on_complete(TokenUsage(1, 2, 3, 0.0), "답변", [], None)
 
@@ -316,7 +316,7 @@ async def test_stream_inserts_immediately_then_updates():
     db = _make_db(log_id=55)
     user = _make_user()
 
-    async def _mock_stream(query, on_complete):
+    async def _mock_stream(query, on_complete, on_thread_complete=None):
         yield "답변"
         on_complete(TokenUsage(1, 2, 3, 0.001), "답변", [])
 
@@ -353,7 +353,7 @@ async def test_stream_success_sets_status_completed():
     db = _make_db(log_id=60)
     user = _make_user()
 
-    async def _mock_stream(query, on_complete):
+    async def _mock_stream(query, on_complete, on_thread_complete=None):
         yield "답변"
         on_complete(TokenUsage(1, 2, 3, 0.001), "답변", [])
 
@@ -379,7 +379,7 @@ async def test_stream_exception_sets_status_error():
     db = _make_db(log_id=70)
     user = _make_user()
 
-    async def _mock_stream_raises(query, on_complete):
+    async def _mock_stream_raises(query, on_complete, on_thread_complete=None):
         raise openai.APITimeoutError("timeout")
         yield  # make it a generator
 
@@ -410,7 +410,7 @@ async def test_stream_cancelled_error_sets_status_aborted():
     db = _make_db(log_id=80)
     user = _make_user()
 
-    async def _mock_stream_cancelled(query, on_complete):
+    async def _mock_stream_cancelled(query, on_complete, on_thread_complete=None):
         raise asyncio.CancelledError()
         yield  # make it a generator
 
@@ -438,7 +438,7 @@ async def test_stream_aclose_sets_status_aborted():
     db = _make_db(log_id=85)
     user = _make_user()
 
-    async def _mock_stream_many(query, on_complete):
+    async def _mock_stream_many(query, on_complete, on_thread_complete=None):
         for ch in ["a", "b", "c"]:
             yield ch
         on_complete(TokenUsage(0, 0, 0, 0.0), "abc", [])

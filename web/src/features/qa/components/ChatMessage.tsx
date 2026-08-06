@@ -110,10 +110,18 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
           </div>
         ) : isError ? (
           <div>
-            <p className={styles.errorText}>{message.content}</p>
+            {/* 끊기기 전까지 받은 부분 답변은 그대로 보여준다 (게시판 #141). */}
+            {message.content && (
+              <p className={styles.assistantText}>
+                {renderWithLinks(message.content)}
+              </p>
+            )}
+            <p className={styles.errorNotice}>
+              {message.errorMessage ?? "답변이 중단됐어요. 다시 시도해 주세요."}
+            </p>
             {onRetry && (
               <button onClick={onRetry} className={styles.retryBtn}>
-                재시도
+                다시 시도
               </button>
             )}
           </div>

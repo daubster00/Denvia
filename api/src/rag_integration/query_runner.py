@@ -321,6 +321,7 @@ async def _load_runtime_params() -> dict:
 async def stream_rag_answer(
     query: str,
     on_complete: callable,
+    on_thread_complete=None,
 ) -> AsyncIterator[str]:
     """RAG 체인을 streaming으로 실행해 토큰 단위로 yield한다.
 
@@ -376,6 +377,7 @@ async def stream_rag_answer(
 
     def _run_sync() -> None:
         """동기 스레드에서 RetrievalQA를 실행하고 토큰을 Queue에 넣는다."""
+        succeeded = False
         try:
             from langchain_core.callbacks.base import BaseCallbackHandler
 
@@ -438,10 +440,20 @@ async def stream_rag_answer(
             # 관리자 감사용 — SSE/사용자 응답에는 흘리지 않고 docs_holder에만 적재
             raw_docs = result.get("source_documents", []) if isinstance(result, dict) else []
             docs_holder.append(_serialize_source_documents(raw_docs))
+            succeeded = True
         except Exception as e:
             exc_holder.append(e)
         finally:
             token_queue.put(None)  # sentinel
+            # #141 — 생성이 성공적으로 끝났으면(클라 연결 끊김 여부와 무관) 완성 답변을
+            # 영속화 콜백에 넘긴다. 이 콜백은 취소 불가능한 스레드에서 실행되므로, 유저가
+            # 끊겨 async 소비가 중단돼도 완성 답변이 버려지지 않고 DB에 저장된다.
+            if succeeded and on_thread_complete is not None and accumulated:
+                try:
+                    _u = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
+                    on_thread_complete("".join(accumulated), _u)
+                except Exception as cb_exc:
+                    logger.warning("rag.stream.persist_callback_failed", error=str(cb_exc))
 
     loop = asyncio.get_event_loop()
     thread_task = loop.run_in_executor(None, _run_sync)
@@ -502,6 +514,7 @@ async def stream_periodontal_answer(
     count,
     detail: dict,
     on_complete: callable,
+    on_thread_complete=None,
 ) -> AsyncIterator[str]:
     """치주낭측정검사 횟수(결정형 계산값)를 LLM 스트리밍으로 그대로 출력한다 (게시판 #139/#140).
 
@@ -530,6 +543,7 @@ async def stream_periodontal_answer(
     first_token_perf: list[float] = []
 
     def _run_sync() -> None:
+        succeeded = False
         try:
             class _QueueCallbackHandler(BaseCallbackHandler):
                 def on_llm_new_token(self, token: str, **kwargs) -> None:
@@ -556,10 +570,19 @@ async def stream_periodontal_answer(
                     config={"callbacks": [handler]},
                 )
             usage_holder.append(usage)
+            succeeded = True
         except Exception as e:
             exc_holder.append(e)
         finally:
             token_queue.put(None)  # sentinel
+            # #141 — RAG 경로와 동일하게, 생성이 성공적으로 끝났으면 완성 답변을
+            # 영속화 콜백에 넘겨 연결 끊김에도 답변이 보존되게 한다.
+            if succeeded and on_thread_complete is not None and accumulated:
+                try:
+                    _u = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
+                    on_thread_complete("".join(accumulated), _u)
+                except Exception as cb_exc:
+                    logger.warning("rag.stream.persist_callback_failed", error=str(cb_exc))
 
     loop = asyncio.get_event_loop()
     thread_task = loop.run_in_executor(None, _run_sync)

@@ -113,6 +113,15 @@
   color: #dc2626;
 }
 
+/* 부분 답변 아래에 붙는 끊김 안내 — 답변 본문을 지우지 않고 조용히 덧붙인다. */
+.errorNotice {
+  margin: 4px 0 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0d2d2;
+  font-size: 13px;
+  color: #dc2626;
+}
+
 .retryBtn {
   padding: 6px 14px;
   font-size: 13px;
