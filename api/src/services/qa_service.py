@@ -513,11 +513,26 @@ class QAService:
         # 유저가 끊겨 아래 정상 경로 UPDATE 가 못 돌아도 완성 답변이 DB에 남는다.
         loop = asyncio.get_running_loop()
 
-        def _persist_full_from_thread(full_text: str, usage_bg: TokenUsage) -> None:
+        def _persist_full_from_thread(
+            full_text: str,
+            usage_bg: TokenUsage,
+            docs_bg: list[dict] | None = None,
+            prompt_bg: str | None = None,
+        ) -> None:
             try:
                 latency_bg = int((time.perf_counter() - t0) * 1000)
+                # #142 — 끊김 저장 경로도 정상 경로와 동일한 관리자 감사정보를 남긴다.
+                # normalized 는 스트리밍 시작(=이 콜백 호출) 전에 이미 확정돼 클로저로 안전.
                 asyncio.run_coroutine_threadsafe(
-                    self._guarded_persist_full(qa_log_id, full_text, usage_bg, latency_bg),
+                    self._guarded_persist_full(
+                        qa_log_id,
+                        full_text,
+                        usage_bg,
+                        latency_bg,
+                        retrieved_docs=docs_bg or [],
+                        prompt_text=prompt_bg,
+                        normalized_query=normalized,
+                    ),
                     loop,
                 )
             except Exception as exc:  # pragma: no cover - 스케줄 실패는 극히 드묾
@@ -799,6 +814,10 @@ class QAService:
         full_text: str,
         usage: TokenUsage,
         latency_ms: int,
+        *,
+        retrieved_docs: list[dict] | None = None,
+        prompt_text: str | None = None,
+        normalized_query: str | None = None,
     ) -> None:
         """#141 — 백그라운드 스레드가 완성한 답변을, 아직 확정 안 된(in_progress) 행에
         한해 저장한다. 유저 연결이 끊겨 정상 경로 UPDATE 가 못 돈 경우의 안전망.
@@ -814,7 +833,9 @@ class QAService:
                     _sql_text(
                         "UPDATE qa_logs SET answer_text=:ans, status='completed', "
                         "delivered=false, latency_ms=:lat, input_tokens=:it, "
-                        "output_tokens=:ot, cost_usd=:cost "
+                        "output_tokens=:ot, cost_usd=:cost, "
+                        "retrieved_docs=cast(:docs as jsonb), prompt_text=:prompt, "
+                        "normalized_query=:nq "
                         "WHERE id=:id AND status='in_progress'"
                     ),
                     {
@@ -823,6 +844,9 @@ class QAService:
                         "it": usage.input_tokens,
                         "ot": usage.output_tokens,
                         "cost": str(usage.cost_usd),
+                        "docs": json.dumps(retrieved_docs or []),
+                        "prompt": prompt_text,
+                        "nq": normalized_query,
                         "id": qa_log_id,
                     },
                 )

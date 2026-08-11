@@ -451,7 +451,11 @@ async def stream_rag_answer(
             if succeeded and on_thread_complete is not None and accumulated:
                 try:
                     _u = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
-                    on_thread_complete("".join(accumulated), _u)
+                    # #142 — 재생 케이스도 관리자 감사정보(top-k 문서·프롬프트)가 남도록
+                    # 정상 경로와 동일한 docs/prompt 를 함께 넘긴다.
+                    _docs = docs_holder[0] if docs_holder else []
+                    _prompt = prompt_holder[0] if prompt_holder else None
+                    on_thread_complete("".join(accumulated), _u, _docs, _prompt)
                 except Exception as cb_exc:
                     logger.warning("rag.stream.persist_callback_failed", error=str(cb_exc))
 
@@ -580,7 +584,8 @@ async def stream_periodontal_answer(
             if succeeded and on_thread_complete is not None and accumulated:
                 try:
                     _u = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
-                    on_thread_complete("".join(accumulated), _u)
+                    # #142 — 치주낭 경로는 RAG 검색이 없어 docs=[], prompt 는 실제 LLM 프롬프트.
+                    on_thread_complete("".join(accumulated), _u, [], prompt)
                 except Exception as cb_exc:
                     logger.warning("rag.stream.persist_callback_failed", error=str(cb_exc))
 
