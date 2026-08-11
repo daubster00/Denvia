@@ -767,6 +767,11 @@ class QAService:
                 qa_log_id=qa_log_id,
                 reason="client_disconnect",
                 exc_type=type(exc).__name__,
+                # #142 후속 진단 — 클라이언트가 연결을 끊은 정확한 경과(ms)·기기·첫토큰 전송 여부.
+                # 장문답변 '15초 컷' 가설 검증용: 이 값이 매번 ~15000ms 로 수렴하면 고정 타임아웃.
+                elapsed_ms=latency_ms,
+                device_type=device_type,
+                first_token_sent=first_token_logged,
             )
             raise
 
@@ -853,7 +858,13 @@ class QAService:
                 await s.commit()
             if res.rowcount:
                 # rowcount>0 = 정상 경로가 아직 확정 못 한 행을 백그라운드가 저장 = 끊김 케이스.
-                logger.info("qa.stream.persisted_undelivered", qa_log_id=qa_log_id)
+                # #142 후속 — 생성 스레드가 답을 끝낸 경과(ms). aborted 로그의 elapsed_ms(클라
+                # 단절 시각)와 대조하면 "클라가 몇 초에 끊었고, 서버는 몇 초에 끝냈는지" 분리 관찰.
+                logger.info(
+                    "qa.stream.persisted_undelivered",
+                    qa_log_id=qa_log_id,
+                    thread_finish_ms=latency_ms,
+                )
         except Exception as exc:  # pragma: no cover - 백그라운드 저장 실패는 로그만
             logger.warning(
                 "qa.stream.guarded_persist_failed", qa_log_id=qa_log_id, error=str(exc)
