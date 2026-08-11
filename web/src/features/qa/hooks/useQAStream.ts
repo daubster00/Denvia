@@ -160,6 +160,11 @@ export function useQAStream() {
           }
         },
         onmessage(ev) {
+          // #142 후속 — sse-starlette 기본 15초 keep-alive ping(`: ping` 주석)이
+          // fetch-event-source 파서에서 data 없는 빈 메시지로 dispatch된다. 이를 걸러내지
+          // 않고 JSON.parse('') 하면 SyntaxError가 나 스트림이 통째로 abort → 15초를 넘기는
+          // 장문 답변이 "연결 끊김"으로 중단됐다. 빈 data(핑·주석)는 조용히 건너뛴다.
+          if (!ev.data) return;
           const data = JSON.parse(ev.data);
           if (ev.event === "token") {
             // 글자 단위로 큐에 쌓고 타자기를 가동한다 (스프레드 = Unicode safe split).
