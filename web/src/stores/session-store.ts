@@ -6,7 +6,6 @@ import type { SessionUser } from "@/types/api";
 
 interface SessionState {
   user: SessionUser | null;
-  preferPersist: boolean;
   isPopupOpen: boolean;
   popupInitialTab: "email" | "social";
   /**
@@ -17,27 +16,25 @@ interface SessionState {
   forcePasswordReset: boolean;
   setUser: (u: SessionUser | null) => void;
   clearSession: () => void;
-  setPreferPersist: (v: boolean) => void;
   openPopup: (tab?: "email" | "social") => void;
   closePopup: () => void;
   setForcePasswordReset: (v: boolean) => void;
 }
 
 /**
- * 전역 세션 상태 — 유저 정보 · 팝업 open 상태 · "로그인 상태 유지" 선호.
- * preferPersist / forcePasswordReset 은 sessionStorage 에 persist (탭 생명주기 내 유지).
+ * 전역 세션 상태 — 유저 정보 · 팝업 open 상태.
+ * forcePasswordReset 은 sessionStorage 에 persist (탭 생명주기 내 유지).
+ * (#143: "로그인 유지" 선호값(preferPersist) 폐지 — 로그인은 항상 하루 유지로 통일.)
  */
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({
       user: null,
-      preferPersist: false,
       isPopupOpen: false,
       popupInitialTab: "email",
       forcePasswordReset: false,
       setUser: (u) => set({ user: u }),
       clearSession: () => set({ user: null }),
-      setPreferPersist: (v) => set({ preferPersist: v }),
       // 팝업이 열릴 때마다 비번찾기 강제 모드를 해제한다. 2차 락 직후엔 EmailLoginTab 이
       // 다시 setForcePasswordReset(true) 로 활성화하므로, 관리자 잠금 해제 후 사용자가
       // 다시 로그인 시도할 때만 정상 폼이 노출된다. 영구 강제 모드가 sessionStorage 에
@@ -52,7 +49,6 @@ export const useSessionStore = create<SessionState>()(
       storage: createJSONStorage(() => sessionStorage),
       // sessionStorage 에만 저장 — localStorage 금지 (NFR-S4).
       partialize: (s) => ({
-        preferPersist: s.preferPersist,
         forcePasswordReset: s.forcePasswordReset,
       }),
     }

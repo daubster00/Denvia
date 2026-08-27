@@ -18,7 +18,7 @@ Object.defineProperty(window, "sessionStorage", {
 });
 
 beforeEach(() => {
-  useSessionStore.setState({ user: null, isPopupOpen: true, preferPersist: false });
+  useSessionStore.setState({ user: null, isPopupOpen: true });
   Object.keys(mockStorage).forEach(k => delete mockStorage[k]);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -31,10 +31,9 @@ describe("EmailLoginTab", () => {
     expect(screen.getByLabelText(/비밀번호/i)).toBeDefined();
   });
 
-  it("로그인 상태 유지 체크박스가 있다", () => {
+  it("로그인 유지 통일(#143) — '로그인 상태 유지' 체크박스는 더 이상 없다", () => {
     render(<EmailLoginTab />);
-    const cb = screen.getByRole("checkbox");
-    expect(cb).toBeDefined();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
   it("로그인 성공 시 setUser + closePopup 호출", async () => {

@@ -17,30 +17,10 @@ beforeEach(() => {
   // 스토어 리셋
   useSessionStore.setState({
     user: null,
-    preferPersist: false,
     isPopupOpen: false,
     popupInitialTab: "email",
   });
   Object.keys(mockStorage).forEach(k => delete mockStorage[k]);
-});
-
-describe("useSessionStore — preferPersist", () => {
-  it("setPreferPersist(true) 후 sessionStorage에 저장된다", () => {
-    useSessionStore.getState().setPreferPersist(true);
-    expect(useSessionStore.getState().preferPersist).toBe(true);
-    // persist 미들웨어가 sessionStorage에 기록했는지 확인
-    const stored = mockStorage["denvia-session-store"];
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      expect(parsed.state?.preferPersist).toBe(true);
-    }
-  });
-
-  it("setPreferPersist(false)로 토글된다", () => {
-    useSessionStore.getState().setPreferPersist(true);
-    useSessionStore.getState().setPreferPersist(false);
-    expect(useSessionStore.getState().preferPersist).toBe(false);
-  });
 });
 
 describe("useSessionStore — clearSession", () => {

@@ -63,11 +63,10 @@ export async function setSegment(payload: {
   });
 }
 
-/** 이메일 로그인 */
+/** 이메일 로그인 — #143: 로그인 유지 통일로 항상 하루짜리 세션. persist 옵션 없음. */
 export async function login(payload: {
   email: string;
   password: string;
-  persist_session: boolean;
 }) {
   return apiFetch<import("@/types/api").SessionUser>("/api/v1/auth/login", {
     method: "POST",

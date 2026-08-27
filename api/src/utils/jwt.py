@@ -7,8 +7,8 @@ import jwt as pyjwt
 from api.src.settings import settings
 
 
-SESSION_TTL_SHORT = timedelta(hours=1)      # persist_session=False (브라우저 세션)
-SESSION_TTL_LONG = timedelta(days=1)        # persist_session=True (Story 1.4)
+SESSION_TTL_SHORT = timedelta(hours=1)      # (레거시) 과거 persist=False 세션. 신규 발급엔 미사용.
+SESSION_TTL_LONG = timedelta(days=1)        # 기본 세션 TTL — 로그인 유지 하루(#143 로그인 유지 통일)
 ADMIN_SESSION_TTL = timedelta(hours=1)      # 관리자 세션 1시간 (활동 시 슬라이딩 연장)
 
 _ADMIN_AUDIENCE = "denvia-admin"
@@ -19,12 +19,13 @@ def encode_session_jwt(
     role: str,
     subscription_status: str,
     *,
-    persist: bool = False,
+    persist: bool = True,
     session_id: str | None = None,
 ) -> str:
     """denvia_session 쿠키에 삽입할 JWT를 생성한다.
 
-    persist=True → 1일 TTL, persist=False → 1시간 TTL.
+    persist=True(기본) → 1일 TTL. #143 "로그인 유지 통일"로 일반 사용자 세션은
+    이메일·소셜 구분 없이 기본 하루 유지다. persist=False는 레거시 경로 호환용으로만 남긴다.
     persist 값은 payload에도 함께 저장돼서, 슬라이딩 미들웨어가 갱신 시 동일 TTL을 재적용한다.
 
     session_id: users.current_session_id 와 매칭하기 위한 nonce. 동일 계정의 새 로그인이

@@ -39,10 +39,8 @@ const PROVIDER_BTN_CLASS: Record<OAuthProvider, string> = {
   naver: popupStyles.socialBtnNaver,
 };
 
-/** 이메일 로그인 탭 — 폼 UI + preferPersist 체크박스 + submit 처리. */
+/** 이메일 로그인 탭 — 폼 UI + submit 처리. (#143: 로그인 유지 통일로 체크박스 폐지) */
 export function EmailLoginTab({ onSignup, onFindPassword, onFindId }: EmailLoginTabProps = {}) {
-  const setPreferPersist = useSessionStore((s) => s.setPreferPersist);
-  const preferPersist = useSessionStore((s) => s.preferPersist);
   const setUser = useSessionStore((s) => s.setUser);
   const closePopup = useSessionStore((s) => s.closePopup);
   const setForcePasswordReset = useSessionStore((s) => s.setForcePasswordReset);
@@ -68,7 +66,6 @@ export function EmailLoginTab({ onSignup, onFindPassword, onFindId }: EmailLogin
       const user = await login({
         email: data.email,
         password: data.password,
-        persist_session: preferPersist,
       });
       setUser(user);
       closePopup();
@@ -192,16 +189,6 @@ export function EmailLoginTab({ onSignup, onFindPassword, onFindId }: EmailLogin
           </div>
         </div>
       )}
-
-      <label className={styles.persistRow}>
-        <input
-          type="checkbox"
-          checked={preferPersist}
-          onChange={(e) => setPreferPersist(e.target.checked)}
-          className={styles.persistCheckbox}
-        />
-        <span className={styles.persistLabel}>로그인 상태 유지</span>
-      </label>
 
       <button
         type="submit"

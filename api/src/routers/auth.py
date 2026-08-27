@@ -143,7 +143,7 @@ async def signup(
         secure=secure,
         samesite="lax",
         path="/",
-        max_age=3600,
+        max_age=86400,  # 로그인 유지 하루 통일 (#143)
     )
     # CSRF 쿠키 — JS가 읽어 헤더로 전송. samesite는 session 쿠키와 동일하게 lax로 통일
     # (strict일 경우 cross-site 리다이렉트 후 첫 요청에서 누락되어 double-submit 검증 실패).
@@ -155,7 +155,7 @@ async def signup(
         secure=secure,
         samesite="lax",
         path="/",
-        max_age=3600,
+        max_age=86400,  # 세션 쿠키와 동일 TTL (#143)
     )
 
     return {
@@ -175,14 +175,15 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_session),
 ) -> LoginResponse:
-    """이메일 로그인 — argon2id 검증, persist_session에 따라 쿠키 TTL 분기."""
+    """이메일 로그인 — argon2id 검증. #143: 로그인 유지 통일로 항상 하루짜리 세션 발급."""
     ip = request.client.host if request.client else None
     ua = request.headers.get("user-agent")
 
     user = await login_user(
         email=body.email,
         password=body.password,
-        persist_session=body.persist_session,
+        # #143 로그인 유지 통일 — 체크박스 폐지, 항상 하루 유지.
+        persist_session=True,
         ip=ip,
         ua=ua,
         redis_url=settings.redis_url,
@@ -221,23 +222,19 @@ async def login(
         user_id=user.id,
         role=user.role,
         subscription_status=user.subscription_status,
-        persist=body.persist_session,
         session_id=user.current_session_id,
-    )
+    )  # persist 기본값 True → 하루 유지 (#143)
 
     secure = _is_secure_env()
-    cookie_kwargs: dict = dict(
+    response.set_cookie(
         key="denvia_session",
         value=token,
         httponly=True,
         secure=secure,
         samesite="lax",
         path="/",
+        max_age=86400,  # 로그인 유지 하루 통일 (#143)
     )
-    if body.persist_session:
-        cookie_kwargs["max_age"] = 86400  # 1일
-    # persist_session=False → max_age 생략 → 세션 쿠키 (브라우저 종료 시 만료)
-    response.set_cookie(**cookie_kwargs)
 
     csrf_token = _secrets.token_urlsafe(32)
     response.set_cookie(
@@ -247,7 +244,7 @@ async def login(
         secure=secure,
         samesite="lax",
         path="/",
-        **({"max_age": 86400} if body.persist_session else {}),
+        max_age=86400,
     )
 
     return LoginResponse(
@@ -386,16 +383,16 @@ def _oauth_error_redirect(code: str) -> RedirectResponse:
     )
 
 
-def _set_session_cookies(response: RedirectResponse, user: User, persist: bool = False) -> None:
+def _set_session_cookies(response: RedirectResponse, user: User) -> None:
+    # #143 로그인 유지 통일 — 소셜 로그인도 이메일과 동일하게 하루 유지.
     token = encode_session_jwt(
         user_id=user.id,
         role=user.role,
         subscription_status=user.subscription_status,
-        persist=persist,
         session_id=user.current_session_id,
     )
     secure = _is_secure_env()
-    max_age = 86400 if persist else 3600
+    max_age = 86400
     response.set_cookie(
         key="denvia_session",
         value=token,
@@ -572,7 +569,7 @@ async def oauth_callback_endpoint(
         else:
             redirect_target = f"{origin}/signup/segment"
         redirect = RedirectResponse(url=redirect_target, status_code=302)
-        _set_session_cookies(redirect, user, persist=False)
+        _set_session_cookies(redirect, user)
         return redirect
 
     if action == "signup_pending_phone":
@@ -627,7 +624,7 @@ async def oauth_complete(
         secure=secure,
         samesite="lax",
         path="/",
-        max_age=3600,
+        max_age=86400,  # 로그인 유지 하루 통일 (#143)
     )
     csrf_token = _secrets.token_urlsafe(32)
     response.set_cookie(
@@ -637,7 +634,7 @@ async def oauth_complete(
         secure=secure,
         samesite="lax",
         path="/",
-        max_age=3600,
+        max_age=86400,
     )
 
     return LoginResponse(
