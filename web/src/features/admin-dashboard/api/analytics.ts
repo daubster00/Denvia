@@ -128,9 +128,17 @@ export async function fetchSubscribers(): Promise<SubscribersResponse> {
 export type AccessUnit = "day" | "week" | "month" | "year";
 
 export interface AccessBucket {
-  bucket_start: string; // YYYY-MM-DD (KST)
-  visitors: number;     // 고유 접속자 수
-  visits: number;       // 접속 횟수
+  bucket_start: string;  // YYYY-MM-DD (KST)
+  visitors: number;      // 고유 접속자 수
+  visits: number;        // 접속 횟수
+  // 기기별 분해 (게시판 #144). 기기별 접속자 수는 각각 따로 센 고유 회원 수라
+  // pc + mobile + unknown 이 전체 visitors 보다 클 수 있다.
+  pc_visitors: number;
+  pc_visits: number;
+  mobile_visitors: number;
+  mobile_visits: number;
+  unknown_visitors: number;
+  unknown_visits: number;
 }
 
 export interface AccessResponse {
@@ -139,6 +147,13 @@ export interface AccessResponse {
   to: string;
   total_visitors: number;
   total_visits: number;
+  // 구간 전체 기기별 누적 (게시판 #144)
+  total_pc_visitors: number;
+  total_pc_visits: number;
+  total_mobile_visitors: number;
+  total_mobile_visits: number;
+  total_unknown_visitors: number;
+  total_unknown_visits: number;
   buckets: AccessBucket[];
 }
 

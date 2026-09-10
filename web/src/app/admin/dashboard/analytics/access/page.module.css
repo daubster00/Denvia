@@ -85,7 +85,7 @@
 
 .unitToggle {
   display: grid;
-  grid-template-columns: repeat(3, minmax(56px, 88px));
+  grid-template-columns: repeat(4, minmax(56px, 88px));
   gap: 0;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -197,6 +197,24 @@
   margin: 0;
 }
 
+.deviceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.summaryValueSm {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .chartBox {
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -218,8 +236,13 @@
   overflow: hidden;
 }
 
+.tableScroll {
+  overflow-x: auto;
+}
+
 .table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
   font-size: 14px;
 }
@@ -246,6 +269,18 @@
 
 .numCell {
   font-variant-numeric: tabular-nums;
+}
+
+.notes {
+  list-style: disc;
+  margin: 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #64748b;
 }
 
 .statusMessage {
@@ -300,10 +335,11 @@
     align-items: stretch;
   }
   .unitToggle {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     width: 100%;
   }
-  .summaryGrid {
+  .summaryGrid,
+  .deviceGrid {
     grid-template-columns: 1fr;
   }
 }

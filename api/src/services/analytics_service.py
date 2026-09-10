@@ -37,6 +37,7 @@ from api.src.models.subscription import Subscription
 from api.src.models.user import User
 from api.src.services import runtime_config_service
 from api.src.services.budget_service import KST
+from api.src.utils.device import mobile_ua_regex
 from api.src.utils.mask import mask_email
 
 Unit = Literal["day", "week", "month", "year"]
@@ -210,11 +211,41 @@ async def get_signups_buckets(
 # =============================================================================
 
 
+# 접속 기기 구분 키 (게시판 #144). api.src.utils.device.classify_device 반환값과 동일.
+ACCESS_DEVICES: tuple[str, ...] = ("pc", "mobile", "unknown")
+
+
+def _access_device_expr():
+    """login_events.ua → 'pc' | 'mobile' | 'unknown' SQL CASE 식.
+
+    모바일 판별 기준(토큰 목록)의 SSOT 는 api/src/utils/device.py 한 곳뿐이라
+    SQL 정규식도 거기서 만들어 온다(mobile_ua_regex). 여기서 문자열을 다시
+    적어두면 파이썬(classify_device)과 SQL 집계가 갈라진다. 대소문자 무시(`~*`)로
+    비교해야 classify_device 와 결과가 같다.
+    """
+    return case(
+        (
+            or_(LoginEvent.ua.is_(None), func.btrim(LoginEvent.ua) == ""),
+            "unknown",
+        ),
+        (LoginEvent.ua.op("~*")(mobile_ua_regex()), "mobile"),
+        else_="pc",
+    )
+
+
 @dataclass(frozen=True)
 class AccessBucket:
     bucket_start: date
     visitors: int  # 해당 버킷에서 로그인한 고유 회원 수
     visits: int    # 해당 버킷의 로그인 횟수
+    # 기기별 분해 (게시판 #144). 기기별 visitors 는 각각 DISTINCT user_id 이므로
+    # pc + mobile + unknown >= visitors 가 될 수 있다 (양쪽 기기를 쓴 회원 = 각 1명).
+    pc_visitors: int = 0
+    pc_visits: int = 0
+    mobile_visitors: int = 0
+    mobile_visits: int = 0
+    unknown_visitors: int = 0
+    unknown_visits: int = 0
 
 
 @dataclass(frozen=True)
@@ -225,6 +256,13 @@ class AccessSummary:
     # 구간 전체 누적
     total_visitors: int  # 구간 내 고유 회원 수 (DISTINCT user_id)
     total_visits: int    # 구간 내 로그인 횟수 합
+    # 구간 전체 기기별 누적 (버킷과 동일하게 기기별 DISTINCT user_id)
+    total_pc_visitors: int = 0
+    total_pc_visits: int = 0
+    total_mobile_visitors: int = 0
+    total_mobile_visits: int = 0
+    total_unknown_visitors: int = 0
+    total_unknown_visits: int = 0
 
 
 async def get_access_buckets(
@@ -233,10 +271,11 @@ async def get_access_buckets(
     from_: date | None,
     to: date | None,
 ) -> AccessSummary:
-    """unit/from/to 기반 KST 버킷별 접속자 수 + 접속횟수.
+    """unit/from/to 기반 KST 버킷별 접속자 수 + 접속횟수 (기기별 분해 포함).
 
     visitors = COUNT(DISTINCT user_id) per bucket
     visits   = COUNT(*)                per bucket
+    pc_/mobile_/unknown_ 접두 필드는 같은 계산을 기기별로 따로 한 값.
     빈 버킷은 0으로 채움.
     """
     if from_ is None and to is None:
@@ -250,45 +289,69 @@ async def get_access_buckets(
     if not bucket_starts:
         return AccessSummary(buckets=[], from_=from_, to=to, total_visitors=0, total_visits=0)
 
-    # KST 기준 day 단위 (user_id, day) 집계 → Python에서 버킷 묶음.
+    # KST 기준 day 단위 (user_id, day, device) 집계 → Python에서 버킷 묶음.
+    # device 는 3종뿐이라 GROUP BY 에 추가해도 행 수가 최대 3배까지만 늘어난다.
     day_expr = func.date(func.timezone("Asia/Seoul", LoginEvent.created_at))
+    device_expr = _access_device_expr()
     range_start_kst = _kst_datetime(bucket_starts[0])
     range_end_exclusive_kst = _kst_datetime(_next_bucket(bucket_starts[-1], unit))
     stmt = (
         select(
             day_expr.label("d"),
             LoginEvent.user_id,
+            device_expr.label("device"),
             func.count(LoginEvent.id).label("n"),
         )
         .where(
             LoginEvent.created_at >= range_start_kst,
             LoginEvent.created_at < range_end_exclusive_kst,
         )
-        .group_by(day_expr, LoginEvent.user_id)
+        .group_by(day_expr, LoginEvent.user_id, device_expr)
     )
     rows = (await session.execute(stmt)).all()
 
-    # (date, user_id) -> visits
-    by_day_user: dict[tuple[date, int], int] = {}
-    for d_val, uid, n in rows:
+    # (date, user_id, device) -> visits
+    by_day_user_device: dict[tuple[date, int, str], int] = {}
+    for d_val, uid, device, n in rows:
         if isinstance(d_val, datetime):
             d_val = d_val.date()
-        by_day_user[(d_val, int(uid))] = int(n)
+        key = (d_val, int(uid), device if device in ACCESS_DEVICES else "unknown")
+        by_day_user_device[key] = by_day_user_device.get(key, 0) + int(n)
 
     buckets: list[AccessBucket] = []
     total_visits = 0
     total_users: set[int] = set()
+    # 기기별 구간 누적
+    total_device_visits: dict[str, int] = dict.fromkeys(ACCESS_DEVICES, 0)
+    total_device_users: dict[str, set[int]] = {d: set() for d in ACCESS_DEVICES}
     for start in bucket_starts:
         nxt = _next_bucket(start, unit)
         visits = 0
         users: set[int] = set()
-        for (d, uid), n in by_day_user.items():
+        device_visits: dict[str, int] = dict.fromkeys(ACCESS_DEVICES, 0)
+        device_users: dict[str, set[int]] = {d: set() for d in ACCESS_DEVICES}
+        for (d, uid, device), n in by_day_user_device.items():
             if start <= d < nxt:
                 visits += n
                 users.add(uid)
+                device_visits[device] += n
+                device_users[device].add(uid)
         total_visits += visits
         total_users |= users
-        buckets.append(AccessBucket(bucket_start=start, visitors=len(users), visits=visits))
+        for dev in ACCESS_DEVICES:
+            total_device_visits[dev] += device_visits[dev]
+            total_device_users[dev] |= device_users[dev]
+        buckets.append(AccessBucket(
+            bucket_start=start,
+            visitors=len(users),
+            visits=visits,
+            pc_visitors=len(device_users["pc"]),
+            pc_visits=device_visits["pc"],
+            mobile_visitors=len(device_users["mobile"]),
+            mobile_visits=device_visits["mobile"],
+            unknown_visitors=len(device_users["unknown"]),
+            unknown_visits=device_visits["unknown"],
+        ))
 
     return AccessSummary(
         buckets=buckets,
@@ -296,6 +359,12 @@ async def get_access_buckets(
         to=to,
         total_visitors=len(total_users),
         total_visits=total_visits,
+        total_pc_visitors=len(total_device_users["pc"]),
+        total_pc_visits=total_device_visits["pc"],
+        total_mobile_visitors=len(total_device_users["mobile"]),
+        total_mobile_visits=total_device_visits["mobile"],
+        total_unknown_visitors=len(total_device_users["unknown"]),
+        total_unknown_visits=total_device_visits["unknown"],
     )
 
 

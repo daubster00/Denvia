@@ -294,6 +294,14 @@ class AccessBucketResponse(BaseModel):
     bucket_start: str  # YYYY-MM-DD (KST)
     visitors: int      # 고유 접속자 수
     visits: int        # 접속 횟수
+    # 기기별 분해 (게시판 #144). 기기별 접속자 수는 각각 따로 센 고유 회원 수라
+    # pc + mobile + unknown 이 전체 visitors 보다 클 수 있다.
+    pc_visitors: int = 0
+    pc_visits: int = 0
+    mobile_visitors: int = 0
+    mobile_visits: int = 0
+    unknown_visitors: int = 0
+    unknown_visits: int = 0
 
 
 class AccessResponse(BaseModel):
@@ -302,6 +310,13 @@ class AccessResponse(BaseModel):
     to: str
     total_visitors: int
     total_visits: int
+    # 구간 전체 기기별 누적 (게시판 #144)
+    total_pc_visitors: int = 0
+    total_pc_visits: int = 0
+    total_mobile_visitors: int = 0
+    total_mobile_visits: int = 0
+    total_unknown_visitors: int = 0
+    total_unknown_visits: int = 0
     buckets: list[AccessBucketResponse]
 
     model_config = {"populate_by_name": True}
@@ -327,6 +342,12 @@ async def access_stats(
         bucket_count=len(summary.buckets),
         total_visitors=summary.total_visitors,
         total_visits=summary.total_visits,
+        total_pc_visitors=summary.total_pc_visitors,
+        total_pc_visits=summary.total_pc_visits,
+        total_mobile_visitors=summary.total_mobile_visitors,
+        total_mobile_visits=summary.total_mobile_visits,
+        total_unknown_visitors=summary.total_unknown_visitors,
+        total_unknown_visits=summary.total_unknown_visits,
     )
     return AccessResponse(
         unit=unit,
@@ -334,11 +355,23 @@ async def access_stats(
         to=summary.to.isoformat(),
         total_visitors=summary.total_visitors,
         total_visits=summary.total_visits,
+        total_pc_visitors=summary.total_pc_visitors,
+        total_pc_visits=summary.total_pc_visits,
+        total_mobile_visitors=summary.total_mobile_visitors,
+        total_mobile_visits=summary.total_mobile_visits,
+        total_unknown_visitors=summary.total_unknown_visitors,
+        total_unknown_visits=summary.total_unknown_visits,
         buckets=[
             AccessBucketResponse(
                 bucket_start=b.bucket_start.isoformat(),
                 visitors=b.visitors,
                 visits=b.visits,
+                pc_visitors=b.pc_visitors,
+                pc_visits=b.pc_visits,
+                mobile_visitors=b.mobile_visitors,
+                mobile_visits=b.mobile_visits,
+                unknown_visitors=b.unknown_visitors,
+                unknown_visits=b.unknown_visits,
             )
             for b in summary.buckets
         ],

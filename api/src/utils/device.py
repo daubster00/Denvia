@@ -4,6 +4,8 @@
 진단용이다. 애매한 경우(신형 iPadOS 가 데스크톱 UA 로 위장하는 등)는 감수한다.
 """
 
+import re
+
 # UA(User-Agent, 브라우저가 보내는 기기·브라우저 식별 문자열)에 이 토큰이 있으면 모바일로 본다.
 _MOBILE_TOKENS = (
     "Mobi",
@@ -16,6 +18,17 @@ _MOBILE_TOKENS = (
     "BlackBerry",
     "Opera Mini",
 )
+
+
+def mobile_ua_regex() -> str:
+    """_MOBILE_TOKENS 를 SQL(Postgres) 정규식 한 줄로 만든다.
+
+    접속 통계 집계(게시판 #144)는 UA 판별을 SQL 안에서 해야 해서 정규식이 필요하다.
+    토큰 목록을 SQL 쪽에 다시 적어두면 파이썬(classify_device)과 결과가 갈라지므로,
+    반드시 이 함수로 만들어 쓴다. 비교는 대소문자 무시(`~*`)로 해야
+    classify_device 가 소문자로 낮춰 비교하는 것과 결과가 같아진다.
+    """
+    return "|".join(re.escape(token) for token in _MOBILE_TOKENS)
 
 
 def classify_device(user_agent: str | None) -> str:
