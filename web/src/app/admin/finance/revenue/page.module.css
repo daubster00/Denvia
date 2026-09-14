@@ -218,3 +218,12 @@
   color: #0f172a;
   margin: 0;
 }
+
+/* #145 — 지출 내역(챗봇 대화 / 지식 재구축) 안내 문구 */
+.costNote {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: #6b7280;
+  margin: 0;
+  max-width: 56rem;
+}

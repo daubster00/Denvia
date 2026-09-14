@@ -658,6 +658,13 @@ export interface RevenueVarianceResponse {
   net_revenue_krw: number;
   token_cost_usd: string;
   token_cost_krw: number;
+  // #145 — 토큰 비용 내역. qa_* = 챗봇 대화, rebuild_* = 지식 재구축(임베딩).
+  // qa_cost_krw + rebuild_cost_krw === token_cost_krw
+  // (배포 직후 구 버전 응답이 올 수 있어 optional — 현행 백엔드는 항상 내려준다.)
+  qa_cost_usd?: string;
+  qa_cost_krw?: number;
+  rebuild_cost_usd?: string;
+  rebuild_cost_krw?: number;
   usd_to_krw: number;
   /** net_revenue_krw - token_cost_krw */
   variance_krw: number;
@@ -678,6 +685,10 @@ export interface RevenueSeriesItem {
   refund_krw: number;
   net_revenue_krw: number;
   token_cost_krw: number;
+  /** #145 — 챗봇 대화 비용 (token_cost_krw 의 일부) */
+  qa_cost_krw?: number;
+  /** #145 — 지식 재구축 비용 (token_cost_krw 의 일부) */
+  rebuild_cost_krw?: number;
   variance_krw: number;
 }
 

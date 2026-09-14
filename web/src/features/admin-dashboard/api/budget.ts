@@ -7,6 +7,15 @@ export interface BudgetCurrentMonth {
   // 전체 시스템 KRW 통일 — 응답 시점 환율로 환산된 보조 필드.
   monthly_limit_krw: number;
   spent_krw: number;
+  // #145 — 지출 내역 분해.
+  // qa_*      = 챗봇 대화(질의응답) 비용
+  // rebuild_* = 지식 재구축(임베딩) 비용
+  // qa_spent_krw + rebuild_spent_krw === spent_krw
+  // (배포 직후 구 버전 응답이 올 수 있어 optional — 현행 백엔드는 항상 내려준다.)
+  qa_spent_usd?: string;
+  rebuild_spent_usd?: string;
+  qa_spent_krw?: number;
+  rebuild_spent_krw?: number;
   usd_to_krw: number;
   percent: number;
   status: "normal" | "warning" | "critical";

@@ -67,6 +67,11 @@ def _summary(year_month: str = "2026-05"):
         "net_revenue_krw": 1_485_000,
         "token_cost_usd": "12.345600",
         "token_cost_krw": 17_284,
+        # #145 — 토큰 비용 내역 (챗봇 대화 / 지식 재구축)
+        "qa_cost_usd": "12.345600",
+        "qa_cost_krw": 17_284,
+        "rebuild_cost_usd": "0.000000",
+        "rebuild_cost_krw": 0,
         "usd_to_krw": 1400,
         "variance_krw": 1_467_716,
         "error_count": 3,

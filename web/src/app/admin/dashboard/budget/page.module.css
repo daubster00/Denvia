@@ -189,3 +189,46 @@
   border-color: #7c3aed;
   color: #6d28d9;
 }
+
+/* #145 — 지출 내역(챗봇 대화 / 지식 재구축) 분리 표기 */
+.breakdown {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0;
+}
+
+.breakdownItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.breakdownLabel {
+  font-size: 0.75rem;
+  color: #6b21a8;
+  margin: 0;
+}
+
+.breakdownValue {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #4c1d95;
+  margin: 0;
+}
+
+.breakdownPlus {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #8b5cf6;
+  line-height: 1.75;
+}
+
+.breakdownNote {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #6b7280;
+  margin: 0.5rem 0 0;
+  max-width: 44rem;
+}

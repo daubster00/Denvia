@@ -1520,6 +1520,12 @@ class RevenueVarianceResponse(BaseModel):
     net_revenue_krw: int
     token_cost_usd: str
     token_cost_krw: int
+    # #145 — 지출 내역 분해. qa_* = 챗봇 대화, rebuild_* = 지식 재구축(임베딩).
+    # qa_cost_krw + rebuild_cost_krw == token_cost_krw 가 항상 성립한다.
+    qa_cost_usd: str
+    qa_cost_krw: int
+    rebuild_cost_usd: str
+    rebuild_cost_krw: int
     usd_to_krw: int
     variance_krw: int  # net_revenue_krw - token_cost_krw
     error_count: int
@@ -1534,6 +1540,9 @@ class RevenueSeriesItem(BaseModel):
     refund_krw: int
     net_revenue_krw: int
     token_cost_krw: int
+    # #145 — 토큰비용 내역 (합이 token_cost_krw)
+    qa_cost_krw: int = 0
+    rebuild_cost_krw: int = 0
     variance_krw: int  # net_revenue_krw - token_cost_krw
 
 
@@ -1642,6 +1651,9 @@ async def revenue_variance_export(
     ws_sum.append(["당월 토큰 비용 (USD)", summary["token_cost_usd"]])
     ws_sum.append(["적용 환율 (KRW/USD)", summary["usd_to_krw"]])
     ws_sum.append(["당월 토큰 비용 (KRW)", summary["token_cost_krw"]])
+    # #145 — 토큰 비용을 챗봇 대화 / 지식 재구축으로 나눠 보여준다.
+    ws_sum.append(["  └ 챗봇 대화 비용 (KRW)", summary["qa_cost_krw"]])
+    ws_sum.append(["  └ 지식 재구축 비용 (KRW)", summary["rebuild_cost_krw"]])
     ws_sum.append(["차액 (KRW, 순매출−토큰비용)", summary["variance_krw"]])
     ws_sum.append(["결제 실패 건수", summary["error_count"]])
     ws_sum.append(["이상 이벤트 건수", summary["anomaly_count"]])

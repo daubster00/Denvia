@@ -43,6 +43,11 @@ const baseData = {
   net_revenue_krw: 1_485_000,
   token_cost_usd: "12.345600",
   token_cost_krw: 17_284,
+  // #145 — 토큰 비용 내역 (챗봇 대화 / 지식 재구축)
+  qa_cost_usd: "10.000000",
+  qa_cost_krw: 14_000,
+  rebuild_cost_usd: "2.345600",
+  rebuild_cost_krw: 3_284,
   usd_to_krw: 1400,
   variance_krw: 1_467_716,
   error_count: 3,
@@ -64,7 +69,7 @@ describe("RevenueSummaryWidget", () => {
     expect(screen.getByText(/로딩 중/)).toBeTruthy();
   });
 
-  it("데이터 6개 행 렌더 (총매출/환불/순매출/토큰비용/차액/에러)", async () => {
+  it("데이터 행 렌더 (총매출/환불/순매출/토큰비용+내역/차액/에러)", async () => {
     const { fetchRevenueVariance } = await import("../../api/analytics");
     (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       baseData,
@@ -76,6 +81,11 @@ describe("RevenueSummaryWidget", () => {
     expect(grossCells.length).toBe(2);
     expect(screen.getByText("0원")).toBeTruthy(); // 환불액
     expect(screen.getByText("17,284원")).toBeTruthy();
+    // #145 — 토큰 비용이 챗봇 대화 / 지식 재구축으로 나눠 보여야 한다.
+    expect(screen.getByText("└ 챗봇 대화")).toBeTruthy();
+    expect(screen.getByText("14,000원")).toBeTruthy();
+    expect(screen.getByText("└ 지식 재구축")).toBeTruthy();
+    expect(screen.getByText("3,284원")).toBeTruthy();
     expect(screen.getByText("1,467,716원")).toBeTruthy();
     expect(screen.getByText("15건")).toBeTruthy(); // 3+12
     expect(screen.getByText("순매출")).toBeTruthy();

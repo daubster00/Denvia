@@ -10,6 +10,10 @@ import {
 } from "@/features/admin-dashboard/api/analytics";
 import { DashboardChart } from "@/features/admin-dashboard/components/DashboardChart";
 import { KPICard } from "@/features/admin-dashboard/components/KPICard";
+import {
+  REBUILD_COST_NOTICE,
+  formatCostBreakdown,
+} from "@/features/admin-dashboard/constants/cost-breakdown";
 import styles from "./page.module.css";
 
 function currentKstYearMonth(): string {
@@ -187,7 +191,11 @@ export default function RevenueDashboardPage() {
               value={`${data.token_cost_krw.toLocaleString("ko-KR")}원`}
               trend={{
                 direction: "flat",
-                text: `환율 ₩${data.usd_to_krw.toLocaleString("ko-KR")}/$ 적용 (OpenAI 청구 USD ${data.token_cost_usd} 환산)`,
+                // #145 — 비용이 어디서 나왔는지 바로 보이게 내역을 같이 적는다.
+                text: formatCostBreakdown(
+                  data.qa_cost_krw ?? 0,
+                  data.rebuild_cost_krw ?? 0,
+                ),
               }}
             />
             <KPICard
@@ -210,6 +218,12 @@ export default function RevenueDashboardPage() {
             />
           </div>
 
+          <p className={styles.costNote}>
+            {REBUILD_COST_NOTICE} · 환율 ₩
+            {data.usd_to_krw.toLocaleString("ko-KR")}/$ 적용 (OpenAI 청구 USD{" "}
+            {data.token_cost_usd} 환산)
+          </p>
+
           {isEmpty && (
             <p className={styles.emptyState} role="status">
               선택하신 월에 매출·토큰 데이터가 없습니다.
@@ -231,7 +245,8 @@ export default function RevenueDashboardPage() {
                   gross_revenue_krw: item.gross_revenue_krw,
                   refund_krw: item.refund_krw,
                   net_revenue_krw: item.net_revenue_krw,
-                  token_cost_krw: item.token_cost_krw,
+                  qa_cost_krw: item.qa_cost_krw ?? item.token_cost_krw,
+                  rebuild_cost_krw: item.rebuild_cost_krw ?? 0,
                   variance_krw: item.variance_krw,
                 }))}
                 series={[
@@ -251,13 +266,18 @@ export default function RevenueDashboardPage() {
                     tone: "neutral",
                   },
                   {
-                    key: "token_cost_krw",
-                    label: "토큰 비용 (₩)",
+                    key: "qa_cost_krw",
+                    label: "챗봇 대화 비용 (₩)",
                     tone: "warning",
+                  },
+                  {
+                    key: "rebuild_cost_krw",
+                    label: "지식 재구축 비용 (₩)",
+                    tone: "brand",
                   },
                   { key: "variance_krw", label: "차액 (₩)", tone: "success" },
                 ]}
-                ariaLabel={`총매출·환불·순매출·토큰비용·차액 12개월 추이 — 당월 총매출 ${data.gross_revenue_krw.toLocaleString("ko-KR")}원, 환불 ${data.refund_krw.toLocaleString("ko-KR")}원, 순매출 ${data.net_revenue_krw.toLocaleString("ko-KR")}원, 토큰비용 ${data.token_cost_krw.toLocaleString("ko-KR")}원, 차액 ${data.variance_krw.toLocaleString("ko-KR")}원`}
+                ariaLabel={`총매출·환불·순매출·토큰비용·차액 12개월 추이 — 당월 총매출 ${data.gross_revenue_krw.toLocaleString("ko-KR")}원, 환불 ${data.refund_krw.toLocaleString("ko-KR")}원, 순매출 ${data.net_revenue_krw.toLocaleString("ko-KR")}원, 토큰비용 ${data.token_cost_krw.toLocaleString("ko-KR")}원(챗봇 대화 ${(data.qa_cost_krw ?? 0).toLocaleString("ko-KR")}원 + 지식 재구축 ${(data.rebuild_cost_krw ?? 0).toLocaleString("ko-KR")}원), 차액 ${data.variance_krw.toLocaleString("ko-KR")}원`}
               />
             </section>
           )}

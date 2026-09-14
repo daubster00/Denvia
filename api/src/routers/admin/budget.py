@@ -40,6 +40,14 @@ class BudgetCurrentMonthResponse(BaseModel):
     # DB 원본은 USD 유지(OpenAI 청구가 USD), API 응답 시점에만 환율로 환산해 부착.
     monthly_limit_krw: int
     spent_krw: int
+    # #145 — 지출 내역 분해.
+    # qa_*      = 챗봇 대화(질의응답) 비용
+    # rebuild_* = 지식 재구축(임베딩) 비용
+    # qa_spent_krw + rebuild_spent_krw == spent_krw 가 항상 성립한다.
+    qa_spent_usd: Decimal
+    rebuild_spent_usd: Decimal
+    qa_spent_krw: int
+    rebuild_spent_krw: int
     usd_to_krw: int
     percent: float
     status: str
@@ -51,7 +59,9 @@ class BudgetCurrentMonthResponse(BaseModel):
 
     model_config = ConfigDict()
 
-    @field_serializer("monthly_limit_usd", "spent_usd")
+    @field_serializer(
+        "monthly_limit_usd", "spent_usd", "qa_spent_usd", "rebuild_spent_usd"
+    )
     def _ser_decimal(self, v: Decimal) -> str:
         return f"{v:.6f}" if v.as_tuple().exponent < -2 else f"{v:.2f}"
 
@@ -87,6 +97,12 @@ async def _build_response(
     spent_krw = int(
         (snap.spent_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
     )
+    # #145 — 합계(spent_krw) 식은 손대지 않고, 재구축분만 환산해 떼서
+    # 나머지를 챗봇 대화로 둔다. 반올림 차이로 "내역합 ≠ 합계"가 되는 일을 막는다.
+    rebuild_spent_krw = int(
+        (snap.rebuild_spent_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
+    qa_spent_krw = spent_krw - rebuild_spent_krw
     response.headers["Cache-Control"] = "no-store"
     return BudgetCurrentMonthResponse(
         year_month=snap.year_month,
@@ -94,6 +110,10 @@ async def _build_response(
         spent_usd=snap.spent_usd,
         monthly_limit_krw=monthly_limit_krw,
         spent_krw=spent_krw,
+        qa_spent_usd=snap.qa_spent_usd,
+        rebuild_spent_usd=snap.rebuild_spent_usd,
+        qa_spent_krw=qa_spent_krw,
+        rebuild_spent_krw=rebuild_spent_krw,
         usd_to_krw=usd_to_krw,
         percent=snap.percent,
         status=snap.status,

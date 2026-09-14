@@ -8,6 +8,9 @@ import { BudgetGauge } from "@/features/admin-dashboard/components/BudgetGauge";
 import { KPICard } from "@/features/admin-dashboard/components/KPICard";
 import { useAdminEventsStore } from "@/stores/admin-events-store";
 import { formatKRW } from "@/lib/format-currency";
+import {
+  REBUILD_COST_NOTICE,
+} from "@/features/admin-dashboard/constants/cost-breakdown";
 import styles from "./page.module.css";
 
 // OpenAI 청구는 보통 매월 1일에 전월 사용분이 정산됨.
@@ -100,6 +103,9 @@ export default function BudgetPage() {
   const remainingKrw = Math.max(limitKrw - spentKrw, 0);
   const settlementDate = nextOpenAiSettlementKst(data.year_month);
   const isPast = data.is_past_month;
+  // #145 — 지출은 챗봇 대화 비용 + 지식 재구축 비용으로 이뤄진다.
+  const chatKrw = data.qa_spent_krw ?? spentKrw;
+  const rebuildKrw = data.rebuild_spent_krw ?? 0;
 
   return (
     <section className={styles.page}>
@@ -140,6 +146,20 @@ export default function BudgetPage() {
             {isPast ? "그 달 비용" : "이번 달 비용"}
           </p>
           <p className={styles.spendValue}>{formatKRW(spentKrw)}</p>
+          <dl className={styles.breakdown} aria-label="지출 내역">
+            <div className={styles.breakdownItem}>
+              <dt className={styles.breakdownLabel}>챗봇 대화</dt>
+              <dd className={styles.breakdownValue}>{formatKRW(chatKrw)}</dd>
+            </div>
+            <span className={styles.breakdownPlus} aria-hidden="true">
+              +
+            </span>
+            <div className={styles.breakdownItem}>
+              <dt className={styles.breakdownLabel}>지식 재구축</dt>
+              <dd className={styles.breakdownValue}>{formatKRW(rebuildKrw)}</dd>
+            </div>
+          </dl>
+          <p className={styles.breakdownNote}>{REBUILD_COST_NOTICE}</p>
           {isViewingCurrent ? (
             <p className={styles.spendHint}>
               OpenAI 청구 예정일 {settlementDate} KST · 전월 사용분이 다음 달 1일에 정산됩니다.

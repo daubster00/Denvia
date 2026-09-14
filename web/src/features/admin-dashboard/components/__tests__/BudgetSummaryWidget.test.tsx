@@ -42,6 +42,11 @@ describe("BudgetSummaryWidget", () => {
       spent_usd: "42.50",
       monthly_limit_krw: 140_000,
       spent_krw: 59_500,
+      // #145 — 지출 내역 (챗봇 대화 / 지식 재구축)
+      qa_spent_usd: "35.00",
+      rebuild_spent_usd: "7.50",
+      qa_spent_krw: 49_000,
+      rebuild_spent_krw: 10_500,
       usd_to_krw: 1400,
       percent: 42.5,
       status: "normal",
@@ -55,6 +60,11 @@ describe("BudgetSummaryWidget", () => {
     expect(screen.getByText("₩140,000")).toBeTruthy();
     expect(screen.getByText("₩80,500")).toBeTruthy(); // 남은 예산 = 140000 - 59500
     expect(screen.getByText("2026-04")).toBeTruthy();
+    // #145 — 당월 비용이 챗봇 대화 / 지식 재구축으로 나눠 보여야 한다.
+    expect(screen.getByText("└ 챗봇 대화")).toBeTruthy();
+    expect(screen.getByText("₩49,000")).toBeTruthy();
+    expect(screen.getByText("└ 지식 재구축")).toBeTruthy();
+    expect(screen.getByText("₩10,500")).toBeTruthy();
     const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe("/admin/dashboard/budget");
     expect(screen.getByRole("progressbar")).toBeTruthy();
@@ -68,6 +78,10 @@ describe("BudgetSummaryWidget", () => {
       spent_usd: "85.00",
       monthly_limit_krw: 140_000,
       spent_krw: 119_000,
+      qa_spent_usd: "80.00",
+      rebuild_spent_usd: "5.00",
+      qa_spent_krw: 112_000,
+      rebuild_spent_krw: 7_000,
       usd_to_krw: 1400,
       percent: 85,
       status: "warning",

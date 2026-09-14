@@ -111,3 +111,11 @@
   font-size: 0.75rem;
   color: #6b7280;
 }
+
+/* #145 — 지출에 지식 재구축 비용이 포함된다는 안내 */
+.breakdownNote {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #6b7280;
+  margin: 0.75rem 0 0;
+}

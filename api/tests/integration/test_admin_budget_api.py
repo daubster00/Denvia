@@ -64,8 +64,17 @@ def _make_user(role: str = "admin"):
     return user
 
 
-def _mock_db_with_budget(spent: Decimal = Decimal("10.00"), limit: Decimal = Decimal("100.00"), modes: list = None):
-    """budget 엔드포인트 응답용 DB session mock."""
+def _mock_db_with_budget(
+    spent: Decimal = Decimal("10.00"),
+    limit: Decimal = Decimal("100.00"),
+    modes: list = None,
+    rebuild_spent: Decimal = Decimal("0"),
+):
+    """budget 엔드포인트 응답용 DB session mock.
+
+    `spent` 는 챗봇 대화(qa_logs) 비용, `rebuild_spent` 는 지식 재구축(임베딩)
+    비용(#145). 둘을 더한 값이 예산 기준값이 된다.
+    """
     from api.src.models.budget_threshold import BudgetThreshold
     from api.src.models.killswitch_state import KillswitchState
 
@@ -80,9 +89,12 @@ def _mock_db_with_budget(spent: Decimal = Decimal("10.00"), limit: Decimal = Dec
         call_count += 1
         result = MagicMock()
         if call_count == 1:
-            # SUM(cost_usd)
+            # SUM(qa_logs.cost_usd)
             result.scalar_one.return_value = spent
         elif call_count == 2:
+            # #145 SUM(rebuild_jobs.embedding_cost_usd)
+            result.scalar_one.return_value = rebuild_spent
+        elif call_count == 3:
             # SELECT BudgetThreshold
             result.scalar_one_or_none.return_value = threshold
         else:
@@ -320,3 +332,60 @@ class TestBudgetCurrentMonthYmParam:
             app.dependency_overrides.clear()
         assert res.status_code == 200
         assert res.json()["is_past_month"] is False
+
+
+@pytest.mark.asyncio
+class TestBudgetSpendBreakdown:
+    """#145 — 지출을 '챗봇 대화'와 '지식 재구축'으로 나눠 내려주는지.
+
+    배경: 그동안 지출은 챗봇 대화(qa_logs)만 합산해, 지식 재구축 때 나간 임베딩
+    비용이 화면에 전혀 안 잡혔다. 이제 합계에 포함하고 내역도 함께 내려준다.
+    """
+
+    async def _get(self, gen):
+        token = _make_admin_jwt()
+        user = _make_user(role="admin")
+        with patch("api.src.deps.auth.get_user_by_id", new=AsyncMock(return_value=user)):
+            app.dependency_overrides[get_session] = gen
+            app.dependency_overrides[get_redis_runtime] = _fake_redis_runtime
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                res = await client.get(
+                    "/api/v1/admin/budget/current-month",
+                    cookies={"denvia_admin_session": token},
+                )
+            app.dependency_overrides.clear()
+        return res
+
+    async def test_재구축_비용이_합계에_더해지고_내역도_내려온다(self):
+        gen = _mock_db_with_budget(
+            spent=Decimal("48.34"),
+            rebuild_spent=Decimal("50.00"),
+            limit=Decimal("200.00"),
+            modes=[],
+        )
+        res = await self._get(gen)
+
+        assert res.status_code == 200
+        data = res.json()
+        assert data["spent_usd"] == "98.34"
+        assert data["qa_spent_usd"] == "48.34"
+        assert data["rebuild_spent_usd"] == "50.00"
+        # 화면에 "챗봇 대화 ₩○○ + 지식 재구축 ₩○○ = 합계"가 딱 맞아야 한다.
+        assert data["qa_spent_krw"] + data["rebuild_spent_krw"] == data["spent_krw"]
+        assert data["rebuild_spent_krw"] == 70_000  # 50 × 1400
+
+    async def test_재구축이_없으면_기존과_동일한_금액(self):
+        """과거 재구축은 비용이 NULL 이라 0으로 합산 — 총계가 변하지 않는다."""
+        gen = _mock_db_with_budget(
+            spent=Decimal("12.34"),
+            rebuild_spent=Decimal("0"),
+            limit=Decimal("100.00"),
+            modes=[],
+        )
+        res = await self._get(gen)
+
+        data = res.json()
+        assert data["spent_usd"] == "12.34"
+        assert data["rebuild_spent_krw"] == 0
+        assert data["qa_spent_krw"] == data["spent_krw"]
+        assert data["percent"] == 12.34

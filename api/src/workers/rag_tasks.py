@@ -7,6 +7,7 @@ import json
 import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import redis.asyncio as aioredis
@@ -161,6 +162,45 @@ async def _rebuild_index_async(celery_task_id: str, job_id: int) -> dict:
 
         await _publish_progress(r, job_id, 20, "embedding")
 
+        # Step 3-b: 재구축 비용 측정 (수정요청 게시판 #145)
+        # 임베딩 호출은 langchain get_openai_callback 에 잡히지 않아 그동안
+        # 재구축 비용이 어디에도 기록되지 않았다. 여기서는 OpenAI 에 추가
+        # 요청을 보내지 않고 tiktoken 으로 로컬에서 토큰만 센다.
+        # 중요: 측정은 재구축 동작을 1밀리도 바꾸지 않는다. 실패해도
+        # 재구축을 막지 않도록 예외를 전부 삼킨다.
+        embedding_tokens: int | None = None
+        embedding_cost: Decimal | None = None
+        try:
+            from api.src.services.embedding_cost import (
+                EMBEDDING_MODEL,
+                count_tokens,
+                embedding_cost_usd,
+            )
+            from rag.update_vectorstore import build_documents
+
+            _docs = build_documents(str(tmpdir))
+            embedding_tokens, _is_approx = count_tokens(
+                d.page_content for d in _docs
+            )
+            embedding_cost = embedding_cost_usd(embedding_tokens)
+            logger.info(
+                "rag.rebuild.embedding_cost_measured",
+                job_id=job_id,
+                model=EMBEDDING_MODEL,
+                document_count=len(_docs),
+                embedding_tokens=embedding_tokens,
+                embedding_cost_usd=str(embedding_cost),
+                approximate=_is_approx,
+            )
+        except Exception as e:  # 측정 실패 ≠ 재구축 실패
+            embedding_tokens = None
+            embedding_cost = None
+            logger.warning(
+                "rag.rebuild.embedding_cost_measure_failed",
+                job_id=job_id,
+                error=str(e),
+            )
+
         # Step 4: update_vectorstore 호출 (sync — 스레드풀에서 실행)
         from rag.update_vectorstore import update_vectorstore
 
@@ -171,6 +211,23 @@ async def _rebuild_index_async(celery_task_id: str, job_id: int) -> dict:
             )
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+        # 임베딩이 실제로 끝났다 = OpenAI 에 과금이 발생했다.
+        # 이후 관리자가 취소해도 나간 돈은 나간 것이므로 여기서 바로 기록한다.
+        if embedding_tokens is not None:
+            try:
+                async with async_session_factory() as db:
+                    _cost_job = await db.get(RebuildJob, job_id)
+                    if _cost_job is not None:
+                        _cost_job.embedding_token_count = embedding_tokens
+                        _cost_job.embedding_cost_usd = embedding_cost
+                        await db.commit()
+            except Exception as e:
+                logger.warning(
+                    "rag.rebuild.embedding_cost_save_failed",
+                    job_id=job_id,
+                    error=str(e),
+                )
 
         await _publish_progress(r, job_id, 80, "faiss_build")
 

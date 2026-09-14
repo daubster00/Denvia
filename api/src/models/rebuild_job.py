@@ -1,8 +1,17 @@
 """RebuildJob ORM 모델 — Story 8.3."""
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, SmallInteger, String, Text
+from sqlalchemy import (
+    BigInteger,
+    ForeignKey,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.src.models.base import Base
@@ -34,4 +43,13 @@ class RebuildJob(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_count_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chunk_count_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ── 재구축 비용 (수정요청 게시판 #145) ───────────────────────
+    # 재구축 1회에 실제로 임베딩된 토큰 수와 그 비용(USD).
+    # tiktoken 으로 로컬 계산하므로 OpenAI 에 추가 호출이 나가지 않는다.
+    # 2026-09-14 이전 재구축은 측정 자체가 없었으므로 NULL 로 남긴다(추측값 백필 금지).
+    # cost_usd 정밀도는 qa_logs.cost_usd 와 맞춰 소수점 6자리.
+    embedding_token_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    embedding_cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="NOW()")

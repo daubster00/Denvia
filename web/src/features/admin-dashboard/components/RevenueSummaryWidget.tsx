@@ -62,6 +62,19 @@ export function RevenueSummaryWidget() {
               {data.token_cost_krw.toLocaleString("ko-KR")}원
             </dd>
           </div>
+          {/* #145 — 토큰 비용을 챗봇 대화 / 지식 재구축으로 나눠 보여준다. */}
+          <div className={styles.figureItem}>
+            <dt className={styles.figureLabel}>└ 챗봇 대화</dt>
+            <dd className={styles.figureValue}>
+              {(data.qa_cost_krw ?? 0).toLocaleString("ko-KR")}원
+            </dd>
+          </div>
+          <div className={styles.figureItem}>
+            <dt className={styles.figureLabel}>└ 지식 재구축</dt>
+            <dd className={styles.figureValue}>
+              {(data.rebuild_cost_krw ?? 0).toLocaleString("ko-KR")}원
+            </dd>
+          </div>
           <div className={styles.figureItem}>
             <dt className={styles.figureLabel}>차액</dt>
             <dd

@@ -95,6 +95,17 @@ function BudgetSummaryBody({
             {formatKRW(spentKrw)}
           </dd>
         </div>
+        {/* #145 — 당월 비용을 챗봇 대화 / 지식 재구축으로 나눠 보여준다. */}
+        <div className={styles.figureItem}>
+          <dt className={styles.figureLabel}>└ 챗봇 대화</dt>
+          <dd className={styles.figureValue}>{formatKRW(data.qa_spent_krw ?? spentKrw)}</dd>
+        </div>
+        <div className={styles.figureItem}>
+          <dt className={styles.figureLabel}>└ 지식 재구축</dt>
+          <dd className={styles.figureValue}>
+            {formatKRW(data.rebuild_spent_krw ?? 0)}
+          </dd>
+        </div>
         <div className={styles.figureItem}>
           <dt className={styles.figureLabel}>월 한도</dt>
           <dd className={styles.figureValue}>{formatKRW(limitKrw)}</dd>

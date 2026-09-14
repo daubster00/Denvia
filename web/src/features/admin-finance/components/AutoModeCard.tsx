@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { formatKRW } from "@/lib/format-currency";
+import { REBUILD_COST_NOTICE } from "@/features/admin-dashboard/constants/cost-breakdown";
 import type { AutoFreeOnlyStatus } from "../api/killswitch";
 import styles from "./AutoModeCard.module.css";
 
@@ -81,6 +82,11 @@ export function AutoModeCard({ status }: AutoModeCardProps) {
             {formatKRW(status.spent_krw)}
           </span>
         </li>
+        {/* #145 — 당월 지출에 지식 재구축 비용이 포함된다는 안내 */}
+        <li className={styles.metaRow}>
+          <span className={styles.metaLabel}>지출 범위</span>
+          <span className={styles.metaValue}>챗봇 대화 + 지식 재구축</span>
+        </li>
         {status.active && status.activated_at && (
           <li className={styles.metaRow}>
             <span className={styles.metaLabel}>발동 시각</span>
@@ -90,6 +96,8 @@ export function AutoModeCard({ status }: AutoModeCardProps) {
           </li>
         )}
       </ul>
+
+      <p className={styles.breakdownNote}>{REBUILD_COST_NOTICE}</p>
 
       <Link href="/admin/settings#monthly-budget" className={styles.budgetLink}>
         예산 한도 상향 →

@@ -33,6 +33,7 @@ from api.src.models.payment import Payment
 from api.src.models.payment_event import PaymentEvent
 from api.src.models.qa_feedback import QAFeedback
 from api.src.models.qa_log import QALog
+from api.src.models.rebuild_job import RebuildJob
 from api.src.models.subscription import Subscription
 from api.src.models.user import User
 from api.src.services import runtime_config_service
@@ -1277,6 +1278,13 @@ ALLOWED_SERIES_MONTHS = (3, 6, 12, 24)
 EXPORT_DETAIL_LIMIT_REVENUE = 10_000  # 9.1 finance_service.EXPORT_DETAIL_LIMIT과 동일 값, 모듈 분리
 
 
+def _as_decimal(value: Any) -> Decimal:
+    """SUM 결과를 Decimal 로 통일. 드라이버·백엔드에 따라 int/float 로 올 수 있다."""
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value or 0))
+
+
 def _kst_month_bounds_from_str(year_month: str) -> tuple[datetime, datetime]:
     """YYYY-MM → (kst_start, kst_end_exclusive). 422 가드는 라우터에서."""
     y_str, m_str = year_month.split("-")
@@ -1303,8 +1311,12 @@ async def get_revenue_variance_month(
     - refund_krw: 위 gross 대상 결제 중 payment.status='refunded' 인 결제의
       amount_krw SUM. 결제와 같은 달로 차감되어 "원 결제 월"의 순매출이 줄어든다.
     - net_revenue_krw: gross_revenue_krw − refund_krw.
-    - token_cost_usd: qa_logs.cost_usd SUM (NULL 자동 제외)
-    - token_cost_krw: round(token_cost_usd × usd_to_krw)
+    - token_cost_usd: 챗봇 대화 비용 + 지식 재구축 비용 합계 (#145)
+      · qa_cost_usd     = qa_logs.cost_usd SUM (NULL 자동 제외)
+      · rebuild_cost_usd = rebuild_jobs.embedding_cost_usd SUM (NULL 자동 제외)
+    - token_cost_krw: round(token_cost_usd × usd_to_krw). 화면 표시용 내역은
+      rebuild_cost_krw 를 먼저 환산하고 qa_cost_krw = token_cost_krw − rebuild_cost_krw
+      로 둔다 (내역 합이 항상 총계와 정확히 일치).
     - variance_krw: net_revenue_krw − token_cost_krw  (음수 가능)
     - error_count: payment_events.event_type='charge_failed' COUNT
     - anomaly_count: anomaly_events COUNT
@@ -1339,6 +1351,13 @@ async def get_revenue_variance_month(
             or_(QALog.user_id.is_(None), User.role != "admin"),
         )
     )
+    # #145 — 지식 재구축(임베딩) 비용. 관리자 작업이라 user 필터가 없다.
+    rebuild_cost_stmt = select(
+        func.coalesce(func.sum(RebuildJob.embedding_cost_usd), Decimal("0"))
+    ).where(
+        RebuildJob.created_at >= start,
+        RebuildJob.created_at < end_excl,
+    )
     err_stmt = select(func.count(PaymentEvent.id)).where(
         PaymentEvent.event_type == "charge_failed",
         PaymentEvent.created_at >= start,
@@ -1358,10 +1377,11 @@ async def get_revenue_variance_month(
     gross_revenue_krw = int(rev_row.gross or 0)
     refund_krw = int(rev_row.refund or 0)
     net_revenue_krw = gross_revenue_krw - refund_krw
-    token_cost_usd_raw = (await session.execute(cost_stmt)).scalar_one()
-    token_cost_usd: Decimal = (
-        token_cost_usd_raw if isinstance(token_cost_usd_raw, Decimal) else Decimal(token_cost_usd_raw or 0)
+    qa_cost_usd = _as_decimal((await session.execute(cost_stmt)).scalar_one())
+    rebuild_cost_usd = _as_decimal(
+        (await session.execute(rebuild_cost_stmt)).scalar_one()
     )
+    token_cost_usd: Decimal = qa_cost_usd + rebuild_cost_usd
     error_count = int((await session.execute(err_stmt)).scalar_one() or 0)
     anomaly_count = int((await session.execute(anomaly_stmt)).scalar_one() or 0)
 
@@ -1369,6 +1389,12 @@ async def get_revenue_variance_month(
     token_cost_krw = int(
         (token_cost_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
     )
+    # #145 — 합계(token_cost_krw) 식은 그대로 두고, 재구축분만 환산해 떼서
+    # 나머지를 챗봇 대화로 둔다. 반올림 차이로 "내역합 ≠ 합계"가 되는 일을 막는다.
+    rebuild_cost_krw = int(
+        (rebuild_cost_usd * Decimal(usd_to_krw)).quantize(Decimal("1"))
+    )
+    qa_cost_krw = token_cost_krw - rebuild_cost_krw
     variance_krw = net_revenue_krw - token_cost_krw
 
     return {
@@ -1379,6 +1405,11 @@ async def get_revenue_variance_month(
         "net_revenue_krw": net_revenue_krw,
         "token_cost_usd": str(token_cost_usd.quantize(Decimal("0.000001"))),
         "token_cost_krw": token_cost_krw,
+        # #145 — 지출 내역 분해 (챗봇 대화 / 지식 재구축)
+        "qa_cost_usd": str(qa_cost_usd.quantize(Decimal("0.000001"))),
+        "qa_cost_krw": qa_cost_krw,
+        "rebuild_cost_usd": str(rebuild_cost_usd.quantize(Decimal("0.000001"))),
+        "rebuild_cost_krw": rebuild_cost_krw,
         "usd_to_krw": usd_to_krw,
         "variance_krw": variance_krw,
         "error_count": error_count,
@@ -1405,7 +1436,11 @@ async def get_revenue_variance_series(
     months: int,
     to_year_month: str,
 ) -> dict[str, Any]:
-    """월별 매출·토큰비용·차액 시계열 (오름차순). 단일 SQL 2 쿼리 + 빈 월 0 채움."""
+    """월별 매출·토큰비용·차액 시계열 (오름차순). 단일 SQL 3 쿼리 + 빈 월 0 채움.
+
+    #145 — token_cost_krw 는 챗봇 대화 비용(qa_cost_krw)과 지식 재구축
+    비용(rebuild_cost_krw)의 합계이며, 내역도 같이 내려보낸다.
+    """
     to_start, _to_end_excl = _kst_month_bounds_from_str(to_year_month)
     from_start = _shift_month(to_start, -(months - 1))
     to_end_excl = _shift_month(to_start, 1)
@@ -1457,8 +1492,26 @@ async def get_revenue_variance_series(
         .group_by("bucket")
     )
 
+    # #145 — 월별 지식 재구축(임베딩) 비용. 관리자 작업이라 user 필터 없음.
+    rebuild_cost_stmt = (
+        select(
+            func.date_trunc(
+                "month", func.timezone("Asia/Seoul", RebuildJob.created_at)
+            ).label("bucket"),
+            func.coalesce(
+                func.sum(RebuildJob.embedding_cost_usd), Decimal("0")
+            ).label("cost"),
+        )
+        .where(
+            RebuildJob.created_at >= from_start,
+            RebuildJob.created_at < to_end_excl,
+        )
+        .group_by("bucket")
+    )
+
     rev_rows = (await session.execute(rev_stmt)).all()
     cost_rows = (await session.execute(cost_stmt)).all()
+    rebuild_cost_rows = (await session.execute(rebuild_cost_stmt)).all()
 
     usd_to_krw = await runtime_config_service.get_usd_to_krw(redis_runtime)
 
@@ -1470,8 +1523,10 @@ async def get_revenue_variance_series(
     rev_map: dict[str, int] = {_to_ym(r.bucket): int(r.rev or 0) for r in rev_rows}
     refund_map: dict[str, int] = {_to_ym(r.bucket): int(r.refund or 0) for r in rev_rows}
     cost_map: dict[str, Decimal] = {
-        _to_ym(r.bucket): (r.cost if isinstance(r.cost, Decimal) else Decimal(r.cost or 0))
-        for r in cost_rows
+        _to_ym(r.bucket): _as_decimal(r.cost) for r in cost_rows
+    }
+    rebuild_cost_map: dict[str, Decimal] = {
+        _to_ym(r.bucket): _as_decimal(r.cost) for r in rebuild_cost_rows
     }
 
     items: list[dict[str, Any]] = []
@@ -1482,7 +1537,12 @@ async def get_revenue_variance_series(
         refund_v = refund_map.get(ym, 0)
         net_v = gross_v - refund_v
         cost_v = cost_map.get(ym, Decimal("0"))
-        cost_krw = int((cost_v * Decimal(usd_to_krw)).quantize(Decimal("1")))
+        rebuild_v = rebuild_cost_map.get(ym, Decimal("0"))
+        # 합계는 (챗봇+재구축) USD 를 한 번에 환산하고, 내역은 거기서 쪼개야
+        # 반올림 차이로 "내역합 ≠ 합계"가 되지 않는다.
+        cost_krw = int(((cost_v + rebuild_v) * Decimal(usd_to_krw)).quantize(Decimal("1")))
+        rebuild_cost_krw = int((rebuild_v * Decimal(usd_to_krw)).quantize(Decimal("1")))
+        qa_cost_krw = cost_krw - rebuild_cost_krw
         items.append(
             {
                 "year_month": ym,
@@ -1491,6 +1551,8 @@ async def get_revenue_variance_series(
                 "refund_krw": refund_v,
                 "net_revenue_krw": net_v,
                 "token_cost_krw": cost_krw,
+                "qa_cost_krw": qa_cost_krw,
+                "rebuild_cost_krw": rebuild_cost_krw,
                 "variance_krw": net_v - cost_krw,
             }
         )

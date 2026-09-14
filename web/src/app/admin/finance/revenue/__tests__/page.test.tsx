@@ -45,6 +45,11 @@ const baseMonth = {
   net_revenue_krw: 1_485_000,
   token_cost_usd: "12.345600",
   token_cost_krw: 17_284,
+  // #145 — 토큰 비용 내역 (챗봇 대화 / 지식 재구축)
+  qa_cost_usd: "10.000000",
+  qa_cost_krw: 14_000,
+  rebuild_cost_usd: "2.345600",
+  rebuild_cost_krw: 3_284,
   usd_to_krw: 1400,
   variance_krw: 1_467_716,
   error_count: 3,
@@ -125,6 +130,28 @@ describe("RevenueDashboardPage", () => {
     expect(screen.getByText("29,000원")).toBeTruthy(); // 순매출
     expect(screen.getByText("20,600원")).toBeTruthy(); // 차액 (흑자)
     expect(screen.getByText(/흑자/)).toBeTruthy();
+  });
+
+  it("#145 — 토큰 비용을 챗봇 대화 / 지식 재구축으로 나눠 보여준다", async () => {
+    const { fetchRevenueVariance, fetchRevenueVarianceSeries } = await import(
+      "@/features/admin-dashboard/api/analytics"
+    );
+    (fetchRevenueVariance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      baseMonth,
+    );
+    (fetchRevenueVarianceSeries as ReturnType<typeof vi.fn>).mockResolvedValue(
+      baseSeries,
+    );
+
+    renderWithQuery(<RevenueDashboardPage />);
+
+    await screen.findByText("17,284원");
+    // 합계 밑에 "챗봇 대화 ₩○○ + 지식 재구축 ₩○○" 내역이 보여야 한다.
+    expect(
+      screen.getByText(/챗봇 대화 ₩14,000 \+ 지식 재구축 ₩3,284/),
+    ).toBeTruthy();
+    // 과거 재구축분은 비용이 기록되지 않았다는 안내.
+    expect(screen.getByText(/2026-09-14 이전에 실행한 재구축/)).toBeTruthy();
   });
 
   it("음수 차액 시 부호 `−` + error tone trend", async () => {

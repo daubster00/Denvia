@@ -10,23 +10,20 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 
-# ADR-0002 허용 수정 (i)(ii): top-level 즉시 실행 → 함수형 entry 재구성 + 경로 주입
-def update_vectorstore(data_dir=None, vector_path=None):
-    """txt 파일을 읽어 FAISS 벡터스토어를 빌드한다.
+# ADR-0002 허용 수정 (iii): 아래 파싱 루프는 원래 update_vectorstore() 안에
+# 인라인으로 있던 코드를 **한 글자도 바꾸지 않고** 함수로 분리만 한 것이다.
+# 파싱 규칙·page_content 조립·metadata 가 동일하므로 임베딩 결과는 완전히 같다.
+# 분리 이유: 재구축 비용(임베딩 토큰 수)을 API 호출 없이 세려면
+# "실제로 임베딩되는 텍스트"가 필요한데, 그 SSOT 가 바로 이 파싱이다.
+# (수정요청 게시판 #145 — 재구축 비용이 집계에 안 잡히던 문제)
+def build_documents(data_dir=None):
+    """txt 파일을 읽어 임베딩 대상 Document 목록을 만든다.
 
     Args:
         data_dir: txt 파일이 있는 디렉터리. 환경변수 VECTORSTORE_DATA_DIR 또는 'data' 기본값.
-        vector_path: FAISS 인덱스를 저장할 경로. 환경변수 FAISS_TARGET_PATH 또는 'vectorstore/faiss_index' 기본값.
     """
     if data_dir is None:
         data_dir = os.environ.get("VECTORSTORE_DATA_DIR", "data")
-    if vector_path is None:
-        vector_path = os.environ.get("FAISS_TARGET_PATH", "vectorstore/faiss_index")
-
-    # 🔥 vectorstore 초기화 (자동 삭제)
-    if os.path.exists(vector_path):
-        print("🧹 기존 vectorstore 삭제 중...")
-        shutil.rmtree(vector_path)
 
     txt_files = sorted(glob.glob(os.path.join(data_dir, "*.txt")))
 
@@ -96,6 +93,29 @@ def update_vectorstore(data_dir=None, vector_path=None):
                     }
                 )
             )
+
+    return documents
+
+
+# ADR-0002 허용 수정 (i)(ii): top-level 즉시 실행 → 함수형 entry 재구성 + 경로 주입
+def update_vectorstore(data_dir=None, vector_path=None):
+    """txt 파일을 읽어 FAISS 벡터스토어를 빌드한다.
+
+    Args:
+        data_dir: txt 파일이 있는 디렉터리. 환경변수 VECTORSTORE_DATA_DIR 또는 'data' 기본값.
+        vector_path: FAISS 인덱스를 저장할 경로. 환경변수 FAISS_TARGET_PATH 또는 'vectorstore/faiss_index' 기본값.
+    """
+    if data_dir is None:
+        data_dir = os.environ.get("VECTORSTORE_DATA_DIR", "data")
+    if vector_path is None:
+        vector_path = os.environ.get("FAISS_TARGET_PATH", "vectorstore/faiss_index")
+
+    # 🔥 vectorstore 초기화 (자동 삭제)
+    if os.path.exists(vector_path):
+        print("🧹 기존 vectorstore 삭제 중...")
+        shutil.rmtree(vector_path)
+
+    documents = build_documents(data_dir)
 
     print("📄 document 수:", len(documents))
 
