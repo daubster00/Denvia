@@ -31,12 +31,16 @@ export function LogoLink({ onResetChat, href, ariaLabel }: LogoLinkProps) {
       }}
       className={styles.link}
     >
+      {/* unoptimized: /_next/image 변환 캐시가 특정 키에서 무한 대기에 빠져 로고가
+          전면 미표시된 사고(2026-09-17)가 있었다. 49KB 원본을 그대로 내보내
+          이미지 최적화 경로 자체를 타지 않게 한다. */}
       <Image
         src="/logo-full.png"
         alt="Denvia"
         width={916}
         height={269}
         priority
+        unoptimized
         className={styles.image}
       />
     </Link>

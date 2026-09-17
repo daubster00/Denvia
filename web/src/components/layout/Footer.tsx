@@ -23,11 +23,13 @@ export function Footer() {
     <footer className={styles.footer} aria-label="사업자 정보">
       <div className={styles.inner}>
         <div className={styles.brandRow}>
+          {/* unoptimized 이유는 LogoLink.tsx 주석 참고 (2026-09-17 로고 미표시 사고) */}
           <Image
             src="/logo-full.png"
             alt="Denvia"
             width={916}
             height={269}
+            unoptimized
             className={styles.logo}
           />
         </div>

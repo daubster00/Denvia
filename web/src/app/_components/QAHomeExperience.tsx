@@ -161,6 +161,7 @@ export function HeroCopy() {
 
 function DentalMark() {
   return (
+    // unoptimized 이유는 LogoLink.tsx 주석 참고 (2026-09-17 로고 미표시 사고)
     <Image
       src="/logo_symbol.png"
       alt="Denvia AI"
@@ -168,6 +169,7 @@ function DentalMark() {
       width={200}
       height={178}
       priority
+      unoptimized
     />
   );
 }
