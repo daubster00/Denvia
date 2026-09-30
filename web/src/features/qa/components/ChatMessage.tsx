@@ -16,6 +16,20 @@ interface ChatMessageProps {
 const URL_PATTERN = /(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:)\]}"'»」』]+$/;
 
+// 기다리는 동안 말을 거는 단계. 백엔드 첫 토큰 상한이 45초라 그 안에서 세 번 바뀐다.
+//
+// 왜 여러 번인가 — 문구가 한 번 뜨고 그대로 멈춰 있으면 화면이 굳은 것처럼 보인다.
+// 2026-09-30 장애 때 실제로 한 사람이 같은 질문을 3번 다시 던졌다(14:33·14:34·14:35).
+// 문구가 바뀌는 것 자체가 "아직 돌아가고 있다"는 신호다.
+//
+// 컴포넌트 밖에 두는 이유: 안에 두면 렌더마다 새 배열이 돼 타이머 effect 의 의존성이
+// 매번 바뀐다(= 문구가 영영 안 바뀐다).
+const SLOW_HINT_STAGES = [
+  { afterMs: 7000, text: "복잡한 질문은 시간이 더 걸립니다." },
+  { afterMs: 15000, text: "자료를 찾아보고 있어요. 조금만 기다려 주세요." },
+  { afterMs: 30000, text: "평소보다 오래 걸리고 있어요. 곧 답변이 시작됩니다." },
+] as const;
+
 function renderWithLinks(text: string): ReactNode {
   if (!text) return text;
   const nodes: ReactNode[] = [];
@@ -55,17 +69,17 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
   // 타자기 애니메이션이 보이도록 content를 즉시 렌더한다.
   const showSpinner = isPending && message.content.length === 0;
 
-  // 로딩이 길어지면(복잡한 질문) 안내 문구를 추가로 노출한다. 백엔드 첫 토큰 상한이
-  // 45초이므로, 그 전에 사용자가 "멈춘 것 아닌가" 불안하지 않게 미리 안심 문구를 준다.
-  const SLOW_HINT_DELAY_MS = 7000;
-  const [showSlowHint, setShowSlowHint] = useState(false);
+  // -1 = 아직 아무 문구도 띄우지 않음
+  const [hintStage, setHintStage] = useState(-1);
   useEffect(() => {
     if (!showSpinner) {
-      setShowSlowHint(false);
+      setHintStage(-1);
       return;
     }
-    const timer = setTimeout(() => setShowSlowHint(true), SLOW_HINT_DELAY_MS);
-    return () => clearTimeout(timer);
+    const timers = SLOW_HINT_STAGES.map((stage, i) =>
+      setTimeout(() => setHintStage(i), stage.afterMs)
+    );
+    return () => timers.forEach(clearTimeout);
   }, [showSpinner]);
 
   if (isUser) {
@@ -104,8 +118,10 @@ export function ChatMessage({ message, onRetry }: ChatMessageProps) {
         {showSpinner ? (
           <div role="status" aria-live="polite" className={styles.pendingRow}>
             <span>생각중이야…</span>
-            {showSlowHint && (
-              <div className={styles.pendingSlowHint}>복잡한 질문은 시간이 더 걸립니다.</div>
+            {hintStage >= 0 && (
+              <div className={styles.pendingSlowHint}>
+                {SLOW_HINT_STAGES[hintStage].text}
+              </div>
             )}
           </div>
         ) : isError ? (

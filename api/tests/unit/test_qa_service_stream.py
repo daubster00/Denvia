@@ -18,6 +18,19 @@ from api.src.models.user import User
 from api.src.services.qa_service import QAService
 
 
+@pytest.fixture(autouse=True)
+def _mute_admin_failure_alert():
+    """실패 경로에서 관리자 알림 훅이 **진짜 DB** 를 열지 않게 막는다.
+
+    이 파일이 보는 것은 SSE 이벤트 규약이지 알림톡이 아니다. 훅을 그대로 두면
+    `async_session_factory` 가 postgres 에 붙으려다 실패하고(단위 테스트엔 DB 가 없다),
+    삼켜지긴 해도 접속 재시도로 느려지고 로그에 긴 트레이스백이 쌓인다.
+    알림 로직 자체는 `test_qa_alert_service.py` 가 따로 본다.
+    """
+    with patch.object(QAService, "_notify_admin_on_failure_burst", new=AsyncMock()):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # rag.run_qa sys.modules 모킹 픽스처
 # ---------------------------------------------------------------------------
@@ -264,7 +277,10 @@ async def test_stream_first_token_timeout_yields_slow_question_error():
     assert len(error_events) == 1
     err_data = json.loads(error_events[0]["data"])
     assert err_data["code"] == "SLOW_QUESTION"
-    assert "복잡" in err_data["message"]
+    # 2026-09-30 — 문구에서 "질문이 복잡해" 를 뺐다(장애 원인이 질문이 아니었다).
+    # 사용자 탓으로 읽히지 않으면서 "다시 시도" 를 안내하는지만 본다.
+    assert "질문이 복잡" not in err_data["message"]
+    assert "다시 시도" in err_data["message"]
 
     added: QALog = db.add.call_args[0][0]
     assert added.status == "error"

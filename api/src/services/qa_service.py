@@ -783,11 +783,17 @@ class QAService:
             log.latency_ms = latency_ms
             log.status = "error"
             await db.commit()
+            # 2026-09-30 — 문구에서 "질문이 복잡해" 를 뺐다. 그날 장애는 질문 탓이 아니라
+            # 바깥(LLM) 응답이 느려진 것이었는데, 사용자에게는 **당신 질문이 문제**라고
+            # 읽혀 같은 질문을 계속 고쳐 던지게 만들었다(한 사람이 3회 반복).
             yield {
                 "event": "error",
                 "data": json.dumps({
                     "code": "SLOW_QUESTION",
-                    "message": "질문이 복잡해 답변이 지연되고 있어요. 잠시 후 다시 시도해주세요.",
+                    "message": (
+                        "답변이 시작되지 않아 중단했어요. "
+                        "일시적인 지연일 수 있으니 잠시 후 다시 시도해주세요."
+                    ),
                 }),
             }
             logger.warning(
@@ -796,6 +802,7 @@ class QAService:
                 user_id=user.id,
                 latency_ms=latency_ms,
             )
+            await self._notify_admin_on_failure_burst(qa_log_id)
 
         except Exception as exc:
             # AC-6: tenacity 최종 실패 또는 기타 예외
@@ -812,6 +819,24 @@ class QAService:
             )
             yield {"event": "error", "data": json.dumps({"code": code, "message": message})}
             logger.error("qa.stream.failed", qa_log_id=qa_log_id, error=str(exc), exc_info=True)
+            await self._notify_admin_on_failure_burst(qa_log_id)
+
+    @staticmethod
+    async def _notify_admin_on_failure_burst(qa_log_id: int) -> None:
+        """실패가 몰리면 관리자에게 알림톡 (2026-09-30 장애 후속).
+
+        2026-09-30 에는 25분간 8건이 빈 화면으로 끝났는데 **고객이 알려 줄 때까지
+        몰랐다.** 경고 로그만으로는 아무도 보지 않는다.
+
+        본문은 `qa_alert_service` 참고 — 10분에 3건 이상일 때만, 구간당 1통.
+        여기서 예외가 새어 나가면 이미 실패한 요청을 두 번 죽이는 꼴이라 전부 삼킨다.
+        """
+        try:
+            from api.src.services.qa_alert_service import maybe_alert_admin_qa_failures
+
+            await maybe_alert_admin_qa_failures(qa_log_id=qa_log_id)
+        except Exception:
+            logger.error("qa.failure_burst.hook_failed", qa_log_id=qa_log_id, exc_info=True)
 
     async def _guarded_persist_full(
         self,
