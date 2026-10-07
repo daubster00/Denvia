@@ -10,7 +10,7 @@
  * 레퍼런스: /admin/dashboard/analytics/feedback (기간필터·%표시·엑셀·검토완료·삭제 패턴).
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useAdminSessionStore } from "@/stores/admin-session-store";
@@ -77,6 +77,69 @@ const LOOKBACK_OPTIONS: { value: number; label: string }[] = [
 
 const PAGE_SIZE = 50;
 
+// #148 — 자동 갱신(폴링). 질의응답검토 창을 띄워둔 채로 새 질문을 바로 보기 위한 기능.
+// 서버 비용은 목록/통계 조회 쿼리 1회뿐이라 사실상 영향 없음(생성형 API 호출 없음).
+const AUTO_REFRESH_INTERVALS: { value: number; label: string }[] = [
+  { value: 5, label: "5초" },
+  { value: 10, label: "10초" },
+  { value: 30, label: "30초" },
+  { value: 60, label: "1분" },
+];
+const AUTO_REFRESH_DEFAULT_SEC = 10;
+const AUTO_REFRESH_ON_KEY = "denvia.qaReview.autoRefresh.on";
+const AUTO_REFRESH_SEC_KEY = "denvia.qaReview.autoRefresh.sec";
+
+function readStoredAutoRefreshOn(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(AUTO_REFRESH_ON_KEY);
+    return raw == null ? true : raw === "1";
+  } catch {
+    return true;
+  }
+}
+
+function readStoredAutoRefreshSec(): number {
+  if (typeof window === "undefined") return AUTO_REFRESH_DEFAULT_SEC;
+  try {
+    const raw = Number(window.localStorage.getItem(AUTO_REFRESH_SEC_KEY));
+    return AUTO_REFRESH_INTERVALS.some((o) => o.value === raw)
+      ? raw
+      : AUTO_REFRESH_DEFAULT_SEC;
+  } catch {
+    return AUTO_REFRESH_DEFAULT_SEC;
+  }
+}
+
+// localStorage 를 React 가 직접 구독하게 해서(useSyncExternalStore)
+// 효과 안에서 setState 하는 패턴 없이 저장값을 읽고 쓴다.
+const autoRefreshListeners = new Set<() => void>();
+
+function subscribeAutoRefresh(onChange: () => void): () => void {
+  autoRefreshListeners.add(onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    autoRefreshListeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function writeAutoRefreshPref(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // 사생활 보호 모드 등 저장 불가 환경 — 저장만 건너뛰고 기능은 그대로 동작한다.
+  }
+  autoRefreshListeners.forEach((fn) => fn());
+}
+
+function formatClock(ts: number): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function formatBucketLabel(bucket: string): string {
   if (!bucket) return bucket;
   const [y, m, d] = bucket.split("-");
@@ -118,6 +181,19 @@ export default function QaReviewPage() {
   // 설정 패널
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // #148 자동 갱신 — 켜짐 여부·주기를 브라우저에 기억시킨다.
+  // 서버 렌더 시점에는 기본값(켜짐·10초)을 쓰고, 하이드레이션 후 저장값으로 교체된다.
+  const autoRefresh = useSyncExternalStore(
+    subscribeAutoRefresh,
+    readStoredAutoRefreshOn,
+    () => true,
+  );
+  const autoRefreshSec = useSyncExternalStore(
+    subscribeAutoRefresh,
+    readStoredAutoRefreshSec,
+    () => AUTO_REFRESH_DEFAULT_SEC,
+  );
+
   const listParams: FetchQaReviewListParams = useMemo(
     () => ({
       period,
@@ -137,8 +213,13 @@ export default function QaReviewPage() {
     [listParams],
   );
 
+  // 상세 모달이 열려 있는 동안은 폴링을 멈춘다.
+  // 갱신으로 해당 행이 1페이지 밖으로 밀리면 모달이 갑자기 닫히기 때문.
+  const pollMs = autoRefresh && activeId == null ? autoRefreshSec * 1000 : false;
+
   const {
     data,
+    dataUpdatedAt,
     error,
     isLoading,
     isFetching,
@@ -148,6 +229,9 @@ export default function QaReviewPage() {
     queryFn: () => fetchQaReviewList(listParams),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    refetchInterval: pollMs,
+    // 탭이 백그라운드일 때는 돌지 않음(불필요한 조회 차단).
+    refetchIntervalInBackground: false,
   });
 
   const summaryParams = useMemo(
@@ -166,6 +250,9 @@ export default function QaReviewPage() {
     enabled: privileged,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    // 목록만 갱신되면 상단 통계·그래프와 숫자가 어긋나므로 같은 주기로 함께 갱신.
+    refetchInterval: pollMs,
+    refetchIntervalInBackground: false,
   });
 
   const { data: settings } = useQuery({
@@ -347,14 +434,49 @@ export default function QaReviewPage() {
             사용자 질문과 답변을 보고 굿/베드로 답변 품질을 평가합니다.
           </p>
         </div>
-        <button
-          type="button"
-          className={styles.refreshBtn}
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
-          ↻ 새로고침
-        </button>
+        <div className={styles.headerActions}>
+          {/* #148 자동 갱신 — 창을 띄워둔 채로 새 질문을 바로 확인하기 위한 폴링 */}
+          <div className={styles.autoRefresh}>
+            <label className={styles.autoRefreshToggle}>
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) =>
+                  writeAutoRefreshPref(AUTO_REFRESH_ON_KEY, e.target.checked ? "1" : "0")
+                }
+              />
+              <span>자동 갱신</span>
+            </label>
+            <select
+              className={styles.autoRefreshSelect}
+              value={autoRefreshSec}
+              onChange={(e) => writeAutoRefreshPref(AUTO_REFRESH_SEC_KEY, e.target.value)}
+              disabled={!autoRefresh}
+              aria-label="자동 갱신 주기"
+            >
+              {AUTO_REFRESH_INTERVALS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <span className={styles.autoRefreshStatus}>
+            {autoRefresh
+              ? activeId != null
+                ? "상세 보는 중 — 갱신 일시정지"
+                : `마지막 갱신 ${formatClock(dataUpdatedAt)}`
+              : `자동 갱신 꺼짐 · 마지막 ${formatClock(dataUpdatedAt)}`}
+          </span>
+          <button
+            type="button"
+            className={styles.refreshBtn}
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            ↻ 새로고침
+          </button>
+        </div>
       </header>
 
       {/* 필터 바 */}
