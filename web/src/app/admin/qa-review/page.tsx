@@ -215,7 +215,11 @@ export default function QaReviewPage() {
 
   // 상세 모달이 열려 있는 동안은 폴링을 멈춘다.
   // 갱신으로 해당 행이 1페이지 밖으로 밀리면 모달이 갑자기 닫히기 때문.
-  const pollMs = autoRefresh && activeId == null ? autoRefreshSec * 1000 : false;
+  // 자동 갱신은 최고관리자(운영관리자·마스터) 전용 — 부관리자는 수동 새로고침만. (#148 추가 요청)
+  // 부관리자 판정은 "sub_operator" 문자열이 아니라 privileged 로 한다.
+  // 실서버 부관리자 등급은 g_xxxxxxxx 형태의 커스텀 코드라 문자열 비교로는 안 걸린다.
+  const pollMs =
+    privileged && autoRefresh && activeId == null ? autoRefreshSec * 1000 : false;
 
   const {
     data,
@@ -435,7 +439,9 @@ export default function QaReviewPage() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          {/* #148 자동 갱신 — 창을 띄워둔 채로 새 질문을 바로 확인하기 위한 폴링 */}
+          {/* #148 자동 갱신 — 창을 띄워둔 채로 새 질문을 바로 확인하기 위한 폴링.
+              부관리자에게는 컨트롤 자체를 감춘다. */}
+          {privileged && (
           <div className={styles.autoRefresh}>
             <label className={styles.autoRefreshToggle}>
               <input
@@ -461,13 +467,16 @@ export default function QaReviewPage() {
               ))}
             </select>
           </div>
-          <span className={styles.autoRefreshStatus}>
-            {autoRefresh
-              ? activeId != null
-                ? "상세 보는 중 — 갱신 일시정지"
-                : `마지막 갱신 ${formatClock(dataUpdatedAt)}`
-              : `자동 갱신 꺼짐 · 마지막 ${formatClock(dataUpdatedAt)}`}
-          </span>
+          )}
+          {privileged && (
+            <span className={styles.autoRefreshStatus}>
+              {autoRefresh
+                ? activeId != null
+                  ? "상세 보는 중 — 갱신 일시정지"
+                  : `마지막 갱신 ${formatClock(dataUpdatedAt)}`
+                : `자동 갱신 꺼짐 · 마지막 ${formatClock(dataUpdatedAt)}`}
+            </span>
+          )}
           <button
             type="button"
             className={styles.refreshBtn}
