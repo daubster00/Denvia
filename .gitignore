@@ -113,3 +113,6 @@ celerybeat-schedule.*
 # Celery 런타임 산출물
 celerybeat-schedule
 celerybeat-schedule.*
+
+# 게시판 새 글 감시기 상태/요약 (로컬 전용)
+.board-watch/
