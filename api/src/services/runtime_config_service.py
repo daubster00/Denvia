@@ -44,8 +44,11 @@ KEY_QA_NOTICE_FONT_WEIGHT = "runtime:qa_notice_font_weight"
 KEY_QA_NOTICE_WIDTH = "runtime:qa_notice_width"
 # Story 7.1 — 쪽지함 미리보기 동시 노출 최대 개수 (관리자 CS 페이지에서 편집).
 KEY_INBOX_PREVIEW_MAX_COUNT = "runtime:inbox_preview_max_count"
-# 관리자 설정 — RAG 본 체인에서 사용할 채팅 모델 (기본 o4-mini, 화이트리스트 강제).
+# 관리자 설정 — RAG 본 체인에서 사용할 채팅 모델 (기본 gpt-5.4-mini, 화이트리스트 강제).
 KEY_CHAT_MODEL = "runtime:chat_model"
+# 특정 프롬프트 모델 라우팅 — "이 프롬프트 블록이 실제 주입된 질문만 다른 모델로" 설정.
+# 값은 JSON 1건: {"enabled": bool, "block_id": str, "model": str}. 미설정/손상 시 기본 모델 사용.
+KEY_PROMPT_MODEL_ROUTE = "runtime:prompt_model_route"
 
 # QA flow 기본값과 일치 (qa_service.DEFAULT_FREE_DAILY_QUOTA / DEFAULT_FREE_DELAY_SECONDS).
 DEFAULT_SHOW_SUBSCRIBE = True
@@ -107,20 +110,300 @@ def _normalize_qa_notice_color(raw: str | bytes | None) -> str:
 def _clamp(raw: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, raw))
 
-# ADR-0002 §결정 2: RAG 인수자 튜닝값 o4-mini 가 기본값. 관리자가 명시적으로 바꿀 때만 override.
-DEFAULT_CHAT_MODEL = "o4-mini"
-# 허용 모델 화이트리스트 — 알 수 없는 값이 들어오면 reject(400). 응답 속도/품질/비용 특성은 admin UI에서 안내.
-ALLOWED_CHAT_MODELS: tuple[str, ...] = (
-    "o4-mini",       # 추론 모델, 첫 토큰까지 지연 큼(스트리밍 효과 미미)
-    "gpt-4o-mini",   # 가장 빠른 첫 토큰, 가장 저렴, 일반 대화 우수
-    "gpt-4o",        # 빠르고 똑똑, 가격 중상
-    "gpt-4-turbo",   # 매우 똑똑, 첫 토큰 약간 느림
-    # GPT-5.6 계열(2026-07 출시) — 3종 모두 추론형. 로컬 실측(프로덕션 프롬프트+인덱스)에서
-    # 지시 준수는 o4-mini 와 동률(만점), 속도·비용은 luna 가 o4-mini 대비 ~2배 빠르고 ~34% 저렴.
-    "gpt-5.6-luna",  # 5.6 중 가장 빠르고 저렴 — 현재 모델 대체 1순위
-    "gpt-5.6-terra", # 5.6 균형형 — 품질 상위, 비용 o4-mini 대비 ~1.4배
-    "gpt-5.6-sol",   # 5.6 최상위(프런티어) — 최고 품질, 비용 o4-mini 대비 ~3배
+# 2026-10-24: 운영자 요청으로 고효율 경량 모델 GPT-5.4 Mini를 기본값으로 사용.
+DEFAULT_CHAT_MODEL = "gpt-5.4-mini"
+
+
+@dataclass(frozen=True)
+class ChatModelSpec:
+    """선택 가능한 채팅 모델 1종의 메타데이터 — 가격·안내 문구의 단일 출처(SSOT).
+
+    여기 적힌 단가가 곧 (1) 관리자 화면에 보여주는 가격이고 (2) qa_logs.cost_usd 를
+    계산하는 단가다. 두 곳이 갈라지지 않도록 반드시 이 표 하나만 고친다.
+    가격 단위: USD / 100만 토큰 (OpenAI 공식 요금표 기준).
+    """
+
+    model_id: str
+    label: str                 # 드롭다운에 보여줄 사람이 읽는 이름
+    input_usd_per_mtok: float
+    output_usd_per_mtok: float
+    tier: str                  # 경제형 / 표준 / 고성능 / 최고성능
+    speed: str                 # 비전문가용 체감 속도 설명
+    quality: str               # 비전문가용 답변 품질 설명
+    note: str                  # 선택 전 알아야 할 주의사항
+
+
+# 선택 가능한 모델 — **현재 서비스 중인 모델만** 둔다(가격 오름차순).
+#
+# 2026-10-28 정리: OpenAI 가 2026-10-23 에 서비스 종료한 gpt-4-turbo 를 제거했고,
+# 세대가 지나 대체 모델이 더 싸고 빠른 GPT-4 계열(gpt-4o, gpt-4o-mini)과 o4-mini 도 함께
+# 내렸다. 화이트리스트에서 빠진 모델이 Redis 에 남아 있어도 get_chat_model 이 기본값으로
+# 폴백하므로 서비스가 멈추지는 않는다.
+#
+# 모델이 추가/종료되면 이 표만 고치면 관리자 화면 3곳(설정·프롬프트 지정·비용 집계)이
+# 한 번에 따라온다.
+CHAT_MODEL_CATALOG: tuple[ChatModelSpec, ...] = (
+    ChatModelSpec(
+        model_id="gpt-6-luna",
+        label="GPT-6 Luna (최저 비용)",
+        input_usd_per_mtok=0.10,
+        output_usd_per_mtok=0.50,
+        tier="경제형",
+        speed="매우 빠름",
+        quality="일반 질의·정형 답변에 충분",
+        note="선택 가능한 모델 중 가장 저렴합니다. 질문량이 많을 때 유리합니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-5.6-luna",
+        label="GPT-5.6 Luna (저비용 균형형)",
+        input_usd_per_mtok=0.20,
+        output_usd_per_mtok=1.20,
+        tier="경제형",
+        speed="매우 빠름",
+        quality="지시 준수가 안정적이고 답변 품질도 준수",
+        note="가격 대비 품질이 좋아 비용을 아끼면서 품질을 유지하고 싶을 때 적합합니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-5.4-mini",
+        label="GPT-5.4 Mini (현재 기본값)",
+        input_usd_per_mtok=0.75,
+        output_usd_per_mtok=4.50,
+        tier="표준",
+        speed="빠름",
+        quality="GPT-5.4 의 강점을 유지한 고효율 모델",
+        note="현재 기본 모델입니다. 속도·품질·비용의 균형이 좋습니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-6.1-terra",
+        label="GPT-6.1 Terra (표준 성능)",
+        input_usd_per_mtok=1.00,
+        output_usd_per_mtok=5.00,
+        tier="표준",
+        speed="빠름",
+        quality="최신 세대의 표준급 — 복잡한 질문도 안정적",
+        note="기본값보다 조금 더 정교한 답변이 필요할 때 적합합니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-6-sol",
+        label="GPT-6 Sol (고성능)",
+        input_usd_per_mtok=2.00,
+        output_usd_per_mtok=10.00,
+        tier="고성능",
+        speed="보통",
+        quality="복잡한 규정 해석·다단계 추론에 강함",
+        note="출력 비용이 기본값의 약 2.2배입니다. 어려운 질문 비중이 높을 때 고려하세요.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-6.1-sol",
+        label="GPT-6.1 Sol (고성능 · 최신)",
+        input_usd_per_mtok=2.00,
+        output_usd_per_mtok=10.00,
+        tier="고성능",
+        speed="보통",
+        quality="GPT-6 Sol 의 최신 개선판",
+        note="GPT-6 Sol 과 같은 가격이며, 같은 값이면 이쪽이 최신입니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-5.6-terra",
+        label="GPT-5.6 Terra (고성능)",
+        input_usd_per_mtok=2.00,
+        output_usd_per_mtok=12.00,
+        tier="고성능",
+        speed="보통",
+        quality="5.6 계열 균형형 — Luna 보다 정교",
+        note="출력 비용이 기본값의 약 2.7배입니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-5.4",
+        label="GPT-5.4 (전문 작업용)",
+        input_usd_per_mtok=2.50,
+        output_usd_per_mtok=15.00,
+        tier="고성능",
+        speed="보통 (복잡한 답변은 추론 시간 추가)",
+        quality="복잡한 전문 작업과 정교한 추론에 강함",
+        note="출력 비용이 기본값의 약 3.3배입니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-5.6-sol",
+        label="GPT-5.6 Sol (최고 품질)",
+        input_usd_per_mtok=4.00,
+        output_usd_per_mtok=20.00,
+        tier="최고성능",
+        speed="보통~느림 (추론이 많으면 지연)",
+        quality="5.6 계열 최상위 — 가장 정교한 추론",
+        note="출력 비용이 기본값의 약 4.4배입니다. 정확성 최우선일 때만 쓰세요.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-5.5",
+        label="GPT-5.5 (최고 품질)",
+        input_usd_per_mtok=5.00,
+        output_usd_per_mtok=30.00,
+        tier="최고성능",
+        speed="느림",
+        quality="장문·고난도 추론에 강함",
+        note="출력 비용이 기본값의 약 6.7배입니다. 비용 부담이 큽니다.",
+    ),
+    ChatModelSpec(
+        model_id="gpt-6-astra",
+        label="GPT-6 Astra (프런티어 · 최고가)",
+        input_usd_per_mtok=10.00,
+        output_usd_per_mtok=50.00,
+        tier="최고성능",
+        speed="느림",
+        quality="현재 선택 가능한 모델 중 최고 성능",
+        note="출력 비용이 기본값의 약 11배입니다. 상시 운영에는 권장하지 않습니다.",
+    ),
 )
+
+# 허용 모델 화이트리스트 — 알 수 없는 값이 들어오면 reject(400).
+ALLOWED_CHAT_MODELS: tuple[str, ...] = tuple(m.model_id for m in CHAT_MODEL_CATALOG)
+# 모델명 → (입력 단가, 출력 단가) USD/100만 토큰. 비용 계산(client.capture_usage)이 쓴다.
+CHAT_MODEL_PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
+    m.model_id: (m.input_usd_per_mtok, m.output_usd_per_mtok) for m in CHAT_MODEL_CATALOG
+}
+
+
+def chat_model_catalog_payload() -> list[dict]:
+    """카탈로그 → API 응답용 dict 목록 (ChatModelInfo 필드와 1:1)."""
+    return [
+        {
+            "model_id": m.model_id,
+            "label": m.label,
+            "input_usd_per_mtok": m.input_usd_per_mtok,
+            "output_usd_per_mtok": m.output_usd_per_mtok,
+            "tier": m.tier,
+            "speed": m.speed,
+            "quality": m.quality,
+            "note": m.note,
+        }
+        for m in CHAT_MODEL_CATALOG
+    ]
+
+
+def get_chat_model_spec(model_id: str) -> ChatModelSpec | None:
+    """모델명으로 카탈로그 항목 조회. 목록에 없으면 None."""
+    for m in CHAT_MODEL_CATALOG:
+        if m.model_id == model_id:
+            return m
+    return None
+
+
+def estimate_cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float | None:
+    """카탈로그 단가로 비용(USD) 계산. 목록에 없는 모델이면 None(= 계산 불가).
+
+    캐시 입력 토큰도 일반 입력 단가로 계산해 실제 비용보다 적게 잡히지 않게 한다.
+    """
+    price = CHAT_MODEL_PRICES_PER_MTOK.get(model_id)
+    if price is None:
+        return None
+    input_price, output_price = price
+    return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
+
+
+# ── 특정 프롬프트 모델 라우팅 (prompt_model_route) ──────────────────────────────
+# "관리자가 고른 프롬프트 블록이 사용자 질문에 의해 실제로 최종 프롬프트에 주입된 경우에만
+# 다른 모델을 쓴다"는 설정. 지정은 **여러 개** 가능하며 저장 형태는 아래 한 가지다.
+#
+#   {"routes": [{"block_id": "브릿지", "model": "gpt-5.4", "enabled": true}, ...]}
+#
+# 우선순위: 한 질문에 지정된 블록이 두 개 이상 동시에 주입되면 **목록 앞쪽이 이긴다.**
+# 관리자가 UI에서 순서를 직접 바꿀 수 있고, 그 순서가 그대로 이 리스트 순서다.
+# 질문 복잡도 분석이나 분류용 LLM 호출은 일절 하지 않는다 — 이미 계산된 주입 결과만 본다.
+DEFAULT_PROMPT_MODEL_ROUTES: list[dict] = []
+# BASE 는 모든 질문에 항상 포함되므로 라우팅 대상이 될 수 없다(= 사실상 기본 모델 교체).
+PROMPT_MODEL_ROUTE_FORBIDDEN_BLOCK_IDS = frozenset({"BASE"})
+# 지정 개수 상한 — 프롬프트 블록 수를 넘을 이유가 없고, 설정 폭주를 막는다.
+PROMPT_MODEL_ROUTES_MAX = 50
+
+
+def _normalize_route_entry(raw: object) -> dict | None:
+    """지정 1건 → ``{block_id, model, enabled}``. 쓸 수 없는 값이면 None.
+
+    fail-safe: block_id 가 비었거나 BASE 거나, model 이 화이트리스트 밖이면 버린다
+    (해당 지정만 사라지고 나머지 지정과 기본 모델 동작은 그대로 유지).
+    """
+    if not isinstance(raw, dict):
+        return None
+    block_id = raw.get("block_id")
+    model = raw.get("model")
+    block_id = block_id.strip() if isinstance(block_id, str) else ""
+    model = model.strip() if isinstance(model, str) else ""
+    if not block_id or block_id in PROMPT_MODEL_ROUTE_FORBIDDEN_BLOCK_IDS:
+        return None
+    if model not in ALLOWED_CHAT_MODELS:
+        return None
+    # enabled 키가 없는 구데이터는 "켜짐"으로 본다(목록에 있다는 것 자체가 지정이므로).
+    enabled = bool(raw.get("enabled", True))
+    return {"block_id": block_id, "model": model, "enabled": enabled}
+
+
+def normalize_prompt_model_routes(raw: object) -> list[dict]:
+    """저장값(JSON 문자열 / dict / list) → 안전한 지정 목록.
+
+    받아들이는 형태:
+      - ``{"routes": [...]}``                     (현재 형태)
+      - ``[...]``                                  (리스트만 저장된 경우)
+      - ``{"block_id": ..., "model": ..., "enabled": ...}``  (단일 지정 구버전 — 1건으로 변환)
+
+    같은 block_id 가 여러 번 나오면 **앞의 것만** 남긴다(한 프롬프트에 모델 1개).
+    """
+    import json as _json
+
+    data: object = raw
+    if isinstance(raw, (str, bytes)):
+        try:
+            data = _json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+
+    if isinstance(data, dict):
+        if isinstance(data.get("routes"), list):
+            items = data["routes"]
+        elif "block_id" in data:
+            # 단일 지정 구버전 — 1건짜리 목록으로 승격.
+            items = [data]
+        else:
+            return []
+    elif isinstance(data, list):
+        items = data
+    else:
+        return []
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for item in items[:PROMPT_MODEL_ROUTES_MAX]:
+        entry = _normalize_route_entry(item)
+        if entry is None or entry["block_id"] in seen:
+            continue
+        seen.add(entry["block_id"])
+        out.append(entry)
+    return out
+
+
+def resolve_effective_chat_model(
+    base_model: str,
+    routes: list[dict] | None,
+    injected_block_ids: list[str] | tuple[str, ...] | set[str] | None,
+) -> str:
+    """이번 질문에 실제로 쓸 모델 결정 — 추가 API 호출 없는 순수 함수.
+
+    켜져 있는 지정 중, 대상 블록이 **실제로 최종 프롬프트에 주입된 목록**에 있는
+    첫 번째 지정의 모델을 반환한다(= 목록 앞쪽 우선). 하나도 걸리지 않으면
+    (키워드만 포함·블록 꺼짐·상호배제로 탈락·일반 질문) 기존 기본 모델을 그대로 쓴다.
+    """
+    if not routes:
+        return base_model
+    injected = set(injected_block_ids or ())
+    if not injected:
+        return base_model
+    for route in routes:
+        if not route.get("enabled"):
+            continue
+        block_id = route.get("block_id")
+        model = route.get("model")
+        if block_id and model and block_id in injected:
+            return model
+    return base_model
 
 
 @dataclass(frozen=True)
@@ -302,7 +585,7 @@ def _clamp_preview_max_count(raw: int) -> int:
 async def get_chat_model(redis_runtime: AsyncRedis) -> str:
     """RAG 본 체인에서 사용할 채팅 모델명 조회.
 
-    Redis 미설정 또는 화이트리스트 위반 시 ``DEFAULT_CHAT_MODEL``(o4-mini)로 폴백.
+    Redis 미설정 또는 화이트리스트 위반 시 ``DEFAULT_CHAT_MODEL``(gpt-5.4-mini)로 폴백.
     fail-safe: 손상된 값이 들어가 있어도 서비스는 인수자 기본값으로 계속 응답.
     """
     raw = await redis_runtime.get(KEY_CHAT_MODEL)

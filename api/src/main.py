@@ -95,7 +95,14 @@ async def lifespan(app: FastAPI):
 
         async with async_session_factory() as _session:
             _n = await prompt_config_service.sync_prompts_to_redis(_session)
-        _log.info("lifespan.prompt_sync.completed", blocks=_n)
+            # 특정 프롬프트 모델 라우팅 설정도 DB(SSOT) → Redis 미러. Redis flush 후에도
+            # 관리자 설정이 살아 있어야 하고, 행이 없으면 비활성(기본 모델)로 보장된다.
+            _routes = await prompt_config_service.sync_prompt_model_routes_to_redis(
+                _session
+            )
+        _log.info(
+            "lifespan.prompt_sync.completed", blocks=_n, model_routes=len(_routes)
+        )
     except Exception:
         _log.exception("lifespan.prompt_sync.failed")
 

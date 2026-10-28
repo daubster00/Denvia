@@ -26,9 +26,14 @@ interface Props {
   block: PromptBlock;
   /** 예외처리 대상 선택용 — 전체 블록 id 목록. */
   allBlockIds: string[];
+  /**
+   * 이 블록에 별도 모델이 지정돼 있으면 그 모델명. 없으면 null.
+   * "특정 프롬프트 모델 설정"에서 대상으로 고른 블록 1개에만 들어온다.
+   */
+  routedModel?: string | null;
 }
 
-export function PromptBlockCard({ block, allBlockIds }: Props) {
+export function PromptBlockCard({ block, allBlockIds, routedModel = null }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -135,6 +140,9 @@ export function PromptBlockCard({ block, allBlockIds }: Props) {
         <span className={styles.blockId}>
           {block.block_id}
           {!block.enabled && <span className={styles.offBadge}>꺼짐</span>}
+          {routedModel && (
+            <span className={styles.modelBadge}>{routedModel} 적용</span>
+          )}
         </span>
         <span className={styles.chevron}>{expanded ? "▲" : "▼"}</span>
       </button>

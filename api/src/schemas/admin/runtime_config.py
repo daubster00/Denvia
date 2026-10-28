@@ -46,10 +46,29 @@ class RuntimeConfigUpdateRequest(BaseModel):
     qa_notice_width: int = Field(ge=280, le=720)
 
 
+class ChatModelInfo(BaseModel):
+    """선택 가능한 모델 1종의 안내 정보 — 백엔드 카탈로그를 그대로 내린다.
+
+    프론트가 모델명·가격·설명을 하드코딩하지 않도록 이 응답만 보고 화면을 그린다.
+    가격 단위: USD / 100만 토큰.
+    """
+
+    model_id: str
+    label: str
+    input_usd_per_mtok: float
+    output_usd_per_mtok: float
+    tier: str
+    speed: str
+    quality: str
+    note: str
+
+
 class ChatModelConfigResponse(BaseModel):
     """현재 선택된 채팅 모델 + 허용 모델 목록(드롭다운 옵션 제공)."""
 
     chat_model: str
+    # 선택 가능한 모델 전체 정보(가격·설명 포함). 프론트 드롭다운/안내의 유일한 소스.
+    models: list[ChatModelInfo] = []
     allowed_models: list[str]
     default_model: str
 

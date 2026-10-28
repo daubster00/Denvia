@@ -45,6 +45,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "rag.rebuild": "RAG 재구축",
   "prompt.edit": "프롬프트 수정",
   "rag.model_params.update": "RAG 모델 파라미터 변경",
+  "prompt.model_route.update": "특정 프롬프트 모델 설정 변경",
   "rag.synonym.edit": "동의어 사전 편집",
   "rag.synonym.export": "동의어 사전 내보내기",
 

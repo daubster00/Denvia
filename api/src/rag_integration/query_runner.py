@@ -11,7 +11,11 @@ import redis.asyncio as aioredis
 import structlog
 
 from api.src.integrations.openai.client import TokenUsage, build_chat_llm, capture_usage, with_retry
-from api.src.rag_integration.prompt_injection import PromptOverride, build_prompt_with_overrides
+from api.src.rag_integration.prompt_injection import (
+    PromptOverride,
+    build_prompt_with_overrides,
+    build_prompt_with_overrides_detailed,
+)
 from api.src.settings import REDIS_DB_RUNTIME_CONFIG, settings
 
 logger = structlog.get_logger(__name__)
@@ -261,6 +265,9 @@ async def _load_runtime_params() -> dict:
     from api.src.services.runtime_config_service import (
         ALLOWED_CHAT_MODELS,
         DEFAULT_CHAT_MODEL,
+        DEFAULT_PROMPT_MODEL_ROUTES,
+        KEY_PROMPT_MODEL_ROUTE,
+        normalize_prompt_model_routes,
     )
 
     # 블록 목록은 Redis 순서 인덱스(runtime:prompt:__order__)에서 동적으로 읽는다.
@@ -279,6 +286,8 @@ async def _load_runtime_params() -> dict:
             "runtime:rag_temperature",
             "runtime:max_tokens",
             "runtime:chat_model",
+            # 특정 프롬프트 모델 지정 목록(JSON). 비어 있으면 기본 모델 그대로.
+            KEY_PROMPT_MODEL_ROUTE,
         ]
         async with r:
             order_raw = await r.get(PROMPT_ORDER_KEY)
@@ -302,6 +311,8 @@ async def _load_runtime_params() -> dict:
             "rag_temperature": float(keys[1]) if keys[1] else 0.0,
             "max_tokens": int(keys[2]) if keys[2] else 1024,
             "chat_model": chat_model,
+            # 손상된 지정은 normalize 가 버리므로, 남은 지정과 기본 모델 동작은 그대로 유지.
+            "prompt_model_routes": normalize_prompt_model_routes(keys[4]),
             "_prompt_order": order,
         }
         for bid, raw in zip(order, keys[len(base_keys):]):
@@ -314,6 +325,7 @@ async def _load_runtime_params() -> dict:
             "rag_temperature": 0.0,
             "max_tokens": 1024,
             "chat_model": DEFAULT_CHAT_MODEL,
+            "prompt_model_routes": list(DEFAULT_PROMPT_MODEL_ROUTES),
             "_prompt_order": list(BLOCK_IDS),
         }
 
@@ -341,6 +353,8 @@ async def stream_rag_answer(
     from rag.run_qa import get_retriever  # type: ignore[import-untyped]
     from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
+
+    from api.src.services.runtime_config_service import resolve_effective_chat_model
 
     t0 = time.perf_counter()
     await ensure_initialized()
@@ -374,6 +388,8 @@ async def stream_rag_answer(
     prompt_holder: list[str] = []
     exc_holder: list[BaseException] = []
     first_token_perf: list[float] = []
+    # 이번 요청에 실제로 사용한 모델명(= 기본 모델 또는 프롬프트 라우팅 모델). 진단 로그용.
+    model_holder: list[str] = []
 
     def _run_sync() -> None:
         """동기 스레드에서 RetrievalQA를 실행하고 토큰을 Queue에 넣는다."""
@@ -401,7 +417,27 @@ async def stream_rag_answer(
 
             handler = _QueueCallbackHandler()
 
-            prompt_template_str = build_prompt_with_overrides(query, overrides or None)
+            prompt_template_str, injected_blocks = build_prompt_with_overrides_detailed(
+                query, overrides or None
+            )
+
+            # 특정 프롬프트 모델 라우팅 — 관리자가 지정한 블록이 **이번 질문의 최종 프롬프트에
+            # 실제로 주입됐을 때만** 그 모델을 쓴다. 그 외는 기본 모델 그대로.
+            # 지정이 여러 개면 목록 앞쪽이 우선. 추가 LLM 호출·복잡도 분석 없이,
+            # 위에서 이미 계산된 주입 목록만 참조한다.
+            effective_model = resolve_effective_chat_model(
+                runtime.get("chat_model"),
+                runtime.get("prompt_model_routes"),
+                injected_blocks,
+            )
+            if effective_model != runtime.get("chat_model"):
+                logger.info(
+                    "rag.stream.prompt_model_route_applied",
+                    injected=injected_blocks,
+                    model=effective_model,
+                    base_model=runtime.get("chat_model"),
+                )
+            model_holder.append(effective_model)
 
             retriever = get_retriever()
             if hasattr(retriever, "search_kwargs"):
@@ -416,7 +452,7 @@ async def stream_rag_answer(
                 callbacks=None,
                 temperature=runtime["rag_temperature"],
                 max_tokens=runtime["max_tokens"],
-                model_name=runtime.get("chat_model"),
+                model_name=effective_model,
             )
 
             chain = RetrievalQA.from_chain_type(
@@ -429,7 +465,7 @@ async def stream_rag_answer(
                 },
             )
 
-            with capture_usage() as usage:
+            with capture_usage(effective_model) as usage:
                 # config={"callbacks": [handler]} — streaming on_llm_new_token 콜백이
                 # invoke time callbacks 에서도 정상 트리거됨 (LangChain RunnableConfig).
                 result = with_retry(chain.invoke)(
@@ -508,6 +544,7 @@ async def stream_rag_answer(
             llm_ttft_ms=ttft_ms - t_runtime_loaded_ms,
             total_ttft_ms=ttft_ms,
             total_tokens=usage.total_tokens,
+            model=model_holder[0] if model_holder else runtime.get("chat_model"),
         )
 
     on_complete(usage, full_text, docs, prompt_text)
@@ -568,7 +605,7 @@ async def stream_periodontal_answer(
                 model_name=runtime.get("chat_model"),
             )
 
-            with capture_usage() as usage:
+            with capture_usage(runtime.get("chat_model")) as usage:
                 with_retry(llm.invoke)(
                     prompt,
                     config={"callbacks": [handler]},
@@ -692,7 +729,7 @@ async def warmup_once() -> dict:
         )
 
         t_inner = time.perf_counter()
-        with capture_usage() as usage:
+        with capture_usage(runtime.get("chat_model")) as usage:
             chain.invoke({"query": query})
         return int((time.perf_counter() - t_inner) * 1000), usage.total_tokens
 

@@ -232,6 +232,7 @@ async def get_chat_model_config(
         chat_model=current,
         allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
         default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
+        models=runtime_config_service.chat_model_catalog_payload(),
     )
 
 
@@ -259,6 +260,7 @@ async def update_chat_model_config(
         chat_model=after,
         allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
         default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
+        models=runtime_config_service.chat_model_catalog_payload(),
     )
 
 

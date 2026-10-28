@@ -37,6 +37,7 @@ AUDIT_PROMPT_EDIT = "prompt.edit"                       # A-404
 AUDIT_PROMPT_CREATE = "prompt.create"                   # 관리자 신규 프롬프트 블록 생성
 AUDIT_PROMPT_DELETE = "prompt.delete"                   # 관리자 생성 프롬프트 블록 삭제
 AUDIT_MODEL_PARAMS_EDIT = "rag.model_params.update"     # A-404 모델 파라미터
+AUDIT_PROMPT_MODEL_ROUTE_UPDATE = "prompt.model_route.update"  # 특정 프롬프트 모델 라우팅 설정 편집
 AUDIT_SYNONYM_EDIT = "rag.synonym.edit"                 # Story 8.5 — 동의어 그룹 추가/수정/삭제/일괄 가져오기 단일 액션
 AUDIT_SYNONYM_EXPORT = "rag.synonym.export"             # Story 8.5 — CSV 내보내기 (선택적 감사)
 AUDIT_KILLSWITCH_TOGGLE = "killswitch.toggle"           # A-502 (legacy, 호환성 유지)

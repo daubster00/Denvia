@@ -106,15 +106,32 @@ def build_prompt_with_overrides(
     query: str,
     overrides: dict[str, PromptOverride] | None = None,
 ) -> str:
+    """최종 프롬프트 문자열만 반환하는 기존 시그니처(하위 호환 유지).
+
+    어떤 블록이 실제로 주입됐는지까지 필요하면 ``build_prompt_with_overrides_detailed``.
+    """
+    return build_prompt_with_overrides_detailed(query, overrides)[0]
+
+
+def build_prompt_with_overrides_detailed(
+    query: str,
+    overrides: dict[str, PromptOverride] | None = None,
+) -> tuple[str, list[str]]:
     """vendor/rag build_prompt_template 로직을 DB/Redis 오버라이드로 재현한다.
 
-    overrides가 None이거나 비어있으면 vendor/rag 기본값 fallback.
+    반환: ``(최종 프롬프트 문자열, 실제로 주입된 블록 id 목록)``.
+    주입 목록은 "특정 프롬프트 모델 라우팅"이 모델을 고르는 유일한 근거다 — 키워드가
+    포함됐더라도 블록이 꺼져 있거나 상호배제(suppresses)로 탈락하면 목록에 들어가지 않는다.
+    BASE 는 항상 선주입되는 고정 블록이라 목록에서 제외한다(라우팅 대상도 될 수 없음).
+
+    overrides가 None이거나 비어있으면 vendor/rag 기본값 fallback — 이 경로에서는 주입
+    목록을 알 수 없으므로 빈 목록을 반환해 기본 모델이 쓰이게 한다(fail-safe).
     각 모듈의 발동조건은 override.trigger_config 가 있으면 그것을, 없으면 vendor 파일값을 쓴다.
     """
     if not overrides:
         from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
 
-        return build_prompt_template(query)
+        return build_prompt_template(query), []
 
     try:
         from rag.prompt_builder import BASE_PROMPT, PROMPT_MODULES  # type: ignore[import-untyped]
@@ -208,10 +225,10 @@ def build_prompt_with_overrides(
         if injected:
             logger.info("prompt_injection.modules_injected", modules=injected)
 
-        return "\n".join(parts)
+        return "\n".join(parts), injected
 
     except Exception as e:
         logger.warning("prompt_injection.build_failed", error=str(e))
         from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
 
-        return build_prompt_template(query)
+        return build_prompt_template(query), []

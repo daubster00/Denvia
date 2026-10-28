@@ -11,6 +11,8 @@ import {
   fetchChatModelConfig,
   updateChatModelConfig,
   type ChatModelConfig,
+  formatModelPrice,
+  type ChatModelInfo,
 } from "@/features/admin-dashboard/api/chatModel";
 import {
   fetchForexConfig,
@@ -36,61 +38,13 @@ function formatKstFromIso(iso: string | null): string {
   return `${fmt.format(d).replace(/\. /g, "-").replace(/\./g, "")} KST`;
 }
 
-// 모델별 사용자 안내 카피 — 응답 속도/품질/비용 특성을 비전문가에게 설명.
-const MODEL_DESCRIPTIONS: Record<string, { title: string; speed: string; quality: string; note: string }> = {
-  "o4-mini": {
-    title: "o4-mini (기본값)",
-    speed: "느림 (첫 글자까지 5~20초)",
-    quality: "추론 강함 · 인수자가 튜닝한 기본 모델",
-    note: "타이핑 애니메이션이 거의 보이지 않습니다. 답변이 한꺼번에 떨어집니다.",
-  },
-  "gpt-4o-mini": {
-    title: "gpt-4o-mini (가장 빠름 · 가장 저렴)",
-    speed: "매우 빠름 (첫 글자까지 0.5~1초)",
-    quality: "일반 대화 · 단순 질의 우수",
-    note: "타이핑 애니메이션이 부드럽게 보입니다. 응답 체감이 가장 빠른 옵션입니다.",
-  },
-  "gpt-4o": {
-    title: "gpt-4o (빠르고 똑똑)",
-    speed: "빠름 (첫 글자까지 1~2초)",
-    quality: "최고 품질의 일반 답변",
-    note: "속도와 품질 균형이 가장 좋습니다. 가격은 mini보다 비쌉니다.",
-  },
-  "gpt-4-turbo": {
-    title: "gpt-4-turbo (가장 똑똑)",
-    speed: "보통 (첫 글자까지 2~3초)",
-    quality: "매우 똑똑 · 긴 추론 가능",
-    note: "정확성을 최우선으로 할 때 사용. 가격이 가장 비쌉니다.",
-  },
-  "gpt-5.6-luna": {
-    title: "gpt-5.6-luna (5.6 중 가장 빠르고 저렴 · 추천)",
-    speed: "빠름 (현재 o4-mini의 약 2배)",
-    quality: "지시 준수·답변 품질 o4-mini 이상 · 비용은 약 34% 저렴",
-    note: "속도·비용·품질 균형이 가장 좋아 현재 모델을 대체하기에 가장 적합합니다.",
-  },
-  "gpt-5.6-terra": {
-    title: "gpt-5.6-terra (5.6 균형형)",
-    speed: "빠름 (첫 글자까지 1~2초대)",
-    quality: "품질 상위 · Luna보다 조금 더 정교",
-    note: "품질을 조금 더 높이고 싶을 때. 비용은 현재 모델의 약 1.4배입니다.",
-  },
-  "gpt-5.6-sol": {
-    title: "gpt-5.6-sol (5.6 최상위 · 프런티어)",
-    speed: "보통 (추론이 많으면 느려질 수 있음)",
-    quality: "최고 품질 · 가장 정교한 추론",
-    note: "정확성 최우선일 때만. 비용이 현재 모델의 약 3배로 가장 비쌉니다.",
-  },
-};
-
-function getModelDescription(model: string) {
-  return (
-    MODEL_DESCRIPTIONS[model] ?? {
-      title: model,
-      speed: "—",
-      quality: "—",
-      note: "이 모델의 상세 안내는 준비되지 않았습니다.",
-    }
-  );
+// 모델별 안내(이름·가격·속도·품질·주의)는 백엔드 카탈로그에서 내려온다.
+// 프론트에 하드코딩하지 않는다 — 모델이 추가/종료되면 백엔드 표 한 곳만 고치면 된다.
+function findModel(
+  models: ChatModelInfo[],
+  modelId: string,
+): ChatModelInfo | undefined {
+  return models.find((m) => m.model_id === modelId);
 }
 
 export default function SettingsPage() {
@@ -347,6 +301,10 @@ function ModelForm({ config }: { config: ChatModelConfig }) {
   const [modelDraft, setModelDraft] = useState<string>(config.chat_model);
   const [modelSavedMessage, setModelSavedMessage] = useState<string | null>(null);
 
+  // 선택 중인 모델 / 현재 적용된 모델의 카탈로그 정보(가격·설명).
+  const draftSpec = findModel(config.models, modelDraft);
+  const currentSpec = findModel(config.models, config.chat_model);
+
   const modelMutation = useMutation({
     mutationFn: (value: string) => updateChatModelConfig(value),
     onSuccess: (updated: ChatModelConfig) => {
@@ -377,7 +335,11 @@ function ModelForm({ config }: { config: ChatModelConfig }) {
       <dl className={styles.summary}>
         <div className={styles.summaryRow}>
           <dt>현재 모델</dt>
-          <dd>{config.chat_model}</dd>
+          <dd>{currentSpec ? currentSpec.label : config.chat_model}</dd>
+        </div>
+        <div className={styles.summaryRow}>
+          <dt>현재 요금</dt>
+          <dd>{currentSpec ? formatModelPrice(currentSpec) : "—"}</dd>
         </div>
         <div className={styles.summaryRow}>
           <dt>기본값</dt>
@@ -396,9 +358,9 @@ function ModelForm({ config }: { config: ChatModelConfig }) {
           onChange={(e) => setModelDraft(e.target.value)}
           aria-describedby="chat-model-help"
         >
-          {config.allowed_models.map((m) => (
-            <option key={m} value={m}>
-              {getModelDescription(m).title}
+          {config.models.map((m) => (
+            <option key={m.model_id} value={m.model_id}>
+              {m.label} — 출력 ${m.output_usd_per_mtok.toFixed(2)}/100만 토큰
             </option>
           ))}
         </select>
@@ -415,23 +377,31 @@ function ModelForm({ config }: { config: ChatModelConfig }) {
         </button>
       </div>
       <p id="chat-model-help" className={styles.fieldHint}>
-        인수자가 튜닝한 기본값은 {config.default_model} 입니다.
-        변경 전 아래 안내를 확인하세요.
+        기본값은 {config.default_model} 입니다. 목록은 저렴한 모델부터 정렬돼 있으며,
+        모델을 바꾸면 질문 1건당 사용 요금도 함께 바뀝니다. 변경 전 아래 안내를 확인하세요.
       </p>
 
-      {modelDraft && (
+      {draftSpec && (
         <dl className={styles.modelInfo}>
           <div className={styles.summaryRow}>
+            <dt>사용 요금</dt>
+            <dd>{formatModelPrice(draftSpec)}</dd>
+          </div>
+          <div className={styles.summaryRow}>
+            <dt>등급</dt>
+            <dd>{draftSpec.tier}</dd>
+          </div>
+          <div className={styles.summaryRow}>
             <dt>응답 속도</dt>
-            <dd>{getModelDescription(modelDraft).speed}</dd>
+            <dd>{draftSpec.speed}</dd>
           </div>
           <div className={styles.summaryRow}>
             <dt>답변 특성</dt>
-            <dd>{getModelDescription(modelDraft).quality}</dd>
+            <dd>{draftSpec.quality}</dd>
           </div>
           <div className={styles.summaryRow}>
             <dt>주의</dt>
-            <dd>{getModelDescription(modelDraft).note}</dd>
+            <dd>{draftSpec.note}</dd>
           </div>
         </dl>
       )}

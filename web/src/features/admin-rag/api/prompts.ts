@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ChatModelInfo } from "@/features/admin-dashboard/api/chatModel";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -43,6 +44,69 @@ export interface ModelParamsResponse {
   max_tokens: number;
   /** 사용자 질문 입력 글자수 상한 (시스템 프롬프트 제외, 순수 질문만). */
   max_question_chars: number;
+}
+
+/** 프롬프트 1개에 대한 모델 지정 1건. */
+export interface PromptModelRouteItem {
+  block_id: string;
+  model: string;
+  /** 지우지 않고 잠시 꺼둘 때 false. 꺼진 지정은 모델 선택에서 제외된다. */
+  enabled: boolean;
+}
+
+/**
+ * 특정 프롬프트 모델 지정 목록.
+ *
+ * 지정한 프롬프트 블록이 사용자 질문으로 실제 주입된 경우에만 그 모델이 쓰인다.
+ * `routes` 순서가 곧 우선순위 — 한 질문에 지정 블록이 둘 이상 주입되면 앞쪽이 이긴다.
+ * allowed_models / default_model 은 백엔드 화이트리스트를 그대로 받아 쓴다(하드코딩 금지).
+ */
+export interface PromptModelRoutes {
+  routes: PromptModelRouteItem[];
+  allowed_models: string[];
+  default_model: string;
+  /** 모델별 가격·설명 — 백엔드 카탈로그(SSOT). 지정 화면 드롭다운에 가격을 함께 보여준다. */
+  models: ChatModelInfo[];
+}
+
+export interface PromptModelRoutesPayload {
+  routes: PromptModelRouteItem[];
+}
+
+export async function fetchPromptModelRoutes(): Promise<PromptModelRoutes> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/rag/prompt-model-routes`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("특정 프롬프트 모델 설정 조회 실패");
+  return res.json();
+}
+
+/** 저장 실패 시 백엔드 422 {code} 를 사람이 읽을 수 있는 문구로 바꿔 던진다. */
+const ROUTE_ERROR_MESSAGES: Record<string, string> = {
+  PROMPT_MODEL_ROUTE_BLOCK_REQUIRED: "대상 프롬프트를 선택하세요.",
+  PROMPT_MODEL_ROUTE_MODEL_REQUIRED: "적용할 모델을 선택하세요.",
+  PROMPT_MODEL_ROUTE_BLOCK_INVALID: "선택한 프롬프트를 사용할 수 없습니다.",
+  PROMPT_MODEL_ROUTE_MODEL_INVALID: "선택한 모델을 사용할 수 없습니다.",
+  PROMPT_MODEL_ROUTE_BLOCK_DUPLICATE:
+    "같은 프롬프트를 두 번 지정할 수 없습니다. 프롬프트 1개당 모델 1개입니다.",
+  PROMPT_MODEL_ROUTE_TOO_MANY: "지정이 너무 많습니다.",
+};
+
+export async function updatePromptModelRoutes(
+  data: PromptModelRoutesPayload,
+): Promise<PromptModelRoutes> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/rag/prompt-model-routes`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const code = err?.detail?.code ?? err?.code;
+    throw new Error(ROUTE_ERROR_MESSAGES[code] ?? code ?? "저장 실패");
+  }
+  return res.json();
 }
 
 export const promptUpdateSchema = z.object({

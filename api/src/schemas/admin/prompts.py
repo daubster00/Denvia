@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from api.src.schemas.admin.runtime_config import ChatModelInfo
+
 
 class TriggerConfig(BaseModel):
     """모듈 발동조건(트리거 키워드). mode 별로 사용하는 리스트가 다르다.
@@ -71,6 +73,36 @@ class PromptUpdateResponse(BaseModel):
     trigger_config: TriggerConfig | None = None
     suppresses: list[str] | None = None
     updated_at: datetime
+
+
+class PromptModelRouteItem(BaseModel):
+    """프롬프트 1개에 대한 모델 지정 1건."""
+
+    block_id: str = Field(min_length=1, max_length=40)
+    model: str = Field(min_length=1, max_length=64)
+    # 지우지 않고 잠시 꺼둘 때 사용. 꺼진 지정은 모델 선택에서 제외된다.
+    enabled: bool = True
+
+
+class PromptModelRoutesResponse(BaseModel):
+    """지정 목록 + 드롭다운 옵션 소스.
+
+    ``routes`` 순서가 곧 우선순위다 — 한 질문에 지정 블록이 둘 이상 주입되면 앞쪽이 이긴다.
+    allowed_models / default_model 은 백엔드 화이트리스트를 그대로 내려
+    프론트가 모델 목록을 하드코딩하지 않게 한다.
+    """
+
+    routes: list[PromptModelRouteItem]
+    allowed_models: list[str]
+    default_model: str
+    # 모델별 가격·설명 — 지정 화면에서 "이 모델로 바꾸면 얼마" 를 보여주기 위함.
+    models: list[ChatModelInfo] = []
+
+
+class PromptModelRoutesUpdateRequest(BaseModel):
+    """지정 목록 전체 교체(저장 버튼 1회 = 목록 스냅샷 1개)."""
+
+    routes: list[PromptModelRouteItem] = Field(default_factory=list)
 
 
 class ModelParamsResponse(BaseModel):

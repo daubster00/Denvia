@@ -27,7 +27,13 @@ class TokenUsage:
     cost_usd: float
 
 
-DEFAULT_CHAT_MODEL = "o4-mini"
+DEFAULT_CHAT_MODEL = "gpt-5.4-mini"
+
+# 비용 단가의 단일 출처(SSOT)는 runtime_config_service.CHAT_MODEL_CATALOG 다.
+# LangChain 내장 가격표는 신모델 출시보다 늦게 갱신돼 비용이 0으로 기록되곤 했고(월 예산
+# 차단이 무력화됨), 모델마다 맞고 틀리는 게 달라 관리자 화면에 보여주는 가격과도 어긋났다.
+# → 카탈로그에 있는 모델이면 **항상** 카탈로그 단가로 계산하고(관리자 화면 표시 가격과 일치),
+#   카탈로그에 없는 모델일 때만 LangChain 추정치를 그대로 둔다.
 
 # LLM 요청 타임아웃(초) — 게시판 #112. 미설정 시 httpx 무한 대기라, 상류가 hang 하면
 # 스트림이 종료 이벤트를 못 내고 qa_logs 가 'in_progress' 로 영구 고아가 됐다. 스트리밍에서
@@ -37,14 +43,19 @@ LLM_REQUEST_TIMEOUT_SECONDS = 60.0
 
 
 def _is_reasoning_model(name: str) -> bool:
-    """o3-/o4-/gpt-5.x 계열은 reasoning 모델 — temperature 파라미터 미지원.
+    """o3-/o4-/gpt-5.x/gpt-6.x 계열은 reasoning 모델 — temperature 파라미터 미지원.
 
     OpenAI API가 이들 모델에 temperature != 1 전달 시 400(Unsupported value)을 반환한다.
     (gpt-5.6-luna/terra/sol 실측 확인 2026-07: "Only the default (1) value is supported").
     temperature 를 생략하면 어떤 모델이든 안전(기본값 사용)하므로, 판별이 애매하면
     reasoning 으로 취급해 temperature 를 빼는 방향이 옳다 — 넣어서 400 나는 것보다 안전.
     """
-    return name.startswith("o3") or name.startswith("o4") or name.startswith("gpt-5")
+    return (
+        name.startswith("o3")
+        or name.startswith("o4")
+        or name.startswith("gpt-5")
+        or name.startswith("gpt-6")
+    )
 
 
 # ChatOpenAI 인스턴스 모듈 전역 캐시 — 같은 옵션이면 같은 인스턴스 재사용해서
@@ -68,9 +79,9 @@ def build_chat_llm(
     max_tokens: int = 1024,
     model_name: str | None = None,
 ) -> ChatOpenAI:
-    """ADR-0002 §결정 2: 인수자 기본값은 ``o4-mini`` (변경 금지 → 관리자 override만 허용).
+    """현재 기본 채팅 모델은 고효율 경량 모델 ``gpt-5.4-mini``.
 
-    ``model_name``이 None이면 ``DEFAULT_CHAT_MODEL``(=o4-mini)을 사용한다. 관리자 설정
+    ``model_name``이 None이면 ``DEFAULT_CHAT_MODEL``(=gpt-5.4-mini)을 사용한다. 관리자 설정
     페이지에서 Redis ``runtime:chat_model``을 다른 허용 모델로 바꿨을 때만 외부에서
     주입한 값이 들어온다 (runtime_config_service.ALLOWED_CHAT_MODELS 화이트리스트).
 
@@ -148,7 +159,7 @@ def with_retry(fn):
 
 
 @contextmanager
-def capture_usage() -> Generator[TokenUsage, None, None]:
+def capture_usage(model_name: str | None = None) -> Generator[TokenUsage, None, None]:
     """get_openai_callback 컨텍스트 — TokenUsage로 변환하여 yield."""
     with get_openai_callback() as cb:
         usage = TokenUsage(0, 0, 0, 0.0)
@@ -157,3 +168,14 @@ def capture_usage() -> Generator[TokenUsage, None, None]:
         usage.output_tokens = cb.completion_tokens
         usage.total_tokens = cb.total_tokens
         usage.cost_usd = cb.total_cost
+
+        # 모델이 바뀌면 단가도 함께 바뀌어야 한다 — 선택된 모델의 카탈로그 단가로 재계산.
+        # (순환 import 방지를 위해 함수 안에서 import)
+        from api.src.services.runtime_config_service import estimate_cost_usd
+
+        effective_model = model_name or DEFAULT_CHAT_MODEL
+        catalog_cost = estimate_cost_usd(
+            effective_model, usage.input_tokens, usage.output_tokens
+        )
+        if catalog_cost is not None:
+            usage.cost_usd = catalog_cost

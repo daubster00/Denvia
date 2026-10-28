@@ -20,6 +20,9 @@ from api.src.schemas.admin.prompts import (
     ModelParamsResponse,
     ModelParamsUpdateRequest,
     PromptBlockResponse,
+    PromptModelRouteItem,
+    PromptModelRoutesResponse,
+    PromptModelRoutesUpdateRequest,
     PromptsListResponse,
     PromptUpdateResponse,
     TriggerConfig,
@@ -151,6 +154,10 @@ async def _validate_suppresses(
                 )
     return cleaned
 
+
+# 특정 프롬프트 모델 라우팅 설정의 model_param_configs.key (JSONB 1행에 전체 설정을 담는다).
+# 블록마다 모델 컬럼을 두는 대신 "프롬프트 1개 + 모델 1개" 단일 설정으로 관리한다.
+PROMPT_MODEL_ROUTE_PARAM_KEY = "prompt_model_route"
 
 VALID_K_RANGE = (1, 20)
 VALID_TEMP_RANGE = (0.0, 1.0)
@@ -603,3 +610,203 @@ async def update_model_params(
         max_tokens=req.max_tokens,
         max_question_chars=req.max_question_chars,
     )
+
+
+# =============================================================================
+# 특정 프롬프트 모델 라우팅 — "이 프롬프트가 실제 주입된 질문만 다른 모델로"
+#   SSOT: model_param_configs(key=prompt_model_route) → Redis runtime:prompt_model_route 미러.
+#   저장 형태: {"routes": [{"block_id","model","enabled"}, ...]} — 목록 순서 = 우선순위.
+#   런타임(query_runner)은 Redis 만 읽으므로, 저장 즉시 다음 질문부터 반영된다.
+#   추가 OpenAI 호출·질문 복잡도 분석은 없다 — 프롬프트 조립 결과(주입 목록)만 본다.
+# =============================================================================
+
+
+def _routes_response(routes: list[dict]) -> PromptModelRoutesResponse:
+    from api.src.services.runtime_config_service import (
+        ALLOWED_CHAT_MODELS,
+        DEFAULT_CHAT_MODEL,
+        chat_model_catalog_payload,
+    )
+
+    return PromptModelRoutesResponse(
+        routes=[PromptModelRouteItem(**r) for r in routes],
+        allowed_models=list(ALLOWED_CHAT_MODELS),
+        default_model=DEFAULT_CHAT_MODEL,
+        models=chat_model_catalog_payload(),
+    )
+
+
+async def _load_routes(db: AsyncSession) -> list[dict]:
+    from api.src.services.runtime_config_service import normalize_prompt_model_routes
+
+    row = (
+        await db.execute(
+            select(ModelParamConfig).where(
+                ModelParamConfig.key == PROMPT_MODEL_ROUTE_PARAM_KEY
+            )
+        )
+    ).scalar_one_or_none()
+    return normalize_prompt_model_routes(row.value_json if row is not None else None)
+
+
+async def get_prompt_model_routes(db: AsyncSession) -> PromptModelRoutesResponse:
+    """현재 지정 목록 + 허용 모델 목록 조회 (관리자 UI 드롭다운 옵션 소스)."""
+    return _routes_response(await _load_routes(db))
+
+
+async def _validate_prompt_model_routes(
+    db: AsyncSession, items: list[PromptModelRouteItem]
+) -> list[dict]:
+    """저장 전 검증 → 정규화된 목록. 위반 시 HTTP 422 {code}.
+
+    각 지정은 (1) 실존 블록, (2) BASE 아님, (3) 허용 모델, (4) 블록 중복 없음.
+    """
+    from fastapi import HTTPException
+
+    from api.src.services.runtime_config_service import (
+        ALLOWED_CHAT_MODELS,
+        PROMPT_MODEL_ROUTES_MAX,
+    )
+
+    if len(items) > PROMPT_MODEL_ROUTES_MAX:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "PROMPT_MODEL_ROUTE_TOO_MANY",
+                "max": PROMPT_MODEL_ROUTES_MAX,
+            },
+        )
+
+    cleaned: list[dict] = []
+    seen: set[str] = set()
+    for item in items:
+        block_id = (item.block_id or "").strip()
+        model = (item.model or "").strip()
+
+        if not block_id:
+            raise HTTPException(
+                status_code=422, detail={"code": "PROMPT_MODEL_ROUTE_BLOCK_REQUIRED"}
+            )
+        # BASE 는 모든 질문에 항상 포함되므로 "특정 프롬프트"가 될 수 없다.
+        if block_id == "BASE":
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROMPT_MODEL_ROUTE_BLOCK_INVALID", "reason": "base"},
+            )
+        if block_id in seen:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "PROMPT_MODEL_ROUTE_BLOCK_DUPLICATE",
+                    "block_id": block_id,
+                },
+            )
+        if not model:
+            raise HTTPException(
+                status_code=422, detail={"code": "PROMPT_MODEL_ROUTE_MODEL_REQUIRED"}
+            )
+        if model not in ALLOWED_CHAT_MODELS:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROMPT_MODEL_ROUTE_MODEL_INVALID", "model": model},
+            )
+
+        seen.add(block_id)
+        cleaned.append(
+            {"block_id": block_id, "model": model, "enabled": bool(item.enabled)}
+        )
+
+    if cleaned:
+        existing = set(
+            (
+                await db.execute(
+                    select(PromptModuleConfig.block_id).where(
+                        PromptModuleConfig.block_id.in_([c["block_id"] for c in cleaned])
+                    )
+                )
+            ).scalars().all()
+        )
+        for c in cleaned:
+            if c["block_id"] not in existing:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "PROMPT_MODEL_ROUTE_BLOCK_INVALID",
+                        "reason": "unknown",
+                        "block_id": c["block_id"],
+                    },
+                )
+    return cleaned
+
+
+async def _mirror_prompt_model_routes_to_redis(routes: list[dict]) -> None:
+    """지정 목록을 Redis 로 미러 — query_runner 가 매 질문마다 이 키를 읽는다."""
+    from api.src.services.runtime_config_service import KEY_PROMPT_MODEL_ROUTE
+
+    try:
+        r = await _get_redis()
+        async with r:
+            await r.set(
+                KEY_PROMPT_MODEL_ROUTE,
+                json.dumps({"routes": routes}, ensure_ascii=False),
+            )
+    except Exception as e:
+        logger.warning("prompt_config.model_route_redis_failed", error=str(e))
+
+
+async def update_prompt_model_routes(
+    request: Request,
+    req: PromptModelRoutesUpdateRequest,
+    admin: User,
+    db: AsyncSession,
+) -> PromptModelRoutesResponse:
+    """지정 목록 전체 교체 (DB upsert → Redis 미러 → 감사 diff)."""
+    routes = await _validate_prompt_model_routes(db, req.routes)
+
+    existing = (
+        await db.execute(
+            select(ModelParamConfig).where(
+                ModelParamConfig.key == PROMPT_MODEL_ROUTE_PARAM_KEY
+            )
+        )
+    ).scalar_one_or_none()
+
+    before = await _load_routes(db)
+    value = {"routes": routes}
+    now = datetime.now(tz=timezone.utc)
+    if existing is not None:
+        existing.value_json = value
+        existing.updated_by_admin_id = admin.id
+        existing.updated_at = now
+    else:
+        db.add(
+            ModelParamConfig(
+                key=PROMPT_MODEL_ROUTE_PARAM_KEY,
+                value_json=value,
+                updated_by_admin_id=admin.id,
+                updated_at=now,
+            )
+        )
+    await db.commit()
+
+    # audit_logs.target_id 는 BIGINT 라 블록 이름(한글)을 넣을 수 없다.
+    # 지정 내역은 diff_json(before/after)에 담겨 감사 화면에서 그대로 확인된다.
+    request.state.audit_target_type = "prompt_model_route"
+    request.state.audit_diff = {"before": before, "after": routes}
+
+    await _mirror_prompt_model_routes_to_redis(routes)
+    logger.info("prompt_config.model_routes_updated", count=len(routes), routes=routes)
+
+    return _routes_response(routes)
+
+
+async def sync_prompt_model_routes_to_redis(db: AsyncSession) -> list[dict]:
+    """DB(SSOT) → Redis 미러 (부팅 시 1회).
+
+    Redis 가 비거나 flush 돼도 관리자가 저장한 지정이 살아 있게 한다.
+    DB 에 행이 없으면 빈 목록 → "모든 질문이 기본 모델" 상태를 보장한다.
+    """
+    routes = await _load_routes(db)
+    await _mirror_prompt_model_routes_to_redis(routes)
+    return routes
+
