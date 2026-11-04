@@ -297,8 +297,18 @@ def normalize_query(query, synonyms):
     for syn in sorted(multi_word_syns, key=len, reverse=True):
         key = multi_word_syns[syn]
         pattern = re.escape(syn)
+        # 앞에 한글이 붙어 있으면 **다른 단어의 일부**이므로 치환하지 않는다 (2026-11-04).
+        #
+        # 게시판 #136 에서 같은 성격의 버그를 영문 경계로 막았는데, 한글 멀티워드에는
+        # 경계가 없어 같은 유형이 다시 났다. 실제 사고:
+        #   "비보험 스켈링 후 치주소파술 청구 가능"
+        #     ① apply_scaling_rules 는 `(?<!비)` 보호 덕에 "비보험 치석제거" 로 올바르게 둔다
+        #     ② 그런데 여기서 동의어 "보험 치석제거"(= 연1회치석제거)가 그 안에 걸려
+        #        "비" + "연1회치석제거" 로 쪼개졌다 → **비급여인데 보험 적용으로 뜻이 뒤집힘**
+        # 앞 경계만 막는다. 뒤는 조사("보험 치석제거는")가 붙으므로 열어 둔다.
+        bounded_pattern = r'(?<![가-힣])' + pattern
         replacement = _MARKER_START + key + _MARKER_END
-        query = re.sub(pattern, replacement, query, flags=re.IGNORECASE)
+        query = re.sub(bounded_pattern, replacement, query, flags=re.IGNORECASE)
 
     # ========================================
     # PHASE 3: 토큰 단위 치환
