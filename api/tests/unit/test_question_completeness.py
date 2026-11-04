@@ -201,3 +201,68 @@ def test_clarification_marker_is_structured_not_text() -> None:
     assert ANSWER_KIND_CLARIFICATION == "clarification"
     assert CLARIFY_MESSAGE  # 문구는 사용자 노출용으로만 쓰인다
     assert ANSWER_KIND_CLARIFICATION not in CLARIFY_MESSAGE
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 7. 주제 없는 질문은 길이와 무관하게 되묻는다 (2026-11-04, 운영 사례 대응)
+#
+# 계기: 운영에서 "나는 검정색이 좋아"(3어절·주제 없음)에 챗봇이
+# "검정색 봉합사를 말하는 거라면 블랙실크가…" 라고 답을 지어냈다. 3어절이라
+# 기존 "2어절 이하" 기준을 한 끗 차이로 넘겼다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "나는 검정색이 좋아",        # 운영 실제 사례 (qa_log 20957)
+        "나 지금 똥 마려워",          # 운영 실제 사례
+        "예시 여러개 보내줘봐!",      # 무엇의 예시인지 앞 대화 없이는 모른다
+        "오늘 날씨 어때?",
+        "점심 뭐 먹을까",
+    ],
+)
+def test_no_topic_asks_back_regardless_of_length(question: str) -> None:
+    """보험청구 주제가 하나도 없으면 어절 수와 무관하게 되묻는다."""
+    assert needs_clarification(question, has_known_topic=False) is True
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 2026-11-04 사전 보강 전에는 아래가 전부 "주제 없음" 으로 막혔다.
+        # 운영 qa_logs 최근 1,000건 실측에서 뽑은 **실제 고객 질문**이다.
+        "급성치관주위염 상병명으로 항생제 처방이 가능할까?",
+        "수술후지혈처치에 내역설명을 꼭 달아야 해?",
+        "근단변위판막술 시 구강전정성형술",
+        "동요도 적은 치아 상병명",
+        "자율점검 하는방법 알려줘",
+        "소염술 간단/복잡 차이점",
+        "잔존유치 치근단 촬영 내역설명",
+        "이가 시려서 치근단 촬영. 상병명은?",
+        "1치당 아닌 1면당 산정되는것은?",
+        "27년도에 바뀌는 고시",
+        "치아 착색으로 인했을때 상병명 적절한것?",
+        "의료법 관련 규정은 어디서 확인할수 있을까",
+        "자보 혜택 받기 애매한 경우도 있을까요?",
+        "페리덱스 유아한테 발라도대나",
+    ],
+)
+def test_real_questions_are_not_blocked(question: str) -> None:
+    """정상 치과 질문은 되묻기로 떨어지면 안 된다 (오탐 회귀 방지)."""
+    assert needs_clarification(question, has_known_topic=False) is False
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "PRR 이 뭔가요",
+        "엔도중에 NiTi 는 몇 번 넣을수 있지?",
+        "하루 CU, RP 같이 몇회까지 가능한지",
+        "CU 후 리제노머 사용 내역설명 추천",
+    ],
+)
+def test_latin_abbreviation_counts_as_topic(question: str) -> None:
+    """치과 현장 영문 약어(CU·RP·PRR·NiTi…)는 주제로 인정한다."""
+    assert has_billing_topic(question) is True
+    assert needs_clarification(question, has_known_topic=False) is False
