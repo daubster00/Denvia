@@ -119,3 +119,12 @@ celerybeat-schedule.*
 
 # 배포 스크립트 산출물
 scripts/.deploy/
+
+# DB 덤프 — 고객 개인정보(이메일·휴대폰·비밀번호 해시) 포함. 저장소가 public 이라
+# 한 번 올라가면 되돌릴 수 없다. 확장자 단위로 원천 차단한다.
+*.sql
+*.dump
+
+# 백업본·도구 산출물
+*.bak-*
+.playwright-mcp/
