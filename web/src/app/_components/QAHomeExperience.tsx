@@ -10,6 +10,7 @@ import { ChatShell } from "@/features/qa/components/ChatShell";
 import { useQAStore } from "@/stores/qa-store";
 import { useQAStream } from "@/features/qa/hooks/useQAStream";
 import { useQuota } from "@/features/qa/hooks/useQuota";
+import { resolveRetryTarget } from "@/features/qa/lib/retry-target";
 import { postClientEvent } from "@/features/qa/api/events";
 import { PopupCarousel } from "@/features/inbox/components/PopupCarousel";
 import { QANoticeModal } from "@/features/qa/components/QANoticeModal";
@@ -39,12 +40,15 @@ export function AuthenticatedQAExperience() {
   // #130 ① — 질문 전송 안내 팝업. 매 질문마다 노출되며 답변 스트리밍을 막지 않는다.
   const [noticeOpen, setNoticeOpen] = useState(false);
 
-  // 관리자가 팝업을 켜뒀고, "오늘 하루 보지 않기"로 차단되지 않았을 때만 노출한다.
+  // 관리자가 팝업을 켜뒀고, 띄울 문구가 있고, "오늘 하루 보지 않기"로 차단되지
+  // 않았을 때만 노출한다. 문구 확인은 #149 결정 ②(문구 삭제) 이후의 방어선 —
+  // 서버도 빈 문구면 enabled 를 내려주지만, 빈 팝업이 뜨는 일은 양쪽에서 막는다.
   const maybeShowNotice = useCallback(() => {
     if (!quotaData?.qa_notice_enabled) return;
+    if (!quotaData?.qa_notice_text?.trim()) return;
     if (isQaNoticeDismissedForToday()) return;
     setNoticeOpen(true);
-  }, [quotaData?.qa_notice_enabled]);
+  }, [quotaData?.qa_notice_enabled, quotaData?.qa_notice_text]);
 
   const handleReset = useCallback(() => {
     stream.abort();
@@ -52,6 +56,35 @@ export function AuthenticatedQAExperience() {
     setPendingHomeQuestion(null);
     void postClientEvent("qa.conversation.reset");
   }, [stream, clearMessages, setPendingHomeQuestion]);
+
+  /**
+   * 오류 답변의 "다시 시도" (검수 P1-6 + 재수정 P1-2).
+   *
+   * 예전에는 어떤 답변의 버튼을 눌러도 **가장 최근 질문**을 다시 보냈다. 대화가 쌓이는
+   * 지금은 위쪽 오류 답변을 눌렀을 때 엉뚱한 질문이 다시 전송된다.
+   * 그 답변 바로 앞의 사용자 질문을 찾아 그 질문을 다시 보낸다.
+   *
+   * 맥락(이전 대화)도 **최초 요청 당시의 스냅샷**을 그대로 쓴다. 지금 화면 전체를
+   * 다시 계산하면, A 가 실패한 뒤 정상 완료된 B 의 로그 id 까지 A 의 맥락으로
+   * 들어간다 — 시간상 A 보다 뒤에 일어난 대화가 A 의 앞 맥락이 되는 셈이고,
+   * 검색 질의가 엉뚱하게 완성되거나 저장 답변 재생 게이팅이 어긋난다.
+   */
+  const handleRetry = useCallback(
+    (assistantMessageId: string) => {
+      const target = resolveRetryTarget(
+        useQAStore.getState().messages,
+        assistantMessageId,
+      );
+      if (!target) return;
+      lastUserTextRef.current = target.question;
+      // retry:true — 전송 못 한 저장 답변이 있으면 같은 맥락일 때만 재생된다(P0-1).
+      void stream.submit(target.question, {
+        retry: true,
+        historyTurnIds: target.historyTurnIds,
+      });
+    },
+    [stream],
+  );
 
   async function handleSubmit(text: string) {
     lastUserTextRef.current = text;
@@ -76,14 +109,17 @@ export function AuthenticatedQAExperience() {
     void stream.submit(text);
   }, [pathname, pendingHomeQuestion, setPendingHomeQuestion, stream, maybeShowNotice]);
 
-  const isStreaming = messages.some(
-    (m) => m.role === "assistant" && m.status === "pending"
-  );
+  // "답변 중" 판정은 **마지막 메시지 하나만** 본다 (#149).
+  // 대화가 쌓이게 되면서 some() 으로 전체를 훑으면, 과거에 중단된 답변 하나 때문에
+  // 입력창이 영원히 잠긴다. 지금 진행 중인 턴은 언제나 맨 마지막이다.
+  const lastMessage = messages[messages.length - 1];
+  const isStreaming =
+    lastMessage?.role === "assistant" && lastMessage.status === "pending";
   // /(메인)는 항상 hero(HeroCopy + 활성 입력) — 제출 시 /chat 으로 이동.
   // /chat 은 항상 ChatShell — ChatShell 자체가 messages.length 로
   // shellHero(중앙 입력 + 남은 횟수 caption) ↔ shellInline 분기를 책임진다.
   // 한도 차단(429): useQAStream 이 useAlertStore.show() 로 글로벌 AppAlert 모달을
-  // 띄우고 clearMessages 로 shellHero 로 자동 복귀시킨다.
+  // 띄우고, 거절된 이번 턴만 dropTurn 으로 걷어낸다(과거 정상 대화는 보존 — 검수 P1-5).
   const isHero = pathname === "/";
 
   return (
@@ -112,7 +148,7 @@ export function AuthenticatedQAExperience() {
           onInputChange={setInputValue}
           onSubmit={handleSubmit}
           isStreaming={isStreaming}
-          onRetry={() => stream.submit(lastUserTextRef.current)}
+          onRetry={handleRetry}
           quotaData={quotaData}
         />
       )}

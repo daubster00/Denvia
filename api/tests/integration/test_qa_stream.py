@@ -50,6 +50,10 @@ def _make_db(log_id: int = 1):
     _ks_result.scalars.return_value.all.return_value = []
     _ks_result.scalar_one_or_none.return_value = None
     _ks_result.scalar_one.return_value = 0
+    # #149 재수정 P1-1 — 재생 선점은 UPDATE ... RETURNING 의 .first() 를 본다.
+    # 설정하지 않으면 MagicMock 이 돌아와 "재생할 답변이 있다" 로 오인되고,
+    # 요청이 정상 생성 경로 대신 저장 답변 재생 경로로 새어 들어간다.
+    _ks_result.first.return_value = None
     db.execute = AsyncMock(return_value=_ks_result)
 
     async def _gen():
@@ -71,8 +75,15 @@ def _make_admin_user(user_id: int = 1) -> MagicMock:
 
 
 def _make_redis_mock() -> AsyncMock:
-    """preflight를 통과시키기 위한 Redis mock (admin user는 INCR 미발생)."""
-    return AsyncMock()
+    """preflight를 통과시키기 위한 Redis mock (admin user는 INCR 미발생).
+
+    runtime 키는 "미설정"(None) 으로 둬야 서버가 기본값을 쓴다. AsyncMock 기본 반환값
+    (MagicMock)을 int() 하면 1 이 되어 ``runtime:max_question_chars`` 가 1자로 읽히고,
+    모든 질문이 422(QUESTION_TOO_LONG) 로 거부됐다 — 이 파일의 기존 실패 3건 원인.
+    """
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    return redis
 
 
 def _parse_sse_lines(text: str) -> list[dict]:

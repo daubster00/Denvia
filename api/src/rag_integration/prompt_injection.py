@@ -102,6 +102,38 @@ def _match_trigger_config(query: str, cfg: dict, matchers: dict) -> bool:
     return matchers["kw"](query, cfg.get("keywords") or [])
 
 
+# 최종 템플릿의 꼬리 — build_prompt_with_overrides_detailed 와 vendor build_prompt_template
+# 둘 다 이 문구로 끝난다(#110 클라이언트 compact 포맷). 이전 대화는 이 직전에 끼운다.
+_TAIL_MARKER = "질문: {question}"
+
+
+def escape_braces(text: str) -> str:
+    """PromptTemplate 가 변수로 오해하지 않도록 중괄호를 이스케이프한다.
+
+    이전 대화는 사용자가 친 글이라 ``{`` 가 들어올 수 있다. 이스케이프하지 않으면
+    PromptTemplate.format 이 "없는 변수" 로 보고 KeyError 를 낸다(= 답변 전체 실패).
+    format 단계에서 다시 ``{`` 로 복원되므로 모델이 보는 글자는 원본 그대로다.
+    """
+    return text.replace("{", "{{").replace("}", "}}")
+
+
+def insert_history_block(template_str: str, history_block: str) -> str:
+    """완성된 프롬프트 템플릿에 "이전 대화" 섹션을 끼워 넣는다.
+
+    위치는 맨 끝 ``질문: {question}`` 바로 앞 — 시스템 규칙(BASE·모듈)은 위에 그대로 두고,
+    이번 질문 바로 앞에 맥락을 붙인다. 꼬리를 못 찾으면 맨 앞에 붙인다(안전 폴백).
+    history_block 이 비어 있으면 원본을 그대로 돌려준다(기존 동작과 100% 동일).
+    """
+    if not history_block:
+        return template_str
+    escaped = escape_braces(history_block)
+    idx = template_str.rfind(_TAIL_MARKER)
+    if idx == -1:
+        logger.warning("prompt_injection.history_tail_not_found")
+        return escaped + "\n\n" + template_str
+    return template_str[:idx] + escaped + "\n\n" + template_str[idx:]
+
+
 def build_prompt_with_overrides(
     query: str,
     overrides: dict[str, PromptOverride] | None = None,
@@ -116,6 +148,7 @@ def build_prompt_with_overrides(
 def build_prompt_with_overrides_detailed(
     query: str,
     overrides: dict[str, PromptOverride] | None = None,
+    history_block: str = "",
 ) -> tuple[str, list[str]]:
     """vendor/rag build_prompt_template 로직을 DB/Redis 오버라이드로 재현한다.
 
@@ -127,11 +160,14 @@ def build_prompt_with_overrides_detailed(
     overrides가 None이거나 비어있으면 vendor/rag 기본값 fallback — 이 경로에서는 주입
     목록을 알 수 없으므로 빈 목록을 반환해 기본 모델이 쓰이게 한다(fail-safe).
     각 모듈의 발동조건은 override.trigger_config 가 있으면 그것을, 없으면 vendor 파일값을 쓴다.
+
+    history_block 이 주어지면(대화 이어가기, 게시판 #149) 맨 끝 질문 바로 앞에 끼워 넣는다.
+    빈 문자열이면 기존 단일 질문 동작과 완전히 동일한 문자열이 나온다.
     """
     if not overrides:
         from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
 
-        return build_prompt_template(query), []
+        return insert_history_block(build_prompt_template(query), history_block), []
 
     try:
         from rag.prompt_builder import BASE_PROMPT, PROMPT_MODULES  # type: ignore[import-untyped]
@@ -225,10 +261,10 @@ def build_prompt_with_overrides_detailed(
         if injected:
             logger.info("prompt_injection.modules_injected", modules=injected)
 
-        return "\n".join(parts), injected
+        return insert_history_block("\n".join(parts), history_block), injected
 
     except Exception as e:
         logger.warning("prompt_injection.build_failed", error=str(e))
         from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
 
-        return build_prompt_template(query), []
+        return insert_history_block(build_prompt_template(query), history_block), []

@@ -1,0 +1,245 @@
+# 기준 커밋 147fb6e 의 api/src/rag_integration/prompt_injection.py **동결 사본**.
+#
+# 2026-11-03 검수 §5 — "기존 단일 질문 1바이트 동치" 테스트가 현재 구현을 자기 자신과
+# 비교하고 있어 검증력이 없다는 지적에 대한 조치다. 대화 이어가기(#149) 도입 **전**의
+# 프롬프트 조립 결과와 지금 결과를 실제로 비교하려면 기준 구현이 손에 있어야 한다.
+#
+# - 이 파일은 **수정 금지**. 기준점이므로 바꾸면 비교 의미가 사라진다.
+# - 재생성: git show 147fb6e:api/src/rag_integration/prompt_injection.py
+# - 사용처: api/tests/unit/test_history_prompt_equivalence.py
+#
+# 아래부터 원본 내용 그대로.
+"""프롬프트 블록 런타임 주입 — vendor/rag 수정 없이 DB/Redis 오버라이드 적용."""
+from __future__ import annotations
+
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+
+def get_trigger_keywords(block_id: str) -> list[str]:
+    """vendor/rag prompt_builder.PROMPT_MODULES에서 block_id의 키워드를 읽는다.
+
+    BASE는 항상 포함(트리거 없음)이므로 빈 리스트 반환.
+    리플렉션이므로 vendor/rag 파일은 수정하지 않는다.
+    """
+    if block_id == "BASE":
+        return []
+    try:
+        from rag.prompt_builder import PROMPT_MODULES  # type: ignore[import-untyped]
+
+        module = PROMPT_MODULES.get(block_id, {})
+        # 모듈 매칭 방식 4종(keywords / keywords_all / keywords_combo / group+required)을
+        # 모두 펼쳐 트리거 키워드 목록으로 반환한다.
+        kws = list(module.get("keywords", []))
+        kws += list(module.get("keywords_all", []))
+        combo = module.get("keywords_combo")
+        if combo:
+            kws += list(combo.get("set1", [])) + list(combo.get("independent", []))
+        kws += list(module.get("group_keywords", [])) + list(module.get("required_keywords", []))
+        return kws
+    except Exception as e:
+        logger.warning("prompt_injection.get_keywords_failed", block_id=block_id, error=str(e))
+        return []
+
+
+# vendor build_prompt_template 에 하드코딩돼 있던 상호배제(예외처리) 규칙.
+# override.suppresses 가 없을 때의 폴백 기본값 — 편집 전 라이브 동작을 그대로 재현한다(#95).
+_VENDOR_SUPPRESSES: dict[str, list[str]] = {
+    "브릿지": ["치식_위치", "치면_방향"],
+    "치주치료_산정": ["치식_위치", "치면_방향"],
+    "마취_산정": ["치식_위치", "치면_방향"],
+    "치주낭측정검사_횟수산정": ["치식_위치", "치면_방향"],
+}
+
+
+class PromptOverride:
+    """단일 프롬프트 블록의 오버라이드 값.
+
+    trigger_config 가 주어지면 발동조건(키워드 매칭)까지 오버라이드한다(#129).
+    None 이면 vendor 파일의 기본 발동조건을 그대로 쓴다.
+    suppresses 는 이 블록이 활성화되면 함께 숨길 블록 id 목록(#95). None 이면 vendor 기본맵 폴백.
+    """
+
+    def __init__(
+        self,
+        content: str,
+        enabled: bool,
+        trigger_config: dict | None = None,
+        suppresses: list[str] | None = None,
+    ) -> None:
+        self.content = content
+        self.enabled = enabled
+        self.trigger_config = trigger_config
+        self.suppresses = suppresses
+
+
+def _file_trigger_config(block_id: str, module: dict) -> dict:
+    """vendor 모듈 dict → trigger_config 형태(mode + 키워드 리스트)."""
+    if block_id == "BASE":
+        return {"mode": "base"}
+    if "keywords_all" in module:
+        return {"mode": "keywords_all", "keywords_all": module["keywords_all"]}
+    if "keywords_combo" in module:
+        combo = module["keywords_combo"]
+        return {
+            "mode": "keywords_combo",
+            "set1": combo["set1"],
+            "independent": combo["independent"],
+        }
+    if "group_keywords" in module and "required_keywords" in module:
+        return {
+            "mode": "group",
+            "group_keywords": module["group_keywords"],
+            "required_keywords": module["required_keywords"],
+        }
+    return {"mode": "keywords", "keywords": module.get("keywords", [])}
+
+
+def _match_trigger_config(query: str, cfg: dict, matchers: dict) -> bool:
+    """trigger_config(mode + 키워드) 로 발동 여부를 판정. vendor 매칭 함수 재사용."""
+    mode = cfg.get("mode")
+    if mode == "base":
+        return True
+    if mode == "keywords_all":
+        return matchers["all"](query, cfg.get("keywords_all") or [])
+    if mode == "keywords_combo":
+        return matchers["perio"](query, cfg.get("set1") or [], cfg.get("independent") or [])
+    if mode == "group":
+        return matchers["group"](
+            query, cfg.get("group_keywords") or [], cfg.get("required_keywords") or []
+        )
+    # 기본(keywords) — 알 수 없는 mode 도 안전하게 keywords 매칭으로 처리.
+    return matchers["kw"](query, cfg.get("keywords") or [])
+
+
+def build_prompt_with_overrides(
+    query: str,
+    overrides: dict[str, PromptOverride] | None = None,
+) -> str:
+    """최종 프롬프트 문자열만 반환하는 기존 시그니처(하위 호환 유지).
+
+    어떤 블록이 실제로 주입됐는지까지 필요하면 ``build_prompt_with_overrides_detailed``.
+    """
+    return build_prompt_with_overrides_detailed(query, overrides)[0]
+
+
+def build_prompt_with_overrides_detailed(
+    query: str,
+    overrides: dict[str, PromptOverride] | None = None,
+) -> tuple[str, list[str]]:
+    """vendor/rag build_prompt_template 로직을 DB/Redis 오버라이드로 재현한다.
+
+    반환: ``(최종 프롬프트 문자열, 실제로 주입된 블록 id 목록)``.
+    주입 목록은 "특정 프롬프트 모델 라우팅"이 모델을 고르는 유일한 근거다 — 키워드가
+    포함됐더라도 블록이 꺼져 있거나 상호배제(suppresses)로 탈락하면 목록에 들어가지 않는다.
+    BASE 는 항상 선주입되는 고정 블록이라 목록에서 제외한다(라우팅 대상도 될 수 없음).
+
+    overrides가 None이거나 비어있으면 vendor/rag 기본값 fallback — 이 경로에서는 주입
+    목록을 알 수 없으므로 빈 목록을 반환해 기본 모델이 쓰이게 한다(fail-safe).
+    각 모듈의 발동조건은 override.trigger_config 가 있으면 그것을, 없으면 vendor 파일값을 쓴다.
+    """
+    if not overrides:
+        from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
+
+        return build_prompt_template(query), []
+
+    try:
+        from rag.prompt_builder import BASE_PROMPT, PROMPT_MODULES  # type: ignore[import-untyped]
+        from rag.prompt_builder.prompt_builder import (  # type: ignore[import-untyped]
+            _match_group_and_keywords,
+            _match_keywords,
+            _match_keywords_all,
+            _match_periodontal,
+        )
+
+        matchers = {
+            "kw": _match_keywords,
+            "all": _match_keywords_all,
+            "perio": _match_periodontal,
+            "group": _match_group_and_keywords,
+        }
+
+        def _eff_cfg(block_id: str) -> dict:
+            """유효 발동조건 = override.trigger_config 우선, 없으면 vendor 파일값."""
+            ov = overrides.get(block_id)
+            if ov is not None and ov.trigger_config:
+                return ov.trigger_config
+            return _file_trigger_config(block_id, PROMPT_MODULES.get(block_id, {}))
+
+        parts: list[str] = []
+
+        base_override = overrides.get("BASE")
+        if base_override is None:
+            parts.append(BASE_PROMPT)
+        elif base_override.enabled:
+            parts.append(base_override.content)
+
+        # 마스터 블록 목록 = vendor 원본 순서 + 관리자가 추가한 블록(override 에만 존재).
+        # 관리자 블록은 vendor 파일에 원본이 없으므로 overrides 삽입 순서를 그대로 이어붙인다.
+        # (query_runner 가 runtime:prompt:__order__ 순서로 overrides 를 만들어 넘긴다.)
+        vendor_ids = list(PROMPT_MODULES.keys())
+        extra_ids = [
+            bid for bid in overrides if bid != "BASE" and bid not in PROMPT_MODULES
+        ]
+        ordered_ids = vendor_ids + extra_ids
+
+        def _eff_enabled(block_id: str) -> bool:
+            """유효 활성 여부 = override 있으면 override.enabled, 없으면 vendor 기본(True)."""
+            ov = overrides.get(block_id)
+            return ov.enabled if ov is not None else True
+
+        def _eff_suppresses(block_id: str) -> list[str]:
+            """유효 상호배제 목록 = override.suppresses 우선, 없으면 vendor 기본맵(#95)."""
+            ov = overrides.get(block_id)
+            if ov is not None and ov.suppresses is not None:
+                return ov.suppresses
+            return _VENDOR_SUPPRESSES.get(block_id, [])
+
+        # 상호배제(예외처리) — 활성(활성화+발동조건 매칭)인 블록들의 suppresses 합집합을 숨긴다.
+        # 기존 하드코딩(브릿지/치주치료/마취/치주낭 → 치식_위치/치면_방향)을 데이터 기반으로 대체(#95).
+        # 미편집 블록은 vendor 기본맵으로 폴백하므로 편집 전 라이브 동작은 완전히 동일.
+        # (BASE 는 아래에서 별도로 항상 선주입되므로 이 집합에 들어와도 영향 없음.)
+        suppressed: set[str] = set()
+        for _bid in ordered_ids:
+            if _eff_enabled(_bid) and _match_trigger_config(query, _eff_cfg(_bid), matchers):
+                suppressed.update(_eff_suppresses(_bid))
+
+        injected: list[str] = []
+        for module_name in ordered_ids:
+            module_data = PROMPT_MODULES.get(module_name)
+            matched = _match_trigger_config(query, _eff_cfg(module_name), matchers)
+            if not matched:
+                continue
+            if module_name in suppressed:
+                continue
+
+            override = overrides.get(module_name)
+            if override is not None:
+                if not override.enabled:
+                    continue
+                content = override.content
+            elif module_data is not None:
+                content = module_data["text"]
+            else:
+                # 관리자 블록인데 override 가 사라짐(삭제됨) → 주입할 내용 없음.
+                continue
+            parts.append(content)
+            injected.append(module_name)
+
+        # vendor build_prompt_template과 동일한 최종 템플릿 (#110 클라이언트 compact 포맷)
+        parts.append("""
+질문: {question}
+문서: {context}
+답변:""")
+
+        if injected:
+            logger.info("prompt_injection.modules_injected", modules=injected)
+
+        return "\n".join(parts), injected
+
+    except Exception as e:
+        logger.warning("prompt_injection.build_failed", error=str(e))
+        from rag.prompt_builder import build_prompt_template  # type: ignore[import-untyped]
+
+        return build_prompt_template(query), []

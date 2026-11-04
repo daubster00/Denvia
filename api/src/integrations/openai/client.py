@@ -78,6 +78,7 @@ def build_chat_llm(
     temperature: float = 0.0,
     max_tokens: int = 1024,
     model_name: str | None = None,
+    request_timeout: float | None = None,
 ) -> ChatOpenAI:
     """현재 기본 채팅 모델은 고효율 경량 모델 ``gpt-5.4-mini``.
 
@@ -98,13 +99,21 @@ def build_chat_llm(
     effective_model = model_name or DEFAULT_CHAT_MODEL
     use_cache = not callbacks  # None or [] 면 캐시 사용
 
+    # 게시판 #112 — 무한 hang 방지. reasoning/일반 모델 공통 적용.
+    # #149 검수 P1-1 — 짧은 보조 호출(질문 재작성 판단)은 자기 상한을 직접 지정한다.
+    # 바깥에서 asyncio.wait_for 로 **기다리는 것만** 끊으면 HTTP 호출과 과금은 계속된다.
+    # 실제로 끊으려면 이 값(=httpx 타임아웃)이 그 상한보다 짧아야 한다.
+    effective_timeout = (
+        float(request_timeout)
+        if request_timeout is not None
+        else LLM_REQUEST_TIMEOUT_SECONDS
+    )
     kwargs: dict = {
         "model_name": effective_model,
         "streaming": streaming,
         "callbacks": callbacks or [],
         "max_tokens": max_tokens,
-        # 게시판 #112 — 무한 hang 방지. reasoning/일반 모델 공통 적용.
-        "request_timeout": LLM_REQUEST_TIMEOUT_SECONDS,
+        "request_timeout": effective_timeout,
     }
     if not _is_reasoning_model(effective_model):
         kwargs["temperature"] = temperature
@@ -117,6 +126,9 @@ def build_chat_llm(
         streaming,
         temperature if not _is_reasoning_model(effective_model) else None,
         max_tokens,
+        # 타임아웃이 다른 인스턴스는 **섞이면 안 된다** — 12초짜리 보조 호출 인스턴스가
+        # 본 답변(60초) 호출에 재사용되면 긴 답변이 중간에 끊긴다.
+        effective_timeout,
     )
     cached = _LLM_CACHE.get(cache_key)
     if cached is not None:
@@ -160,22 +172,30 @@ def with_retry(fn):
 
 @contextmanager
 def capture_usage(model_name: str | None = None) -> Generator[TokenUsage, None, None]:
-    """get_openai_callback 컨텍스트 — TokenUsage로 변환하여 yield."""
+    """get_openai_callback 컨텍스트 — TokenUsage로 변환하여 yield.
+
+    3차 검수 P2 — 사용량 채우기를 ``finally`` 로 옮겼다. 예전에는 ``yield`` 뒤에
+    그냥 놓여 있어서, 블록 안에서 예외·취소(클라이언트 단절, 판단 단계 타임아웃)가
+    일어나면 그 줄들이 **아예 실행되지 않고** ``TokenUsage(0,0,0,0.0)`` 이 그대로
+    남았다. 이미 발생한 과금이 조용히 0 으로 집계되는 길이다.
+    """
     with get_openai_callback() as cb:
         usage = TokenUsage(0, 0, 0, 0.0)
-        yield usage
-        usage.input_tokens = cb.prompt_tokens
-        usage.output_tokens = cb.completion_tokens
-        usage.total_tokens = cb.total_tokens
-        usage.cost_usd = cb.total_cost
+        try:
+            yield usage
+        finally:
+            usage.input_tokens = cb.prompt_tokens
+            usage.output_tokens = cb.completion_tokens
+            usage.total_tokens = cb.total_tokens
+            usage.cost_usd = cb.total_cost
 
-        # 모델이 바뀌면 단가도 함께 바뀌어야 한다 — 선택된 모델의 카탈로그 단가로 재계산.
-        # (순환 import 방지를 위해 함수 안에서 import)
-        from api.src.services.runtime_config_service import estimate_cost_usd
+            # 모델이 바뀌면 단가도 함께 바뀌어야 한다 — 선택된 모델의 카탈로그 단가로 재계산.
+            # (순환 import 방지를 위해 함수 안에서 import)
+            from api.src.services.runtime_config_service import estimate_cost_usd
 
-        effective_model = model_name or DEFAULT_CHAT_MODEL
-        catalog_cost = estimate_cost_usd(
-            effective_model, usage.input_tokens, usage.output_tokens
-        )
-        if catalog_cost is not None:
-            usage.cost_usd = catalog_cost
+            effective_model = model_name or DEFAULT_CHAT_MODEL
+            catalog_cost = estimate_cost_usd(
+                effective_model, usage.input_tokens, usage.output_tokens
+            )
+            if catalog_cost is not None:
+                usage.cost_usd = catalog_cost

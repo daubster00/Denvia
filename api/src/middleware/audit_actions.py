@@ -50,6 +50,7 @@ AUDIT_LOGIN_LOCKOUT_CLEAR = "user.login_lockout_clear"  # 로그인 자동 락�
 AUDIT_LOGIN_BRUTE_THRESHOLD_UPDATE = "login_brute_threshold.update"  # 로그인 실패 이상탐지 기준 횟수 편집
 AUDIT_ANOMALY_THRESHOLDS_UPDATE = "anomaly_thresholds.update"        # 이상탐지 통합 임계값 편집 (6 카테고리 11 항목)
 AUDIT_RUNTIME_CONFIG_UPDATE = "runtime_config.update"   # A-303/A-305 (Story 7.3/7.4 부분) — 서비스 전체 토글 편집
+AUDIT_CHAT_HISTORY_CONFIG_UPDATE = "chat_history_config.update"  # 대화 이어가기(멀티턴) 설정 편집
 AUDIT_BUDGET_LIMIT_UPDATE = "budget.monthly_limit.update"  # 관리자 설정 — 당월 KST 예산 한도 조정
 AUDIT_SEO_CONFIG_UPDATE = "seo_config.update"           # 관리자 설정 → SEO — 사이트 이름/설명/키워드/OG/파비콘 편집
 AUDIT_SEO_ASSET_UPLOAD = "seo_config.asset_upload"      # 관리자 설정 → SEO — 파비콘/OG 이미지 업로드

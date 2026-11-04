@@ -101,7 +101,8 @@ async def get_my_quota(
             show_subscribe_button=False,
             delay_seconds=0.0,
             free_delay_notice_text="",
-            qa_notice_enabled=qa_notice.enabled,
+            # 검수 P1-8 — 사용자에게는 **실제 노출 상태**를 내려준다(빈 문구면 false).
+            qa_notice_enabled=qa_notice.visible,
             qa_notice_text=qa_notice.text,
             qa_notice_font_size=qa_notice.font_size,
             qa_notice_color=qa_notice.color,
@@ -143,7 +144,8 @@ async def get_my_quota(
         show_subscribe_button=show_subscribe,
         delay_seconds=float(delay),
         free_delay_notice_text=notice_text,
-        qa_notice_enabled=qa_notice.enabled,
+        # 검수 P1-8 — 사용자에게는 **실제 노출 상태**를 내려준다(빈 문구면 false).
+        qa_notice_enabled=qa_notice.visible,
         qa_notice_text=qa_notice.text,
         qa_notice_font_size=qa_notice.font_size,
         qa_notice_color=qa_notice.color,

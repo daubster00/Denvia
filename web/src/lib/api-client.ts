@@ -26,8 +26,13 @@ async function handleErrorResponse(res: Response, path: string): Promise<never> 
   // /api/v1/me 호출의 결과로 잡혀도 모달을 띄워야 하므로 ME_PATH 예외에 포함시키지 않는다.
   if (res.status === 401 && code === "AUTH_SESSION_SUPERSEDED") {
     if (typeof window !== "undefined") {
-      const { useSessionStore } = await import("@/stores/session-store");
-      useSessionStore.getState().clearSession();
+      // 재수정 P0-2 — 로그인 세션과 QA 대화를 **함께** 비운다. 예전에는
+      // clearSession() 만 호출해 denvia-qa-store(QA 대화 sessionStorage 키)가 남았고,
+      // 같은 탭의 다음 사용자가 이전 사용자의 대화를 그대로 이어받았다.
+      const { resetClientSession } = await import(
+        "@/features/auth/lib/session-reset"
+      );
+      resetClientSession("superseded");
       // 이미 /?login=superseded 위에 있으면 재진입을 막아 무한 모달을 피한다.
       const url = new URL(window.location.href);
       if (url.searchParams.get("login") !== "superseded") {
@@ -41,8 +46,12 @@ async function handleErrorResponse(res: Response, path: string): Promise<never> 
     // 401 감지: 세션 클리어 + 메인(/)으로 이동 후 로그인 팝업 자동 오픈.
     // 이미 메인이면 페이지 이동 없이 팝업만 띄움. /admin/* 경로는 이 핸들러를 타지 않음(별도 admin-auth/api.ts).
     if (typeof window !== "undefined") {
+      // 재수정 P0-2 — 세션 만료도 세션 종료다. QA 대화를 함께 비운다.
+      const { resetClientSession } = await import(
+        "@/features/auth/lib/session-reset"
+      );
       const { useSessionStore } = await import("@/stores/session-store");
-      useSessionStore.getState().clearSession();
+      resetClientSession("api_401");
       const onHome = window.location.pathname === "/";
       if (!onHome) {
         // /?login=required 로 보내면 SessionBootstrap 마운트 후 OAuthErrorBanner 영역의 쿼리스트링은

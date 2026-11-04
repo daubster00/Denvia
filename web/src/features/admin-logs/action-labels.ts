@@ -57,6 +57,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "anomaly_throttle_config.update": "이상질문 차단 설정 변경",
   "login_brute_threshold.update": "로그인 실패 임계치 변경",
   "runtime_config.update": "런타임 설정 변경",
+  "chat_history_config.update": "대화 이어가기 설정 변경",
   "budget.monthly_limit.update": "월 예산 한도 변경",
   "seo_config.update": "SEO 설정 변경",
   "seo_config.asset_upload": "SEO 이미지 업로드",

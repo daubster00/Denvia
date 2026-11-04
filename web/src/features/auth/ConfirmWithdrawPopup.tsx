@@ -17,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/types/api";
 import { useSessionStore } from "@/stores/session-store";
+import { resetClientSession } from "@/features/auth/lib/session-reset";
 import { useAlertStore } from "@/stores/alert-store";
 import { useToastStore } from "@/stores/toast-store";
 
@@ -35,7 +36,6 @@ interface ConfirmWithdrawPopupProps {
 
 export function ConfirmWithdrawPopup({ open, onClose }: ConfirmWithdrawPopupProps) {
   const user = useSessionStore((s) => s.user);
-  const clearSession = useSessionStore((s) => s.clearSession);
   const showAlert = useAlertStore((s) => s.show);
   const showToast = useToastStore((s) => s.show);
   const router = useRouter();
@@ -132,7 +132,12 @@ export function ConfirmWithdrawPopup({ open, onClose }: ConfirmWithdrawPopupProp
           : { password }
       );
       // 성공 — 클라이언트 세션 종료 + 안내 + 랜딩 이동
-      clearSession();
+      //
+      // 재수정 P0-2 — 탈퇴도 세션 종료다. 로그인 사용자만 비우면
+      // `denvia-qa-store`(QA 대화가 담긴 sessionStorage 키)가 남아, 같은 탭에서
+      // 다음 사용자가 이전 사용자의 대화·대기 질문을 물려받는다. 정리 지점은
+      // session-reset.ts 한 곳으로 모아 뒀다.
+      resetClientSession("logout");
       qc.invalidateQueries({ queryKey: ["session"] });
       showToast("탈퇴가 완료되었습니다", 3000);
       onClose();

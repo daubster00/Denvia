@@ -21,6 +21,8 @@
 - PUT    /admin/runtime-config           서비스 전체 토글 4종 일괄 저장
 - GET    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 조회 + 허용 목록
 - PUT    /admin/runtime-config/chat-model  관리자 설정 — RAG 채팅 모델 변경 (화이트리스트)
+- GET    /admin/runtime-config/chat-history 관리자 설정 — 대화 이어가기(멀티턴) 조회
+- PUT    /admin/runtime-config/chat-history 관리자 설정 — 대화 이어가기(멀티턴) 저장
 - GET    /admin/runtime-config/forex       USD→KRW 환율 + 자동 갱신 메타 (read-only)
 - GET    /admin/runtime-config/toss-pg     관리자 설정 — 토스 PG 모드 + 4개 키 마스킹 조회
 - PUT    /admin/runtime-config/toss-pg     관리자 설정 — 토스 PG 모드 토글 + 키 부분 업데이트
@@ -35,6 +37,7 @@ from api.src.deps.redis import get_redis_runtime
 from api.src.middleware.audit_actions import (
     AUDIT_ADMIN_DM_DELETE,
     AUDIT_ANOMALY_THRESHOLDS_UPDATE,
+    AUDIT_CHAT_HISTORY_CONFIG_UPDATE,
     AUDIT_ANOMALY_THROTTLE_CONFIG_UPDATE,
     AUDIT_INBOX_PREVIEW_CONFIG_UPDATE,
     AUDIT_LOGIN_BRUTE_THRESHOLD_UPDATE,
@@ -71,6 +74,8 @@ from api.src.schemas.admin.popup import (
     PopupUpdateRequest,
 )
 from api.src.schemas.admin.runtime_config import (
+    ChatHistoryConfigResponse,
+    ChatHistoryConfigUpdateRequest,
     AnomalyThresholdsConfigResponse,
     AnomalyThresholdsConfigUpdateRequest,
     AnomalyThrottleConfigResponse,
@@ -261,6 +266,76 @@ async def update_chat_model_config(
         allowed_models=list(runtime_config_service.ALLOWED_CHAT_MODELS),
         default_model=runtime_config_service.DEFAULT_CHAT_MODEL,
         models=runtime_config_service.chat_model_catalog_payload(),
+    )
+
+
+# ── 관리자 설정 페이지 — 대화 이어가기(멀티턴) ────────────────────────────────
+
+
+@router.get("/runtime-config/chat-history", response_model=ChatHistoryConfigResponse)
+async def get_chat_history_config(
+    response: Response,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> ChatHistoryConfigResponse:
+    """대화 이어가기 설정 조회 (사용 여부 / 최근 턴 수 / 토큰 상한 / 판단 모델)."""
+    response.headers["Cache-Control"] = "no-store"
+    cfg = await runtime_config_service.get_chat_history_config(redis_runtime)
+    return ChatHistoryConfigResponse(
+        enabled=cfg.enabled,
+        max_turns=cfg.max_turns,
+        max_tokens=cfg.max_tokens,
+        rewriter_model=cfg.rewriter_model,
+        models=runtime_config_service.chat_model_catalog_payload(),
+        default_max_turns=runtime_config_service.DEFAULT_CHAT_HISTORY_MAX_TURNS,
+        default_max_tokens=runtime_config_service.DEFAULT_CHAT_HISTORY_MAX_TOKENS,
+    )
+
+
+@router.put("/runtime-config/chat-history", response_model=ChatHistoryConfigResponse)
+@audit_action(AUDIT_CHAT_HISTORY_CONFIG_UPDATE)
+async def update_chat_history_config(
+    request: Request,
+    body: ChatHistoryConfigUpdateRequest,
+    admin: User = Depends(require_admin),
+    redis_runtime: AsyncRedis = Depends(get_redis_runtime),
+) -> ChatHistoryConfigResponse:
+    """대화 이어가기 설정 저장 — 범위/모델 위반 시 400. 저장 즉시 다음 질문부터 반영."""
+    before = await runtime_config_service.get_chat_history_config(redis_runtime)
+    try:
+        after = await runtime_config_service.set_chat_history_config(
+            redis_runtime,
+            enabled=body.enabled,
+            max_turns=body.max_turns,
+            max_tokens=body.max_tokens,
+            rewriter_model=body.rewriter_model,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    request.state.audit_target_type = "runtime_config"
+    request.state.audit_diff = {
+        "before": {
+            "enabled": before.enabled,
+            "max_turns": before.max_turns,
+            "max_tokens": before.max_tokens,
+            "rewriter_model": before.rewriter_model,
+        },
+        "after": {
+            "enabled": after.enabled,
+            "max_turns": after.max_turns,
+            "max_tokens": after.max_tokens,
+            "rewriter_model": after.rewriter_model,
+        },
+    }
+    return ChatHistoryConfigResponse(
+        enabled=after.enabled,
+        max_turns=after.max_turns,
+        max_tokens=after.max_tokens,
+        rewriter_model=after.rewriter_model,
+        models=runtime_config_service.chat_model_catalog_payload(),
+        default_max_turns=runtime_config_service.DEFAULT_CHAT_HISTORY_MAX_TURNS,
+        default_max_tokens=runtime_config_service.DEFAULT_CHAT_HISTORY_MAX_TOKENS,
     )
 
 

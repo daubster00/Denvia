@@ -49,6 +49,12 @@ KEY_CHAT_MODEL = "runtime:chat_model"
 # 특정 프롬프트 모델 라우팅 — "이 프롬프트 블록이 실제 주입된 질문만 다른 모델로" 설정.
 # 값은 JSON 1건: {"enabled": bool, "block_id": str, "model": str}. 미설정/손상 시 기본 모델 사용.
 KEY_PROMPT_MODEL_ROUTE = "runtime:prompt_model_route"
+# 게시판 #149 — 대화 이어가기(멀티턴). 이전 대화를 몇 턴까지, 몇 토큰까지 GPT 에 함께 보낼지.
+KEY_CHAT_HISTORY_ENABLED = "runtime:chat_history_enabled"
+KEY_CHAT_HISTORY_MAX_TURNS = "runtime:chat_history_max_turns"
+KEY_CHAT_HISTORY_MAX_TOKENS = "runtime:chat_history_max_tokens"
+# 이전 대화와 새 질문의 연관성을 판정하고 검색용 질문을 만드는 모델(질문당 1회 호출).
+KEY_CHAT_HISTORY_REWRITER_MODEL = "runtime:chat_history_rewriter_model"
 
 # QA flow 기본값과 일치 (qa_service.DEFAULT_FREE_DAILY_QUOTA / DEFAULT_FREE_DELAY_SECONDS).
 DEFAULT_SHOW_SUBSCRIBE = True
@@ -64,11 +70,13 @@ INBOX_PREVIEW_MAX_COUNT_MIN = 1
 INBOX_PREVIEW_MAX_COUNT_MAX = 5
 
 # #130 ① — QA 안내 팝업 기본값 + 검증 범위.
-DEFAULT_QA_NOTICE_ENABLED = True
-DEFAULT_QA_NOTICE_TEXT = (
-    "현재 질문하신 내용에 대한 정보만 제공하며 이전에 질문하신 내용을 참고하여 "
-    "정보를 제공하지 않습니다. Denvia는 매 질문을 항상 새로운 독립질문으로 처리합니다."
-)
+# 게시판 #149(2026-11-02 사용자 결정 ②) — 질문 안내 팝업 문구를 **삭제**했다.
+# 원래 문구는 "이전 질문을 참고하지 않는다" 였는데 대화 이어가기가 들어가면서
+# 사실과 달라졌고, 사용자가 문구 자체를 없애기로 결정했다.
+# 팝업 기능(관리자 설정)은 그대로 남겨 두어 언제든 새 문구를 넣어 다시 켤 수 있다.
+# 문구가 비어 있으면 팝업은 뜨지 않는다(프론트에서도 빈 문구를 막는다).
+DEFAULT_QA_NOTICE_ENABLED = False
+DEFAULT_QA_NOTICE_TEXT = ""
 QA_NOTICE_TEXT_MAX_LEN = 500
 DEFAULT_QA_NOTICE_FONT_SIZE = 16
 QA_NOTICE_FONT_SIZE_MIN = 10
@@ -86,14 +94,15 @@ _HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
 def _normalize_qa_notice_text(raw: str | bytes | None) -> str:
-    """QA 안내 팝업 문구 정규화 — 미설정/공백만이면 기본값, 길이 상한 강제."""
+    """QA 안내 팝업 문구 정규화 — 길이 상한만 강제하고, 비어 있으면 빈 문자열.
+
+    #149 결정 ② 이후 "문구 없음" 이 정상 상태다. 그래서 공백을 기본 문구로 되살리지
+    않는다 — 되살리면 관리자가 문구를 지워도 팝업이 계속 뜬다.
+    """
     if raw is None:
         return DEFAULT_QA_NOTICE_TEXT
     value = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
-    stripped = value.strip()
-    if not stripped:
-        return DEFAULT_QA_NOTICE_TEXT
-    return stripped[:QA_NOTICE_TEXT_MAX_LEN]
+    return value.strip()[:QA_NOTICE_TEXT_MAX_LEN]
 
 
 def _normalize_qa_notice_color(raw: str | bytes | None) -> str:
@@ -300,6 +309,96 @@ def estimate_cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> f
     return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
 
 
+# ── 대화 이어가기(멀티턴) 설정 — 게시판 #149 ───────────────────────────────────
+# 이전 대화를 GPT 에 함께 보내는 범위. 클라이언트 요구사항이 곧 기본값이다.
+#   - 최근 5턴(질문+답변 1쌍 = 1턴)까지
+#   - 이전 질문·답변 합계가 3,000 토큰을 넘으면 오래된 턴부터 제외
+#   - 가장 최근 1턴은 길이와 무관하게 항상 유지
+# 두 값 모두 운영 중 조정 가능하도록 설정으로 뺀다.
+DEFAULT_CHAT_HISTORY_ENABLED = True
+DEFAULT_CHAT_HISTORY_MAX_TURNS = 5
+DEFAULT_CHAT_HISTORY_MAX_TOKENS = 3000
+CHAT_HISTORY_MAX_TURNS_RANGE = (1, 20)
+CHAT_HISTORY_MAX_TOKENS_RANGE = (500, 20000)
+# 연관성 판정 + 검색질의 생성 모델. 질문마다 1회 더 호출되므로 가장 저렴한 모델을 기본으로 둔다.
+DEFAULT_CHAT_HISTORY_REWRITER_MODEL = "gpt-6-luna"
+
+
+@dataclass(frozen=True)
+class ChatHistoryConfig:
+    enabled: bool
+    max_turns: int
+    max_tokens: int
+    rewriter_model: str
+
+
+def _clamp_int(raw: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, raw))
+
+
+async def get_chat_history_config(redis_runtime: AsyncRedis) -> ChatHistoryConfig:
+    """대화 이어가기 설정 조회. 손상된 값은 기본값으로 폴백(서비스는 계속 동작)."""
+    raw = await redis_runtime.mget(
+        KEY_CHAT_HISTORY_ENABLED,
+        KEY_CHAT_HISTORY_MAX_TURNS,
+        KEY_CHAT_HISTORY_MAX_TOKENS,
+        KEY_CHAT_HISTORY_REWRITER_MODEL,
+    )
+    model = raw[3] if raw[3] in ALLOWED_CHAT_MODELS else DEFAULT_CHAT_HISTORY_REWRITER_MODEL
+    return ChatHistoryConfig(
+        enabled=_to_bool(raw[0], DEFAULT_CHAT_HISTORY_ENABLED),
+        max_turns=_clamp_int(
+            _to_int(raw[1], DEFAULT_CHAT_HISTORY_MAX_TURNS), *CHAT_HISTORY_MAX_TURNS_RANGE
+        ),
+        max_tokens=_clamp_int(
+            _to_int(raw[2], DEFAULT_CHAT_HISTORY_MAX_TOKENS), *CHAT_HISTORY_MAX_TOKENS_RANGE
+        ),
+        rewriter_model=str(model),
+    )
+
+
+async def set_chat_history_config(
+    redis_runtime: AsyncRedis,
+    *,
+    enabled: bool,
+    max_turns: int,
+    max_tokens: int,
+    rewriter_model: str,
+) -> ChatHistoryConfig:
+    """대화 이어가기 설정 저장. 범위를 벗어난 값은 ``ValueError``(라우터에서 400/422 변환)."""
+    if not (
+        CHAT_HISTORY_MAX_TURNS_RANGE[0] <= max_turns <= CHAT_HISTORY_MAX_TURNS_RANGE[1]
+    ):
+        raise ValueError(
+            f"최근 대화 턴 수는 {CHAT_HISTORY_MAX_TURNS_RANGE[0]}~"
+            f"{CHAT_HISTORY_MAX_TURNS_RANGE[1]} 사이여야 합니다: {max_turns}"
+        )
+    if not (
+        CHAT_HISTORY_MAX_TOKENS_RANGE[0] <= max_tokens <= CHAT_HISTORY_MAX_TOKENS_RANGE[1]
+    ):
+        raise ValueError(
+            f"이전 대화 토큰 상한은 {CHAT_HISTORY_MAX_TOKENS_RANGE[0]}~"
+            f"{CHAT_HISTORY_MAX_TOKENS_RANGE[1]} 사이여야 합니다: {max_tokens}"
+        )
+    if rewriter_model not in ALLOWED_CHAT_MODELS:
+        raise ValueError(f"지원하지 않는 모델입니다: {rewriter_model}")
+
+    await redis_runtime.mset(
+        {
+            KEY_CHAT_HISTORY_ENABLED: "true" if enabled else "false",
+            KEY_CHAT_HISTORY_MAX_TURNS: str(max_turns),
+            KEY_CHAT_HISTORY_MAX_TOKENS: str(max_tokens),
+            KEY_CHAT_HISTORY_REWRITER_MODEL: rewriter_model,
+        }
+    )
+    return ChatHistoryConfig(
+        enabled=enabled,
+        max_turns=max_turns,
+        max_tokens=max_tokens,
+        rewriter_model=rewriter_model,
+    )
+
+
 # ── 특정 프롬프트 모델 라우팅 (prompt_model_route) ──────────────────────────────
 # "관리자가 고른 프롬프트 블록이 사용자 질문에 의해 실제로 최종 프롬프트에 주입된 경우에만
 # 다른 모델을 쓴다"는 설정. 지정은 **여러 개** 가능하며 저장 형태는 아래 한 가지다.
@@ -408,7 +507,15 @@ def resolve_effective_chat_model(
 
 @dataclass(frozen=True)
 class QaNoticeConfig:
-    """#130 ① — QA 안내 팝업 설정 묶음 (관리자 편집 + /me/quota 전달)."""
+    """#130 ① — QA 안내 팝업 설정 묶음 (관리자 편집 + /me/quota 전달).
+
+    검수 P1-8 — "관리자가 설정한 값" 과 "실제로 사용자에게 보이는 상태" 를 분리한다.
+      - ``enabled``: 관리자가 저장한 노출 의도. 저장 응답·재조회·감사로그가 모두 이 값.
+      - ``visible``: 실제 노출 여부 = 노출 의도 ∧ 문구가 비어 있지 않음.
+        사용자 응답(``/me/quota``)은 이 값을 쓴다 — 빈 팝업이 뜨는 일이 없도록.
+    예전에는 조회 시점에 ``enabled`` 를 깎아버려서, 저장 직후 응답(ON)과 재조회(OFF)가
+    달라 관리자가 "저장이 안 됐다" 고 읽었다.
+    """
 
     enabled: bool
     text: str
@@ -416,6 +523,11 @@ class QaNoticeConfig:
     color: str          # hex (#rgb | #rrggbb)
     font_weight: int    # 100~900
     width: int          # px
+
+    @property
+    def visible(self) -> bool:
+        """사용자에게 실제로 노출되는가 — 문구가 비어 있으면 띄우지 않는다."""
+        return bool(self.enabled and self.text.strip())
 
 
 def _to_bool(raw: str | None, default: bool) -> bool:
@@ -468,9 +580,12 @@ async def get_qa_notice_config(redis_runtime: AsyncRedis) -> "QaNoticeConfig":
     font_weight_raw = await redis_runtime.get(KEY_QA_NOTICE_FONT_WEIGHT)
     width_raw = await redis_runtime.get(KEY_QA_NOTICE_WIDTH)
 
+    text = _normalize_qa_notice_text(text_raw)
     return QaNoticeConfig(
+        # 저장된 "노출 의도" 를 그대로 돌려준다. 실제 노출 여부는 ``visible`` 이 판단한다
+        # (문구가 비면 노출 안 함 — #149 결정 ②, 검수 P1-8).
         enabled=_to_bool(enabled_raw, DEFAULT_QA_NOTICE_ENABLED),
-        text=_normalize_qa_notice_text(text_raw),
+        text=text,
         font_size=_clamp(
             _to_int(font_size_raw, DEFAULT_QA_NOTICE_FONT_SIZE),
             QA_NOTICE_FONT_SIZE_MIN,

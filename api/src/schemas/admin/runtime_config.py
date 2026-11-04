@@ -46,6 +46,29 @@ class RuntimeConfigUpdateRequest(BaseModel):
     qa_notice_width: int = Field(ge=280, le=720)
 
 
+class ChatHistoryConfigResponse(BaseModel):
+    """대화 이어가기(멀티턴) 설정 — 게시판 #149.
+
+    chat_model 과 동일하게 ``models`` 로 선택 가능한 모델 목록을 함께 내려
+    프론트가 모델명을 하드코딩하지 않게 한다.
+    """
+
+    enabled: bool
+    max_turns: int
+    max_tokens: int
+    rewriter_model: str
+    models: list["ChatModelInfo"] = []
+    default_max_turns: int
+    default_max_tokens: int
+
+
+class ChatHistoryConfigUpdateRequest(BaseModel):
+    enabled: bool
+    max_turns: int = Field(ge=1, le=20)
+    max_tokens: int = Field(ge=500, le=20000)
+    rewriter_model: str = Field(min_length=1, max_length=64)
+
+
 class ChatModelInfo(BaseModel):
     """선택 가능한 모델 1종의 안내 정보 — 백엔드 카탈로그를 그대로 내린다.
 

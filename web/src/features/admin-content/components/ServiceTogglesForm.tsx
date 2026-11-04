@@ -327,7 +327,7 @@ export function ServiceTogglesForm() {
           <div className={styles.rowText}>
             <span className={styles.rowLabel}>안내 팝업 문구</span>
             <span className={styles.rowDesc}>
-              팝업 본문에 표시됩니다. 비워두면 기본 문구로 표시됩니다.
+              팝업 본문에 표시됩니다. 비워두면 팝업이 뜨지 않습니다.
             </span>
           </div>
         </div>
@@ -336,7 +336,7 @@ export function ServiceTogglesForm() {
             className={styles.noticeTextarea}
             rows={3}
             maxLength={QA_NOTICE_TEXT_MAX}
-            placeholder="현재 질문하신 내용에 대한 정보만 제공하며 이전에 질문하신 내용을 참고하여 정보를 제공하지 않습니다. Denvia는 매 질문을 항상 새로운 독립질문으로 처리합니다."
+            placeholder="팝업에 띄울 문구를 입력하세요. 비워두면 팝업이 뜨지 않습니다."
             disabled={!form.qa_notice_enabled}
             value={form.qa_notice_text}
             onChange={(e) =>

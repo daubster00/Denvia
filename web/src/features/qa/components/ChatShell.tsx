@@ -13,7 +13,8 @@ interface ChatShellProps {
   onInputChange: (v: string) => void;
   onSubmit: (text: string) => void;
   isStreaming: boolean;
-  onRetry?: () => void;
+  /** 오류 답변의 "다시 시도" — 어느 답변인지 id 로 알려준다 (검수 P1-6). */
+  onRetry?: (assistantMessageId: string) => void;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   /** useQuota 훅에서 내려받은 데이터 (AC-8, AC-9) */
   quotaData?: {
@@ -76,14 +77,8 @@ export function ChatShell({
     </p>
   ) : null;
 
-  // 독립답변 안내문구 (#86): 질문한 뒤(inline) 화면에서만 노출. 초기(hero) 화면엔
-  // 표시하지 않으며, "생각중" 출력 중에도 표시하지 않는다.
-  // 글자색은 "Pro — 무제한"(.remainingCaption)과 동일 회색 토큰을 재사용한다.
-  const independentAnswerNotice = !isStreaming ? (
-    <p role="note" className={styles.independentNotice}>
-      Denvia는 1개의 질문에 대한 독립적인 답변만 가능합니다. 이전 질문에 대한 답변은 이어지지 않습니다.
-    </p>
-  ) : null;
+  // 게시판 #149: 대화 이어가기가 도입되면서 "독립적인 답변만 가능" 안내문구(#86)를 제거했다.
+  // 이제 이전 대화를 참고해 답변하므로 문구가 사실과 어긋난다.
 
   const remainingCaption = quotaData ? (
     isPro ? (
@@ -129,8 +124,8 @@ export function ChatShell({
             key={msg.id}
             message={msg}
             onRetry={
-              msg.role === "assistant" && msg.status === "error"
-                ? onRetry
+              msg.role === "assistant" && msg.status === "error" && onRetry
+                ? () => onRetry(msg.id)
                 : undefined
             }
           />
@@ -138,8 +133,6 @@ export function ChatShell({
         <div ref={bottomRef} />
       </div>
       <div className={styles.inputBottom}>
-        {/* 독립답변 안내문구 — 질문 후 화면, "생각중"이 아닐 때만 (#86). */}
-        {independentAnswerNotice}
         <ChatInput
           variant="inline"
           value={inputValue}

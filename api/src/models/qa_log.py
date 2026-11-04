@@ -45,7 +45,26 @@ class QALog(Base):
     delivered: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false", default=False
     )
+    # #149 검수 P0-2·P1-7 — 답변의 종류. NULL = 일반 RAG/룰 답변.
+    # 'clarification' = 조각 질문에 "조금만 더 적어주세요" 로 되묻은 응답.
+    # 이전 대화를 서버 로그에서 다시 읽을 때 되묻기 턴을 **구조적으로** 제외하기 위한 값.
+    # (문구 문자열 비교로 제외하면 문구를 고치는 순간 과거 턴이 맥락으로 되살아난다)
+    answer_kind: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # #149 검수 P0-1 — 이 답변을 만들 때 쓴 "검증된 이전 대화"의 지문(해시).
+    # NULL = 이전 대화 없이 만든 답변. 전송 실패 답변 재생(#141)은 질문 문자열뿐 아니라
+    # 이 값까지 같을 때만 허용한다 — 다른 대화의 같은 조각 질문에 오재생되던 결함 차단.
+    history_context_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # #149 재검수 P1-1 — 저장 답변 재생의 원자적 선점(claim).
+    # replay_claimed_at: 재생 권한을 가져간 시각. 조건부 UPDATE 로 NULL → now() 를
+    #   성공시킨 요청 **하나만** 재생한다. 리스(기본 30초)가 지나면 다시 가져갈 수 있다.
+    # replay_claim_token: 그 선점의 소유자 표식. 연결이 끊겨 선점을 풀 때 자기 것만 푼다.
+    replay_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    replay_claim_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # 관리자 감사용 (Story: QA 상세보기) — SSE 응답에 절대 노출되지 않음
+    # #149 검수 P1-4 — 대화 이어가기에서는 **실제로 검색에 쓴 질의**(이전 대화를 반영해
+    # 완성한 질문의 정규화 결과)를 저장한다. 사용자 원문은 question_text 에 그대로 있다.
     normalized_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     retrieved_docs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # LLM 에 실제로 들어간 최종 프롬프트(템플릿 + 질문 + top-k 컨텍스트 치환 완료).

@@ -8,6 +8,7 @@ import { ConfirmWithdrawPopup } from "../ConfirmWithdrawPopup";
 import { useSessionStore } from "@/stores/session-store";
 import { useAlertStore } from "@/stores/alert-store";
 import { useToastStore } from "@/stores/toast-store";
+import { useQAStore } from "@/stores/qa-store";
 import { ApiError } from "@/types/api";
 import * as authApi from "../api";
 
@@ -77,9 +78,25 @@ describe("ConfirmWithdrawPopup — 자체 가입자(is_social=false)", () => {
     expect((submit as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("체크박스 + 비밀번호 입력 → 탈퇴 성공 → clearSession + Toast + router.replace", async () => {
+  it("체크박스 + 비밀번호 입력 → 탈퇴 성공 → 세션·QA 대화 초기화 + Toast + router.replace", async () => {
     const user = userEvent.setup();
     useSessionStore.setState({ user: makeUser({ is_social: false }) });
+    // 3차 검수 P2 — 탈퇴도 세션 종료다. 로그인 사용자만 비우면
+    // denvia-qa-store(QA 대화 sessionStorage 키)가 남아, 같은 탭의 다음 사용자가
+    // 이전 사용자의 대화·대기 질문을 물려받을 여지가 생긴다.
+    useQAStore.setState({
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          content: "스케일링 산정 기준",
+          status: "complete",
+          timestamp: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      pendingHomeQuestion: "탈퇴한 사용자의 대기 질문",
+      ownerUserId: 7,
+    });
     const withdrawSpy = vi.spyOn(authApi, "withdraw").mockResolvedValue();
 
     renderPopup();
@@ -91,6 +108,10 @@ describe("ConfirmWithdrawPopup — 자체 가입자(is_social=false)", () => {
       expect(withdrawSpy).toHaveBeenCalledWith({ password: "password123" });
     });
     expect(useSessionStore.getState().user).toBeNull();
+    // QA 대화도 함께 비워진다.
+    expect(useQAStore.getState().messages).toEqual([]);
+    expect(useQAStore.getState().pendingHomeQuestion).toBeNull();
+    expect(useQAStore.getState().ownerUserId).toBeNull();
     expect(mockReplace).toHaveBeenCalledWith("/");
     expect(useToastStore.getState().current?.message).toContain("탈퇴가 완료");
   });

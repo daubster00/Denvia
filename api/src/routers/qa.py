@@ -13,6 +13,13 @@ from api.src.deps.redis import get_redis_quota, get_redis_runtime
 from api.src.models.base import get_session
 from api.src.models.user import User
 from api.src.schemas.qa import FeedbackCreateRequest, FeedbackResponse, QAEchoRequest, QAEchoResponse, QAStreamRequest
+from api.src.services import runtime_config_service
+from api.src.services.chat_history_service import (
+    HistoryState,
+    history_context_key,
+    load_verified_turns,
+    resolve_history_state,
+)
 from api.src.services.killswitch_service import is_any_total_block_active, is_auto_free_only_active
 from api.src.services.prompt_config_service import DEFAULT_QUESTION_CHARS
 from api.src.services.qa_feedback_service import upsert_feedback
@@ -96,14 +103,57 @@ async def qa_stream(
             },
         )
 
+    # 대화 이어가기(#149 · 검수 P0-2) — 이전 대화는 **여기서 한 번** 서버 로그로 검증한다.
+    # 브라우저는 qa_log_id 만 보내고, 질문·답변 본문은 서버가 자기 기록에서 읽는다.
+    # 검증을 통과한 턴 id 로 맥락 지문(context key)을 만들어 아래 두 곳에 쓴다.
+    #   1) 전송 실패 답변 재생이 **같은 맥락일 때만** 일어나게 (검수 P0-1)
+    #   2) 이번 답변 행에 기록해 다음 재시도의 비교 기준이 되게
+    #
+    # 3차 검수 P1-2 — **킬 스위치를 먼저 읽는다.** 예전에는 킬 스위치와 무관하게 맥락을
+    # 조회하고 지문을 만들어, "앞선 대화를 참고해서 답변하기" 를 꺼도
+    #   ① 질문마다 최대 30행을 쓸데없이 조회했고
+    #   ② 맥락을 **쓰지 않고** 만든 답변에 지문이 찍혀, 나중에 킬 스위치를 다시 켜고
+    #      재시도하면 그 답변이 "같은 맥락" 으로 재생됐다(= P0-1 이 막으려던 실패 재발).
+    # 꺼져 있으면 예전 1문1답으로 **완전히** 복귀한다.
+    history_enabled = True
+    try:
+        history_enabled = (
+            await runtime_config_service.get_chat_history_config(redis_runtime)
+        ).enabled
+    except Exception:
+        # 설정을 못 읽었다 → 기능이 켜져 있다고 보고 진행한다. 그 경우의 안전 처리
+        # (조각 질문 되묻기)는 qa_service._prepare_history 가 담당한다.
+        history_enabled = True
+
+    if history_enabled:
+        history_turns, accepted_turn_ids = await load_verified_turns(
+            db, user_id=user.id, turn_ids=body.history_turn_ids
+        )
+        context_key = history_context_key(accepted_turn_ids)
+        # 재수정 P0-3 — "맥락 요청 안 함" 과 "요청했지만 전부 거부됨" 은 다른 상태다.
+        # 후자(REJECTED)를 첫 질문처럼 다루면 ① 조각 질문이 그대로 검색되고
+        # ② 저장 답변 재생이 다른 대화의 답변을 자동 재생한다.
+        history_state = resolve_history_state(body.history_turn_ids, accepted_turn_ids)
+    else:
+        history_turns, accepted_turn_ids = [], []
+        context_key = None
+        history_state = HistoryState.NONE
+
     # #141 — 재시도 재생: 직전(3분 이내)에 완성됐지만 연결이 끊겨 전송 못 한 같은 질문
     # 답변이 있으면, OpenAI 재호출·질문 횟수 차감 없이 저장분을 그대로 재생한다.
-    replay_log = await _qa_service.find_replayable(
-        db, user=user, question_text=body.question_text
+    # 재수정 P1-1 — 조회·갱신을 분리하지 않고 **조건부 UPDATE ... RETURNING** 으로
+    # 재생 권한을 선점한다. 동시 요청 2개가 같은 행을 재생하던 결함 차단.
+    replay_claim = await _qa_service.claim_replayable(
+        db,
+        user=user,
+        question_text=body.question_text,
+        history_context_key=context_key,
+        explicit_retry=body.retry,
+        history_state=history_state,
     )
-    if replay_log is not None:
+    if replay_claim is not None:
         return EventSourceResponse(
-            _qa_service.stream_saved(db=db, log=replay_log),
+            _qa_service.stream_saved(db=db, claim=replay_claim),
             media_type="text/event-stream",
         )
 
@@ -128,8 +178,13 @@ async def qa_stream(
             user=user,
             question_text=body.question_text,
             redis_quota=redis_quota,
+            redis_runtime=redis_runtime,
             preflight_result=preflight,
             device_type=device_type,
+            # 대화 이어가기(#149) — 서버가 검증한 턴만 넘긴다(설정값으로 다시 잘라 쓴다).
+            history_turns=history_turns,
+            history_context_key=context_key,
+            history_state=history_state,
         ),
         media_type="text/event-stream",
     )

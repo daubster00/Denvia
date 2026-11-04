@@ -4,9 +4,10 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -18,8 +19,20 @@ from api.src.integrations.openai.client import TokenUsage, _RETRY_EXCEPTIONS
 from api.src.models.qa_log import QALog
 from api.src.models.user import User
 from api.src.rag_integration import query_runner
+from api.src.rag_integration.question_completeness import (
+    ANSWER_KIND_CLARIFICATION,
+    CLARIFY_MESSAGE,
+    needs_clarification,
+)
 from api.src.schemas.qa import QAEchoResponse
 from api.src.services import anomaly_service, runtime_config_service
+from api.src.services.chat_history_service import (
+    ConversationTurn,
+    HistoryState,
+    _rollback_quietly,
+    build_history_block,
+    prepare_history,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -134,6 +147,52 @@ async def _resolve_delay(user: User, redis_runtime: Redis) -> tuple[Decimal, str
 
 _ECHO_ANSWER = "[placeholder] 스트리밍은 Story 2.2에서 구현됩니다"
 
+# 저장 답변 재생 권한(claim)의 리스 길이(초) — 재수정 P1-1.
+# 재생 중 연결이 끊기면 선점을 즉시 풀지만, 그 해제조차 못 돌아가는 경우(프로세스 종료
+# 등)에 행이 영구히 잠기면 안 된다. 이 시간이 지난 선점은 만료로 보고 다시 가져간다.
+# 저장 답변 1건을 흘려보내는 데 필요한 시간보다 넉넉하고, 사용자가 재시도를 기다릴 수
+# 있는 범위여야 한다.
+REPLAY_CLAIM_LEASE_SECONDS = 30
+
+
+@dataclass(frozen=True)
+class ReplayClaim:
+    """저장 답변 재생 권한을 선점한 결과 (재수정 P1-1).
+
+    ORM 엔티티를 그대로 들고 다니지 않는 이유: 재생 경로는 세션 상태에 의존하지 않고
+    "선점 당시 읽은 값" 만으로 SSE 를 흘려보내야 한다(선점 UPDATE 와 같은 왕복에서
+    RETURNING 으로 받은 값이다).
+
+    - ``claim_token``: 이 선점의 소유자 표식. 해제·확정 시 **자기 선점만** 건드리게 한다.
+    """
+
+    qa_log_id: int
+    claim_token: str
+    answer_text: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    rule_matched: bool
+    user_id: int | None
+
+
+@dataclass(frozen=True)
+class HistoryPlan:
+    """대화 이어가기 준비 결과 (#149 · 검수 P0-2·P0-3).
+
+    - ``turns``: 프롬프트에 넣을 이전 대화. 비어 있으면 기존 단일 질문과 동일한 조립.
+    - ``search_query``: RAG 검색에 쓸 완성된 질의. None 이면 이번 질문 원문을 쓴다.
+    - ``usage``: 판단 단계(LLM 1회)의 토큰·비용. 호출하지 않았으면 None.
+    - ``clarify``: True 면 검색·답변 생성을 하지 말고 되묻기 문구만 돌려준다.
+    - ``state``: 이번 요청의 이전 대화 상태(none/verified/rejected — 재수정 P0-3).
+      로그·진단용. 분기 자체는 호출부가 ``clarify``·``turns`` 로 한다.
+    """
+
+    turns: list[ConversationTurn] = field(default_factory=list)
+    search_query: str | None = None
+    usage: TokenUsage | None = None
+    clarify: bool = False
+    state: HistoryState = HistoryState.NONE
+
 
 @dataclass(frozen=True)
 class PreflightResult:
@@ -178,6 +237,18 @@ async def catch_up_to_deadline(pr: PreflightResult | None, *, user_id: int | Non
         catchup_ms=int(remaining * 1000),
     )
     await asyncio.sleep(remaining)
+
+
+def _merge_usage(base: TokenUsage, extra: TokenUsage | None) -> TokenUsage:
+    """토큰/비용 합산 — 질문 1건에 LLM 호출이 2회(판단 + 답변) 일어날 때 쓴다."""
+    if extra is None:
+        return base
+    return TokenUsage(
+        input_tokens=base.input_tokens + extra.input_tokens,
+        output_tokens=base.output_tokens + extra.output_tokens,
+        total_tokens=base.total_tokens + extra.total_tokens,
+        cost_usd=base.cost_usd + extra.cost_usd,
+    )
 
 
 class QAService:
@@ -460,6 +531,176 @@ class QAService:
             answer_text=_ECHO_ANSWER,
         )
 
+    async def _prepare_history(
+        self,
+        *,
+        question_text: str,
+        normalized: str,
+        history_turns: list[ConversationTurn] | None,
+        redis_runtime: Redis | None,
+        syn_dict: dict | None,
+        has_known_topic: bool = False,
+        history_state: HistoryState = HistoryState.NONE,
+    ) -> "HistoryPlan":
+        """대화 이어가기 준비 — 쓸 이전 대화 / 검색용 질문 / 판단 비용 / 되묻기 여부.
+
+        게시판 #149 의 ②·③ 과 결정 ①(A안 되묻기)을 담당한다.
+
+        ``history_turns`` 는 **라우터가 서버 로그에서 읽어 검증을 끝낸** 턴 목록이다
+        (검수 P0-2 — 브라우저가 보낸 과거 답변 문자열은 더 이상 받지 않는다).
+
+        반환값 해석:
+          - 이전 대화가 비어 있으면 기존 단일 질문 동작과 **완전히 동일**하다
+            (검색 질문 None = 원문 사용, 판단 단계 호출 0회, 되묻기 없음).
+          - ``related=False`` 로 판정되면 이전 대화를 버리고 새 질문만으로 처리한다.
+            단, 그 질문이 혼자서는 뜻이 통하지 않는 조각이면 ``clarify=True`` 가 되고
+            호출부는 RAG 검색을 하지 않고 되묻기 문구만 돌려준다 (결정 ① A안).
+
+        **설정 조회 실패(Redis 장애) 처리 — 검수 P0-3.**
+        예전에는 "이전 대화 없음 + 되묻기 없음" 으로 떨어져, 조각 질문이 그대로 검색됐다
+        (안전장치가 꺼진 상태). 지금은 이전 대화가 딸려 온 요청이면 **안전 우선**으로
+        조각 질문을 되묻고, 완결된 독립 질문만 단일 질문 경로로 보낸다.
+
+        **검증 결과가 0개인 경우 — 재수정 P0-3.**
+        ``history_state`` 가 ``REJECTED`` 면 요청은 분명히 맥락을 가리켰는데 그 id 가
+        **전부 거부**된 상태다(다른 사용자 id / 삭제된 id / 오류·미전달·되묻기 턴).
+        예전에는 이것이 "맥락 없는 첫 질문" 과 구분되지 않아 조각 질문이 그대로 RAG 로
+        갔다. 지금은 조각 질문이면 RAG 를 호출하지 않고 되묻고, 완결된 독립 질문만
+        기존 단일 질문 경로로 보낸다.
+        """
+        if not history_turns and history_state is not HistoryState.REJECTED:
+            # 진짜로 맥락을 요청하지 않은 첫 질문 → 기존 동작 그대로.
+            return HistoryPlan()
+
+        if history_state is HistoryState.REJECTED:
+            # 맥락 id 를 보냈는데 전부 거부됐다. 쓸 턴이 없으므로 판단 단계도 못 돌린다.
+            return await self._plan_for_rejected_history(
+                question_text=question_text,
+                redis_runtime=redis_runtime,
+                has_known_topic=has_known_topic,
+            )
+
+        if redis_runtime is None:
+            # 설정을 읽을 수단이 없다(단위 테스트 등) → 기존 단일 질문 동작.
+            return HistoryPlan()
+
+        try:
+            cfg = await runtime_config_service.get_chat_history_config(redis_runtime)
+        except Exception as exc:
+            # P0-3 — 판단 단계를 돌릴 설정을 못 읽었다. 맥락을 붙일 수도, 판정할 수도 없다.
+            clarify = needs_clarification(
+                question_text, has_known_topic=has_known_topic
+            )
+            logger.warning(
+                "qa.history.config_failed", error=str(exc), clarify=clarify
+            )
+            return HistoryPlan(clarify=clarify)
+
+        if not cfg.enabled:
+            # 킬 스위치 — 예전 1문1답으로 완전 복귀(되묻기도 하지 않는다).
+            return HistoryPlan()
+
+        turns = await asyncio.to_thread(
+            prepare_history,
+            history_turns,
+            max_turns=cfg.max_turns,
+            max_tokens=cfg.max_tokens,
+        )
+        if not turns:
+            return HistoryPlan()
+
+        from api.src.rag_integration.query_rewriter import rewrite_query
+
+        decision = await rewrite_query(
+            question_text, turns, model_name=cfg.rewriter_model
+        )
+        if not decision.related:
+            # 다른 주제(또는 판정 실패) → 이전 대화를 빼고 새 질문만으로 처리.
+            # 단, 조각 질문이면 틀린 기준을 안내하는 대신 되묻는다 (결정 ① A안).
+            clarify = needs_clarification(question_text, has_known_topic=has_known_topic)
+            if clarify:
+                logger.info(
+                    "qa.history.clarify_asked",
+                    turns=len(turns),
+                    has_known_topic=has_known_topic,
+                    question_len=len(question_text),
+                )
+            return HistoryPlan(usage=decision.usage, clarify=clarify)
+
+        # 이어지는 질문 → 완성된 검색질의에도 본 질문과 동일한 전처리를 적용해
+        # 검색 품질(스케일링 룰·동의어 치환)을 맞춘다.
+        from rag.run_qa import apply_scaling_rules, normalize_query
+
+        try:
+            scaled = await asyncio.to_thread(apply_scaling_rules, decision.search_query)
+            search_for_rag = await asyncio.to_thread(normalize_query, scaled, syn_dict)
+        except Exception as exc:
+            logger.warning("qa.history.normalize_failed", error=str(exc))
+            search_for_rag = decision.search_query
+
+        return HistoryPlan(
+            turns=turns,
+            search_query=(search_for_rag or normalized),
+            usage=decision.usage,
+        )
+
+    async def _plan_for_rejected_history(
+        self,
+        *,
+        question_text: str,
+        redis_runtime: Redis | None,
+        has_known_topic: bool,
+    ) -> "HistoryPlan":
+        """이전 대화를 요청했으나 **전부 거부**된 경우의 계획 (재수정 P0-3).
+
+        거부 사유는 소유권 불일치(다른 사용자 id), 존재하지 않는 id(삭제), 오류·미전달
+        턴, 되묻기 턴 등이다. 공통점은 **이어갈 맥락이 없다는 것을 서버가 안다**는 점이다.
+
+        이 상태를 "첫 질문" 으로 취급하면 두 가지가 동시에 틀어진다.
+
+        1. 조각 질문("몇 번까지 돼?")이 그대로 RAG 로 가 엉뚱한 항목의 기준이 나간다.
+        2. 저장 답변 재생(#141)이 ``history_context_key IS NULL`` 후보에 걸려
+           **다른 대화에서 만든 답변**을 자동 재생한다. (재생 차단은 라우터가 담당)
+
+        그래서 여기서는 조각 질문이면 되묻고, 완결된 독립 질문이면 기존 단일 질문
+        경로로 보낸다. 판단 단계(LLM)는 호출하지 않는다 — 넣을 맥락이 없으므로 비용 0.
+        """
+        # 킬 스위치가 꺼져 있으면 대화 이어가기 자체가 비활성이다 → 예전 1문1답 동작.
+        # 설정을 못 읽으면 **안전 우선**으로 되묻기 판정을 그대로 적용한다.
+        enabled = True
+        if redis_runtime is not None:
+            try:
+                cfg = await runtime_config_service.get_chat_history_config(
+                    redis_runtime
+                )
+                enabled = bool(cfg.enabled)
+            except Exception as exc:
+                # 설정을 못 읽었다 → 안전 우선으로 되묻기 판정을 그대로 적용한다.
+                logger.warning(
+                    "qa.history.config_failed",
+                    error=str(exc),
+                    state=HistoryState.REJECTED.value,
+                )
+        if not enabled:
+            return HistoryPlan(state=HistoryState.REJECTED)
+
+        clarify = needs_clarification(question_text, has_known_topic=has_known_topic)
+        logger.info(
+            "qa.history.all_ids_rejected",
+            clarify=clarify,
+            has_known_topic=has_known_topic,
+            question_len=len(question_text),
+        )
+        if clarify:
+            logger.info(
+                "qa.history.clarify_asked",
+                turns=0,
+                state=HistoryState.REJECTED.value,
+                has_known_topic=has_known_topic,
+                question_len=len(question_text),
+            )
+        return HistoryPlan(clarify=clarify, state=HistoryState.REJECTED)
+
     async def stream(
         self,
         db: AsyncSession,
@@ -467,8 +708,12 @@ class QAService:
         question_text: str,
         *,
         redis_quota: Redis | None = None,
+        redis_runtime: Redis | None = None,
         preflight_result: PreflightResult | None = None,
         device_type: str | None = None,
+        history_turns: list[ConversationTurn] | None = None,
+        history_context_key: str | None = None,
+        history_state: HistoryState = HistoryState.NONE,
     ) -> AsyncIterator[dict]:
         """SSE 이벤트를 yield하는 async generator.
 
@@ -478,6 +723,16 @@ class QAService:
             asyncio.CancelledError는 BaseException 하위라 except Exception에 잡히지 않으므로
             GeneratorExit과 함께 명시적으로 처리해 status='aborted' commit을 보장한다.
         AC-8: question_text/answer_text/delta는 절대 logger에 전달 금지 (PII).
+
+        대화 이어가기(게시판 #149 · 검수 P0-2):
+        ``history_turns`` 는 **라우터가 ``qa_logs`` 에서 읽어 소유권·완료·전달 여부까지
+        검증한** 턴 목록(오래된 것 → 최신 순)이다. 브라우저가 보낸 과거 답변 문자열은
+        받지 않는다. 서버는 여기서 다시 설정값(최근 N턴 / 토큰 상한)으로 잘라 쓴다.
+        ``history_context_key`` 는 그 턴 목록의 지문으로, 이 답변 행에 기록해 두면
+        전송 실패 답변 재생(#141)이 **같은 맥락일 때만** 일어난다(검수 P0-1).
+        ``history_state`` 는 "맥락 요청 안 함(NONE) / 검증된 맥락 있음(VERIFIED) /
+        id 를 보냈지만 전부 거부됨(REJECTED)" 세 상태를 구분한다(재수정 P0-3).
+        RAG 경로에서만 사용하며, 룰/치주낭 결정형 경로는 기존대로 단일 질문으로 처리한다.
         """
         from rag.run_qa import (
             apply_scaling_rules,
@@ -500,6 +755,15 @@ class QAService:
             rule_matched=False,
             trace_id=trace_id,
             device_type=device_type,  # #141 — 접속 기기(mobile/pc/unknown)
+            # 검수 P0-1 — 이 답변을 만들 때 쓴 "검증된 이전 대화" 지문. 전송 실패 후
+            # 재생은 같은 맥락일 때만 허용된다. 맥락 없는 요청이면 NULL.
+            #
+            # 3차 검수 P1-2 — INSERT 시점에는 **비워 둔다.** 요청이 맥락을 가리켰다고
+            # 해서 그 맥락을 실제로 쓰는 것은 아니다(킬 스위치 OFF / 설정 조회 실패 /
+            # 주제 전환으로 맥락 폐기 / 룰·치주낭 경로). 예전에는 요청 기준으로 찍어서,
+            # "맥락 없이 만든 답변" 에 지문이 남고 나중에 그 답변이 "같은 맥락" 으로
+            # 재생됐다. 아래 RAG 분기에서 **실제로 쓴 맥락이 있을 때만** 채운다.
+            history_context_key=None,
         )
         db.add(log)
         await db.flush()
@@ -513,6 +777,16 @@ class QAService:
         # 유저가 끊겨 아래 정상 경로 UPDATE 가 못 돌아도 완성 답변이 DB에 남는다.
         loop = asyncio.get_running_loop()
 
+        # 검수 P1-2·P1-4 — 끊김 저장 콜백이 참조할 값들. 콜백은 아래에서 정의되지만
+        # 실제 호출은 RAG 분기 이후(판단 단계가 끝난 뒤)라, 리스트에 담아 넘긴다.
+        #   rewrite_usage_holder: 판단 단계(#149 ③) 토큰·비용 → 끊겨도 합산해 저장
+        #   audit_query_holder:   실제로 검색에 쓴 질의 → 관리자 감사 기록(normalized_query)
+        rewrite_usage_holder: list[TokenUsage | None] = []
+        audit_query_holder: list[str] = []
+        #   context_key_holder: 이 답변이 **실제로 쓴** 이전 대화 지문 → 끊겨도 같은 값 저장
+        #                       (3차 검수 P1-2 — 요청 기준 지문을 찍으면 안 된다)
+        context_key_holder: list[str | None] = []
+
         def _persist_full_from_thread(
             full_text: str,
             usage_bg: TokenUsage,
@@ -522,16 +796,25 @@ class QAService:
             try:
                 latency_bg = int((time.perf_counter() - t0) * 1000)
                 # #142 — 끊김 저장 경로도 정상 경로와 동일한 관리자 감사정보를 남긴다.
-                # normalized 는 스트리밍 시작(=이 콜백 호출) 전에 이미 확정돼 클로저로 안전.
+                # P1-2 — 판단 단계 비용이 빠지면 끊긴 질문만 과금이 축소 집계된다(예산 차단 왜곡).
+                usage_total = _merge_usage(
+                    usage_bg, rewrite_usage_holder[0] if rewrite_usage_holder else None
+                )
+                audit_query = audit_query_holder[0] if audit_query_holder else normalized
                 asyncio.run_coroutine_threadsafe(
                     self._guarded_persist_full(
                         qa_log_id,
                         full_text,
-                        usage_bg,
+                        usage_total,
                         latency_bg,
                         retrieved_docs=docs_bg or [],
                         prompt_text=prompt_bg,
-                        normalized_query=normalized,
+                        normalized_query=audit_query,
+                        # 3차 검수 P1-2 — 이 답변이 **실제로 쓴** 맥락 지문.
+                        # 아직 결정되지 않았으면(판단 단계 전에 끊긴 경우) None.
+                        history_context_key=(
+                            context_key_holder[0] if context_key_holder else None
+                        ),
                     ),
                     loop,
                 )
@@ -580,6 +863,8 @@ class QAService:
             rule_matched_flag = use_periodontal or use_rule
 
             retrieved_docs_payload: list[dict] = []
+            # 되묻기(#149 결정 ①)는 RAG 경로에서만 판정한다. 룰·치주낭 경로는 항상 False.
+            needs_clarify = False
             # 관리자 질문 상세 패널 — LLM 에 실제로 들어간 최종 프롬프트.
             # 장애인가산 룰 경로는 LLM 호출 자체가 없으므로 None 유지(치주낭은 프롬프트 기록).
             prompt_text_payload: str | None = None
@@ -643,42 +928,102 @@ class QAService:
                 usage = TokenUsage(0, 0, 0, 0.0)
             else:
                 # RAG 경로: stream_rag_answer async iter → token 다회 → done
-                accumulated_chunks: list[str] = []
-                usage_holder: list[TokenUsage] = []
-                docs_holder: list[list[dict]] = []
-                prompt_holder: list[str | None] = []
+                #
+                # 대화 이어가기(#149) — 이 경로에서만 적용한다.
+                #   1) 설정(최근 N턴 / 토큰 상한)으로 **서버가 검증한** 이전 대화를 자른다.
+                #   2) 이전 대화가 있으면 "이어지는 질문인가 + 검색용 질문" 을 1회 판정한다.
+                #   3) 이어지지 않으면(또는 판정 실패) 이전 대화를 버리고 단일 질문으로 간다.
+                #   4) 이어지지 않는데다 혼자서는 뜻이 통하지 않는 조각 질문이면
+                #      (예: 앞 대화가 스케일링인데 "하얀색?") 틀린 기준을 안내하는 대신
+                #      되묻는다 — 결정 ① A안(2026-11-02 사용자 선택).
+                plan = await self._prepare_history(
+                    question_text=question_text,
+                    normalized=normalized,
+                    history_turns=history_turns,
+                    redis_runtime=redis_runtime,
+                    syn_dict=syn_dict,
+                    has_known_topic=bool(procedures),
+                    # 재수정 P0-3 — "맥락 요청 안 함" 과 "요청했지만 전부 거부됨" 을
+                    # 구분해 넘긴다. 후자는 조각 질문이면 되묻는다.
+                    history_state=history_state,
+                )
+                search_for_rag = plan.search_query
+                rewrite_usage = plan.usage
+                needs_clarify = plan.clarify
+                # 검수 P1-2 — 끊김 저장 콜백도 판단 단계 비용을 합산하도록 넘긴다.
+                rewrite_usage_holder.append(rewrite_usage)
+                # 검수 P1-4 — 관리자 감사에는 **실제로 검색에 쓴 질의**를 남긴다.
+                audit_query_holder.append(search_for_rag or normalized)
+                # 3차 검수 P1-2 — 지문은 **실제로 맥락을 쓴 경우에만** 남긴다.
+                # 비교 기준은 "요청이 가리킨 검증된 턴 목록"(라우터가 만든 값)을 그대로
+                # 쓴다 — 재생 선점은 요청 시점에 그 값으로 판단하므로 기준이 같아야 한다.
+                # 다른 점은 "쓰지 않았으면 NULL" 뿐이다.
+                used_context_key = history_context_key if plan.turns else None
+                log.history_context_key = used_context_key
+                context_key_holder.append(used_context_key)
+                history_block = build_history_block(plan.turns)
+                if needs_clarify:
+                    # 되묻기 경로 — RAG 검색도, 답변 생성도 하지 않는다.
+                    # 비용은 판단 단계 1회뿐이고 그 값은 아래에서 그대로 합산된다.
+                    await catch_up_to_deadline(preflight_result, user_id=user.id)
+                    logger.info(
+                        "qa.stream.first_token_ms",
+                        qa_log_id=qa_log_id,
+                        user_id=user.id,
+                        path="clarify",
+                        ttft_ms=int((time.perf_counter() - t0) * 1000),
+                    )
+                    first_token_logged = True
+                    yield {
+                        "event": "token",
+                        "data": json.dumps({"delta": CLARIFY_MESSAGE}),
+                    }
+                    accumulated = CLARIFY_MESSAGE
+                    usage = _merge_usage(TokenUsage(0, 0, 0, 0.0), rewrite_usage)
+                else:
+                    accumulated_chunks: list[str] = []
+                    usage_holder: list[TokenUsage] = []
+                    docs_holder: list[list[dict]] = []
+                    prompt_holder: list[str | None] = []
 
-                def _on_complete(
-                    u: TokenUsage,
-                    full: str,
-                    docs: list[dict],
-                    prompt: str | None = None,
-                ) -> None:
-                    usage_holder.append(u)
-                    docs_holder.append(docs)
-                    prompt_holder.append(prompt)
+                    def _on_complete(
+                        u: TokenUsage,
+                        full: str,
+                        docs: list[dict],
+                        prompt: str | None = None,
+                    ) -> None:
+                        usage_holder.append(u)
+                        docs_holder.append(docs)
+                        prompt_holder.append(prompt)
 
-                async for token in query_runner.stream_rag_answer(
-                    normalized, _on_complete, on_thread_complete=_persist_full_from_thread
-                ):
-                    if not first_token_logged:
-                        # 체감 지연 보장 — 사용자가 보게 될 첫 토큰 emit 직전에 deadline 까지 대기.
-                        await catch_up_to_deadline(preflight_result, user_id=user.id)
-                        logger.info(
-                            "qa.stream.first_token_ms",
-                            qa_log_id=qa_log_id,
-                            user_id=user.id,
-                            path="rag",
-                            ttft_ms=int((time.perf_counter() - t0) * 1000),
-                        )
-                        first_token_logged = True
-                    accumulated_chunks.append(token)
-                    yield {"event": "token", "data": json.dumps({"delta": token})}
+                    async for token in query_runner.stream_rag_answer(
+                        normalized,
+                        _on_complete,
+                        on_thread_complete=_persist_full_from_thread,
+                        search_query=search_for_rag,
+                        history_block=history_block,
+                    ):
+                        if not first_token_logged:
+                            # 체감 지연 보장 — 사용자가 보게 될 첫 토큰 emit 직전에 deadline 까지 대기.
+                            await catch_up_to_deadline(preflight_result, user_id=user.id)
+                            logger.info(
+                                "qa.stream.first_token_ms",
+                                qa_log_id=qa_log_id,
+                                user_id=user.id,
+                                path="rag",
+                                ttft_ms=int((time.perf_counter() - t0) * 1000),
+                            )
+                            first_token_logged = True
+                        accumulated_chunks.append(token)
+                        yield {"event": "token", "data": json.dumps({"delta": token})}
 
-                accumulated = "".join(accumulated_chunks)
-                usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
-                retrieved_docs_payload = docs_holder[0] if docs_holder else []
-                prompt_text_payload = prompt_holder[0] if prompt_holder else None
+                    accumulated = "".join(accumulated_chunks)
+                    usage = usage_holder[0] if usage_holder else TokenUsage(0, 0, 0, 0.0)
+                    # 판단 단계(#149 ③)도 OpenAI 호출이다 — 질문 1건의 비용에 합산해야
+                    # 월 예산 집계·kill-switch 가 실제 지출과 어긋나지 않는다.
+                    usage = _merge_usage(usage, rewrite_usage)
+                    retrieved_docs_payload = docs_holder[0] if docs_holder else []
+                    prompt_text_payload = prompt_holder[0] if prompt_holder else None
 
             latency_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -695,7 +1040,15 @@ class QAService:
             # 남기지만, 이 UPDATE 가 최종 권위로 True 를 확정한다).
             log.delivered = True
             # 관리자 감사용 — 동의어 치환 후 쿼리와 top-k 문서 (rule 경로면 docs는 빈 리스트)
-            log.normalized_query = normalized
+            # 검수 P1-4 — 대화 이어가기에서 검색에 쓴 질의는 원문 정규화와 다르다.
+            # 관리자 화면이 "실제로 무엇을 검색했는지" 를 보도록 실제 검색 질의를 남긴다.
+            log.normalized_query = (
+                audit_query_holder[0] if audit_query_holder else normalized
+            )
+            # 검수 P1-7 — 되묻기 응답은 종류를 구조적으로 표시한다. 이전 대화를 서버
+            # 로그에서 다시 읽을 때 이 값으로 제외한다(문구 문자열 비교 금지).
+            if needs_clarify:
+                log.answer_kind = ANSWER_KIND_CLARIFICATION
             log.retrieved_docs = retrieved_docs_payload
             # LLM 에 실제 들어간 최종 프롬프트(템플릿 + 질문 + 컨텍스트 치환 완료).
             # 룰 경로는 LLM 호출 자체가 없어 None.
@@ -748,7 +1101,15 @@ class QAService:
                 total_tokens=usage.total_tokens,
                 cost_usd=float(usage.cost_usd),
                 rule_matched=rule_matched_flag,
-                path="periodontal" if use_periodontal else ("rule" if use_rule else "rag"),
+                path=(
+                    "periodontal"
+                    if use_periodontal
+                    else "rule"
+                    if use_rule
+                    else "clarify"
+                    if needs_clarify
+                    else "rag"
+                ),
                 procedure_count=len(procedures) if use_rule else 0,
             )
 
@@ -848,11 +1209,17 @@ class QAService:
         retrieved_docs: list[dict] | None = None,
         prompt_text: str | None = None,
         normalized_query: str | None = None,
+        history_context_key: str | None = None,
     ) -> None:
         """#141 — 백그라운드 스레드가 완성한 답변을, 아직 확정 안 된(in_progress) 행에
         한해 저장한다. 유저 연결이 끊겨 정상 경로 UPDATE 가 못 돈 경우의 안전망.
         delivered=False 로 남겨 재시도 재생 대상이 되게 한다. 정상 전송된 행
-        (status!='in_progress')은 WHERE 조건에서 걸러져 건드리지 않는다(멱등)."""
+        (status!='in_progress')은 WHERE 조건에서 걸러져 건드리지 않는다(멱등).
+
+        3차 검수 P1-2 — ``history_context_key``(이 답변이 실제로 쓴 이전 대화 지문)도
+        함께 저장한다. 이 값이 빠지면 **맥락을 반영해 만든 답변**이 지문 없이 남아,
+        나중에 맥락 없는 첫 질문에 자동 재생된다(= 검수 P0-1 결함 재발).
+        """
         from sqlalchemy import text as _sql_text
 
         from api.src.models.base import async_session_factory
@@ -865,7 +1232,7 @@ class QAService:
                         "delivered=false, latency_ms=:lat, input_tokens=:it, "
                         "output_tokens=:ot, cost_usd=:cost, "
                         "retrieved_docs=cast(:docs as jsonb), prompt_text=:prompt, "
-                        "normalized_query=:nq "
+                        "normalized_query=:nq, history_context_key=:ck "
                         "WHERE id=:id AND status='in_progress'"
                     ),
                     {
@@ -877,6 +1244,7 @@ class QAService:
                         "docs": json.dumps(retrieved_docs or []),
                         "prompt": prompt_text,
                         "nq": normalized_query,
+                        "ck": history_context_key,
                         "id": qa_log_id,
                     },
                 )
@@ -895,54 +1263,246 @@ class QAService:
                 "qa.stream.guarded_persist_failed", qa_log_id=qa_log_id, error=str(exc)
             )
 
-    async def find_replayable(
+    async def claim_replayable(
         self,
         db: AsyncSession,
         *,
         user: User,
         question_text: str,
-    ) -> QALog | None:
+        history_context_key: str | None = None,
+        explicit_retry: bool = False,
+        history_state: HistoryState = HistoryState.NONE,
+    ) -> "ReplayClaim | None":
         """#141 — 최근(3분 이내) 같은 질문에 대해 '완성됐지만 전송 못 한'(delivered=False)
-        답변이 있으면 반환한다. 있으면 재시도 시 OpenAI 재호출·횟수 차감 없이 재생한다."""
-        from sqlalchemy import select
+        답변의 **재생 권한을 원자적으로 선점**한다. 선점에 성공한 요청만 재생한다.
 
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=3)
-        stmt = (
-            select(QALog)
+        **검수 P0-1 — 대화 맥락까지 같아야 재생한다.**
+
+        예전에는 사용자·질문 문자열만 봤다. 그래서 스케일링 대화에서 만들어진
+        "몇 번까지 돼?" 답변이, 몇 분 뒤 임플란트 대화의 똑같은 "몇 번까지 돼?" 질문에
+        그대로 재생됐다(= 다른 항목의 청구 기준을 안내).
+
+        **재수정 P1-1 — 조회와 전달 표시를 분리하지 않는다.**
+
+        예전 구조는 ``find_replayable``(평범한 SELECT) → ``stream_saved``(delivered UPDATE)
+        였다. 두 단계 사이에 틈이 있어 거의 동시에 들어온 요청 2개가 같은 행을 함께
+        재생했다(재생은 횟수 차감이 없으므로 공짜로 복제된다). 지금은 조건부
+        ``UPDATE ... RETURNING`` 으로 ``replay_claimed_at``(재생 권한 선점 시각)을
+        NULL → now() 로 바꾸는 데 성공한 **단 하나**의 요청만 재생 권한을 얻는다.
+        ``delivered=true``(사용자 전달 완료)는 **재생을 끝까지 마친 뒤**에만 확정한다.
+
+        지금 규칙:
+          - 맥락 없는 요청(첫 질문 등, ``history_state=NONE``)은 **기존과 동일하게**
+            자동 재생한다. ``history_context_key IS NULL`` 인 답변만 후보가 된다.
+          - 이전 대화가 딸린 요청(``VERIFIED``)은 ``history_context_key`` 가 **정확히
+            같고**, 사용자가 명시적으로 재시도를 눌렀을 때(``explicit_retry=True``)만
+            재생한다. 맥락이 다르면 재생하지 않고 정상 생성 경로로 간다.
+          - **``REJECTED``(맥락 id 를 보냈지만 전부 거부됨)는 재생하지 않는다** —
+            재수정 P0-3. 이 상태의 맥락 키는 NULL 이라, 허용하면 "맥락 없는 첫 질문"
+            후보에 걸려 **다른 대화에서 만든 답변**이 자동 재생된다.
+          - 맥락 키는 **서버가 검증한 턴 id** 로만 만든다(브라우저 문자열 금지 — P0-2).
+        """
+        from sqlalchemy import or_, select, update
+
+        if history_state is HistoryState.REJECTED:
+            # 이어갈 맥락이 없다는 것을 서버가 아는 상태. 첫 질문으로 취급하면 안 된다.
+            logger.info(
+                "qa.replay.skipped_rejected_history", user_id=user.id
+            )
+            return None
+
+        if history_context_key is not None and not explicit_retry:
+            # 맥락이 있는 질문은 사용자가 "다시 시도" 를 누른 경우에만 재생한다.
+            return None
+
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=3)
+        # 리스 만료 기준 — 연결이 끊겨 선점 해제가 못 돌아간 행도 이 시간이 지나면
+        # 다시 가져갈 수 있다(행이 영구히 잠기지 않게).
+        lease_cutoff = now - timedelta(seconds=REPLAY_CLAIM_LEASE_SECONDS)
+        claim_token = uuid4().hex
+
+        def _claimable():
+            """선점 가능 조건 — 선점이 없거나 리스가 만료된 행."""
+            return or_(
+                QALog.replay_claimed_at.is_(None),
+                QALog.replay_claimed_at < lease_cutoff,
+            )
+
+        candidate = (
+            select(QALog.id)
             .where(
                 QALog.user_id == user.id,
                 QALog.question_text == question_text,
                 QALog.status == "completed",
                 QALog.delivered.is_(False),
                 QALog.created_at >= cutoff,
+                # 3차 검수 P2 — 되묻기 등 특수 응답은 재생 후보가 될 수 없다.
+                # 지금은 되묻기 행이 (completed, delivered=False) 가 되지 않아 도달
+                # 불가지만, 되묻기 경로에 백그라운드 저장이 추가되는 순간 되묻기 문구가
+                # 재생된다. 가드를 미리 둔다(load_verified_turns 와 같은 기준).
+                QALog.answer_kind.is_(None),
+                (
+                    QALog.history_context_key.is_(None)
+                    if history_context_key is None
+                    else QALog.history_context_key == history_context_key
+                ),
+                _claimable(),
             )
             .order_by(QALog.created_at.desc())
             .limit(1)
+            .scalar_subquery()
         )
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
 
-    async def stream_saved(self, db: AsyncSession, log: QALog) -> AsyncIterator[dict]:
-        """#141 — DB에 저장된 완성 답변을 그대로 재생(SSE)한다. OpenAI 호출·횟수 차감 없음.
-        재생 즉시 delivered=True 로 마킹해 중복 재생을 막는다."""
-        log.delivered = True
-        await db.commit()
+        # 조건부 UPDATE ... RETURNING — 동시 요청 중 **하나만** rowcount 1 이 된다.
+        # (PostgreSQL READ COMMITTED: 두 번째 UPDATE 는 행 락에서 기다린 뒤 WHERE 를
+        #  다시 평가하고, 그때는 replay_claimed_at 이 채워져 있어 0행이 된다.)
+        stmt = (
+            update(QALog)
+            .where(
+                QALog.id == candidate,
+                QALog.delivered.is_(False),
+                _claimable(),
+            )
+            .values(replay_claimed_at=now, replay_claim_token=claim_token)
+            .returning(
+                QALog.id,
+                QALog.answer_text,
+                QALog.input_tokens,
+                QALog.output_tokens,
+                QALog.rule_matched,
+                QALog.user_id,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        # 3차 검수 P2 — 재생은 "있으면 좋은" 최적화다. 선점 쿼리·커밋이 일시 실패하면
+        # 예외를 올려 **질문 전체를 500 으로 끝내는** 대신, 재생을 포기하고 정상 생성
+        # 경로로 내려보낸다(사용자는 답변을 받는다).
+        try:
+            row = (await db.execute(stmt)).first()
+            await db.commit()
+        except Exception as exc:
+            logger.warning(
+                "qa.replay.claim_failed", user_id=user.id, error=str(exc)
+            )
+            await _rollback_quietly(db, reason="replay_claim_failed")
+            return None
+        if row is None:
+            return None
 
-        answer = log.answer_text or ""
         logger.info(
-            "qa.stream.replayed", qa_log_id=log.id, user_id=log.user_id, chars=len(answer)
+            "qa.replay.claimed", qa_log_id=int(row.id), user_id=user.id
         )
-        # 프론트 타자기 애니메이션이 살아있도록 저장 답변을 한 토큰으로 흘려보낸다.
-        if answer:
-            yield {"event": "token", "data": json.dumps({"delta": answer})}
-        yield {
-            "event": "done",
-            "data": json.dumps({
-                "qa_log_id": log.id,
-                "total_tokens": (log.input_tokens or 0) + (log.output_tokens or 0),
-                "cost_usd": 0.0,
-                "latency_ms": 0,
-                "rule_matched": bool(log.rule_matched),
-                "replayed": True,
-            }),
-        }
+        return ReplayClaim(
+            qa_log_id=int(row.id),
+            claim_token=claim_token,
+            answer_text=row.answer_text,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            rule_matched=bool(row.rule_matched),
+            user_id=row.user_id,
+        )
+
+    @staticmethod
+    async def _release_replay_claim(db: AsyncSession, claim: "ReplayClaim") -> None:
+        """재생이 끝까지 못 간 경우 선점을 **즉시** 해제한다 (재수정 P1-1).
+
+        ``replay_claim_token`` 까지 비교해 **자기 선점만** 푼다. 토큰을 안 보고 풀면,
+        리스가 만료돼 다른 요청이 이미 가져간 선점을 지워 중복 재생을 허용하게 된다.
+        해제가 실패해도 리스 만료(기본 30초)로 다시 가져갈 수 있으므로 로그만 남긴다.
+        """
+        from sqlalchemy import update
+
+        try:
+            await db.execute(
+                update(QALog)
+                .where(
+                    QALog.id == claim.qa_log_id,
+                    QALog.replay_claim_token == claim.claim_token,
+                    QALog.delivered.is_(False),
+                )
+                .values(replay_claimed_at=None, replay_claim_token=None)
+                .execution_options(synchronize_session=False)
+            )
+            await db.commit()
+            logger.info("qa.replay.claim_released", qa_log_id=claim.qa_log_id)
+        except Exception as exc:  # pragma: no cover - 해제 실패는 리스로 복구된다
+            logger.warning(
+                "qa.replay.claim_release_failed",
+                qa_log_id=claim.qa_log_id,
+                error=str(exc),
+            )
+
+    @staticmethod
+    async def _confirm_replay_delivered(db: AsyncSession, claim: "ReplayClaim") -> None:
+        """재생을 끝까지 마친 뒤에만 ``delivered=true`` 를 확정한다 (재수정 P1-1)."""
+        from sqlalchemy import update
+
+        await db.execute(
+            update(QALog)
+            .where(
+                QALog.id == claim.qa_log_id,
+                QALog.replay_claim_token == claim.claim_token,
+            )
+            .values(delivered=True)
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+        logger.info("qa.replay.delivered", qa_log_id=claim.qa_log_id)
+
+    async def stream_saved(
+        self, db: AsyncSession, *, claim: "ReplayClaim"
+    ) -> AsyncIterator[dict]:
+        """#141 — DB에 저장된 완성 답변을 그대로 재생(SSE)한다. OpenAI 호출·횟수 차감 없음.
+
+        재수정 P1-1 — 재생 권한은 ``claim_replayable`` 이 이미 선점해 두었다.
+        ``delivered=true`` 는 **재생을 끝까지 마친 뒤**에만 확정하고, 중간에 연결이
+        끊기면 선점을 풀어 다음 재시도가 바로 다시 가져갈 수 있게 한다.
+        """
+        answer = claim.answer_text or ""
+        logger.info(
+            "qa.stream.replayed",
+            qa_log_id=claim.qa_log_id,
+            user_id=claim.user_id,
+            chars=len(answer),
+        )
+        try:
+            # 프론트 타자기 애니메이션이 살아있도록 저장 답변을 한 토큰으로 흘려보낸다.
+            if answer:
+                yield {"event": "token", "data": json.dumps({"delta": answer})}
+            yield {
+                "event": "done",
+                "data": json.dumps({
+                    "qa_log_id": claim.qa_log_id,
+                    "total_tokens": (claim.input_tokens or 0)
+                    + (claim.output_tokens or 0),
+                    "cost_usd": 0.0,
+                    "latency_ms": 0,
+                    "rule_matched": bool(claim.rule_matched),
+                    "replayed": True,
+                }),
+            }
+        except (GeneratorExit, asyncio.CancelledError):
+            # 재생 중 연결이 끊겼다 → 전달되지 않았으므로 delivered 를 세우지 않고
+            # 선점을 풀어 즉시 재시도가 가능하게 한다.
+            await self._release_replay_claim(db, claim)
+            raise
+        except Exception:
+            # 끊김이 아닌 오류(직렬화 실패 등)로 재생이 중단된 경우도 전달 실패다.
+            # 리스 만료(30초)로도 회수되지만, 즉시 재시도가 가능하도록 여기서도 푼다.
+            await self._release_replay_claim(db, claim)
+            raise
+        # 끝까지 보냈다 → 이제 전달 완료로 확정한다.
+        #
+        # 확정이 실패해도 **사용자에게는 이미 전부 보냈다.** 여기서 예외를 올리면
+        # SSE 응답 뒷정리만 지저분해지고 사용자에게 돌아가는 이득이 없다. 확정에
+        # 실패하면 delivered 가 false 로 남아 같은 답변이 한 번 더 재생될 수 있는데,
+        # 재생은 질문 횟수 차감도 과금도 없으므로 안전한 실패 방향이다.
+        try:
+            await self._confirm_replay_delivered(db, claim)
+        except Exception as exc:  # pragma: no cover - 확정 실패는 로그만
+            logger.warning(
+                "qa.replay.deliver_confirm_failed",
+                qa_log_id=claim.qa_log_id,
+                error=str(exc),
+            )

@@ -335,18 +335,26 @@ describe("useQAStream", () => {
     expect(messages[1].status).toBe("complete");
   });
 
-  it("기타 4xx → AppAlert 미노출 (기존 setError 분기)", async () => {
+  // 2026-11-03 3차 검수 P1-5 로 **계약이 바뀌었다.**
+  //
+  // 예전: 401·429 외의 비정상 응답은 throw 로 떨어져 catch 가
+  //       "인터넷 연결이 끊겨 답변이 중단됐어요" 를 붙였고, 알림은 띄우지 않았다.
+  // 문제: 그 문구는 실제 원인과 전혀 다르다. 특히 503 KILLSWITCH_ACTIVE(관리자가
+  //       서비스를 일시 중단)와 422 QUESTION_TOO_LONG 은 서버가 정확한 안내 문구를
+  //       주는데 그게 버려지고 **사용자 탓으로 읽히는 문구**가 나갔다. 게다가
+  //       dropTurn 을 타지 않아 빈 답변 말풍선이 누적 대화에 영구히 남았다.
+  // 지금: 스트림 시작 전 비정상 응답은 **상태코드와 무관하게** 서버 문구로 안내하고
+  //       이번 턴만 걷어낸다(과거 정상 대화는 보존).
+  it("기타 4xx → 서버 문구로 안내하고 이번 턴만 제거한다 (3차 검수 P1-5)", async () => {
     mockedFetchEventSource.mockImplementation(async (_url, opts) => {
       const fakeResponse = {
         status: 403,
         ok: false,
-        json: async () => ({}),
+        json: async () => ({ code: "FORBIDDEN", message: "권한이 없습니다." }),
       } as unknown as Response;
-      try {
-        await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(fakeResponse);
-      } catch {
-        // 기존 setError 분기
-      }
+      await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(
+        fakeResponse,
+      );
     });
 
     const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
@@ -354,6 +362,42 @@ describe("useQAStream", () => {
       await result.current.submit("질문");
     });
 
-    expect(useAlertStore.getState().current).toBeNull();
+    // 안내가 뜬다 — 그리고 서버 문구를 그대로 쓴다.
+    const alert = useAlertStore.getState().current;
+    expect(alert).not.toBeNull();
+    expect(alert?.description).toBe("권한이 없습니다.");
+    // 빈 답변 말풍선이 남지 않는다 (이번 턴만 제거).
+    expect(useQAStore.getState().messages).toEqual([]);
+  });
+
+  it("503 비상 정지는 '인터넷 끊김' 으로 보이지 않는다 (3차 검수 P1-5)", async () => {
+    mockedFetchEventSource.mockImplementation(async (_url, opts) => {
+      const fakeResponse = {
+        status: 503,
+        ok: false,
+        json: async () => ({
+          code: "KILLSWITCH_ACTIVE",
+          message: "서비스가 일시 중단되었습니다. 재개 시 알림톡으로 안내드립니다.",
+        }),
+      } as unknown as Response;
+      await (opts as { onopen?: (r: Response) => Promise<void> }).onopen?.(
+        fakeResponse,
+      );
+    });
+
+    const { result } = renderHook(() => useQAStream(), { wrapper: makeWrapper() });
+    await act(async () => {
+      await result.current.submit("질문");
+    });
+
+    const alert = useAlertStore.getState().current;
+    expect(alert?.description).toContain("재개");
+    expect(alert?.description).not.toContain("인터넷");
+    // 어떤 메시지에도 "인터넷 연결이 끊겨" 안내가 붙지 않는다.
+    expect(
+      useQAStore
+        .getState()
+        .messages.some((m) => (m.errorMessage ?? "").includes("인터넷")),
+    ).toBe(false);
   });
 });

@@ -330,28 +330,54 @@ async def _load_runtime_params() -> dict:
         }
 
 
+def build_final_prompt(prompt_template_str: str, docs, question: str) -> str:
+    """LLM 에 들어갈 **최종 프롬프트**를 만든다 (RetrievalQA(stuff) 와 동일한 조립).
+
+    - context: 문서 page_content 를 빈 줄 하나("\n\n")로 이어붙인 것 — stuff 체인 기본 구분자
+    - 최종 프롬프트 = ``PromptTemplate.format(context=..., question=...)``
+
+    RetrievalQA 를 걷어낸 이유는 검색어와 프롬프트의 질문을 분리해야 했기 때문이다(#149).
+    그래서 **조립 결과가 도입 전과 1바이트도 달라지지 않는지**가 중요하다. 기준 커밋
+    ``147fb6e`` 와 비교하는 테스트(``test_history_prompt_equivalence.py``)가 이 함수를
+    그대로 호출한다 — 프로덕션과 테스트가 같은 코드를 쓰게 하려고 모듈 함수로 꺼내 두었다.
+    """
+    from langchain_core.prompts import PromptTemplate
+
+    context = "\n\n".join(getattr(d, "page_content", "") or "" for d in docs)
+    return PromptTemplate.from_template(prompt_template_str).format(
+        context=context, question=question
+    )
+
+
 async def stream_rag_answer(
     query: str,
     on_complete: callable,
     on_thread_complete=None,
+    *,
+    search_query: str | None = None,
+    history_block: str = "",
 ) -> AsyncIterator[str]:
     """RAG 체인을 streaming으로 실행해 토큰 단위로 yield한다.
 
     asyncio.to_thread + Queue 패턴 사용 (Story 2.1 패턴과 동일).
     on_complete(usage, full_text, docs, prompt_text) 콜백은 스트림 종료 시
     qa_logs UPDATE용.
-      - docs: list[dict] — RetrievalQA가 top-k로 가져온 문서들의 직렬화.
+      - docs: list[dict] — retriever가 top-k로 가져온 문서들의 직렬화.
               관리자 감사 용도(qa_logs.retrieved_docs)로만 저장하며,
               SSE 응답이나 사용자 노출에는 절대 사용하지 않는다 (ADR-0002 보강).
       - prompt_text: str | None — LLM에 실제로 전달된 최종 프롬프트(템플릿 +
               질문 + top-k 컨텍스트 치환 완료). on_llm_start 콜백이 받는
               prompts[0] 그대로. 관리자 질문 상세 패널 감사 전용.
 
-    return_source_documents=True 로 두지만, 결과 dict 의 'result' 필드만
-    토큰 스트림으로 흘리고 'source_documents' 는 콜백으로만 전달한다.
+    대화 이어가기(게시판 #149):
+      - search_query: FAISS 검색과 프롬프트 모듈 발동에 쓸 "완성된 질문".
+        후속 질문("그럼 치주질환 있으면?")은 그대로 검색하면 안 맞으므로, 앞 대화를 반영해
+        완성한 질의를 쓴다. None 이면 query 를 그대로 쓴다(= 기존 단일 질문 동작).
+      - history_block: 프롬프트 맨 끝 질문 직전에 끼울 "이전 대화" 섹션. 빈 문자열이면 미삽입.
+      모델에게 보여주는 ``질문:`` 자리는 **항상 사용자가 실제로 친 query** 다 —
+      검색용으로 다듬은 문장이 아니라 원문에 답해야 하기 때문.
     """
     from rag.run_qa import get_retriever  # type: ignore[import-untyped]
-    from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
 
     from api.src.services.runtime_config_service import resolve_effective_chat_model
@@ -360,6 +386,9 @@ async def stream_rag_answer(
     await ensure_initialized()
     runtime = await _load_runtime_params()
     t_runtime_loaded_ms = int((time.perf_counter() - t0) * 1000)
+
+    # 검색·프롬프트 모듈 발동에 쓸 질문. 대화 이어가기가 꺼져 있거나 첫 질문이면 원문과 같다.
+    effective_search = (search_query or "").strip() or query
 
     # 프롬프트 오버라이드 구성 (async context에서 읽어 클로저로 전달)
     from api.src.models.prompt_module_config import BLOCK_IDS
@@ -383,7 +412,7 @@ async def stream_rag_answer(
     accumulated: list[str] = []
     usage_holder: list[TokenUsage] = []
     docs_holder: list[list[dict]] = []
-    # on_llm_start 가 한 번 채운다. RetrievalQA(stuff) 는 단일 LLM 호출이므로
+    # on_llm_start 가 한 번 채운다. 이 경로는 단일 LLM 호출이므로
     # 첫 번째 prompts[0] 이 곧 "템플릿 + 질문 + 컨텍스트가 모두 치환된" 최종 입력.
     prompt_holder: list[str] = []
     exc_holder: list[BaseException] = []
@@ -392,7 +421,7 @@ async def stream_rag_answer(
     model_holder: list[str] = []
 
     def _run_sync() -> None:
-        """동기 스레드에서 RetrievalQA를 실행하고 토큰을 Queue에 넣는다."""
+        """동기 스레드에서 검색 + LLM 호출을 실행하고 토큰을 Queue에 넣는다."""
         succeeded = False
         try:
             from langchain_core.callbacks.base import BaseCallbackHandler
@@ -401,7 +430,7 @@ async def stream_rag_answer(
                 def on_llm_start(
                     self, serialized, prompts, **kwargs
                 ) -> None:
-                    # LangChain RetrievalQA(stuff) 는 chain.invoke 당 LLM 1회 호출.
+                    # 이 경로는 llm.invoke 1회 = LLM 호출 1회.
                     # prompts 는 list[str] — 인덱스 0 이 우리가 보낼 최종 프롬프트.
                     if prompts and not prompt_holder:
                         try:
@@ -418,7 +447,7 @@ async def stream_rag_answer(
             handler = _QueueCallbackHandler()
 
             prompt_template_str, injected_blocks = build_prompt_with_overrides_detailed(
-                query, overrides or None
+                effective_search, overrides or None, history_block
             )
 
             # 특정 프롬프트 모델 라우팅 — 관리자가 지정한 블록이 **이번 질문의 최종 프롬프트에
@@ -443,10 +472,17 @@ async def stream_rag_answer(
             if hasattr(retriever, "search_kwargs"):
                 retriever.search_kwargs["k"] = runtime["rag_k"]
 
-            # callbacks 는 invoke time 에 RunnableConfig 로 전달 — build_chat_llm 의 모듈
-            # 전역 캐시(_LLM_CACHE) 가 같은 옵션의 ChatOpenAI 인스턴스를 재사용해 httpx
-            # keep-alive 풀을 유지한다. 워밍업도 같은 캐시 키로 미리 데워두면 첫 사용자
-            # 질문의 LLM TTFT cold-start 가 사라진다.
+            # 검색은 effective_search(완성된 질문)로, 프롬프트의 질문 자리는 원문 query 로.
+            # RetrievalQA 는 둘을 같은 값으로 묶어버려서 쓸 수 없다 → 검색·조립을 직접 한다.
+            # 조립 방식은 RetrievalQA(stuff) 와 동일하게 맞춘다:
+            #   context = 문서 page_content 를 "\n\n" 으로 이어붙인 것 (stuff 의 기본 구분자)
+            #   최종 프롬프트 = PromptTemplate.format(context=..., question=...)
+            raw_docs = with_retry(retriever.invoke)(effective_search)
+            final_prompt = build_final_prompt(prompt_template_str, raw_docs, query)
+
+            # build_chat_llm 의 모듈 전역 캐시(_LLM_CACHE) 가 같은 옵션의 ChatOpenAI 인스턴스를
+            # 재사용해 httpx keep-alive 풀을 유지한다. 워밍업도 같은 캐시 키로 미리 데워두면
+            # 첫 사용자 질문의 LLM TTFT cold-start 가 사라진다.
             llm = build_chat_llm(
                 streaming=True,
                 callbacks=None,
@@ -455,26 +491,15 @@ async def stream_rag_answer(
                 model_name=effective_model,
             )
 
-            chain = RetrievalQA.from_chain_type(
-                llm=llm,
-                chain_type="stuff",
-                retriever=retriever,
-                return_source_documents=True,
-                chain_type_kwargs={
-                    "prompt": PromptTemplate.from_template(prompt_template_str)
-                },
-            )
-
             with capture_usage(effective_model) as usage:
                 # config={"callbacks": [handler]} — streaming on_llm_new_token 콜백이
                 # invoke time callbacks 에서도 정상 트리거됨 (LangChain RunnableConfig).
-                result = with_retry(chain.invoke)(
-                    {"query": query},
+                with_retry(llm.invoke)(
+                    final_prompt,
                     config={"callbacks": [handler]},
                 )
             usage_holder.append(usage)
             # 관리자 감사용 — SSE/사용자 응답에는 흘리지 않고 docs_holder에만 적재
-            raw_docs = result.get("source_documents", []) if isinstance(result, dict) else []
             docs_holder.append(_serialize_source_documents(raw_docs))
             succeeded = True
         except Exception as e:
@@ -662,20 +687,19 @@ async def stream_periodontal_answer(
 
 
 async def warmup_once() -> dict:
-    """워밍업 ping — 실제 ``stream_rag_answer`` 와 100% 동일한 RetrievalQA 경로로 1회 더미 호출.
+    """워밍업 ping — 실제 ``stream_rag_answer`` 와 동일한 검색+LLM 경로로 1회 더미 호출.
 
     목적은 두 가지:
     1) ``build_chat_llm`` 의 모듈 전역 캐시(_LLM_CACHE)에 현재 chat_model 의 ChatOpenAI 인스턴스를
        올려두기 — 첫 사용자 질문이 매번 새 ChatOpenAI 를 만들지 않고 이 캐시를 그대로 받음.
        httpx keep-alive 풀·TLS 세션이 워밍업 ping 사이에 살아 있으니 LLM TTFT cold-start 가 사라짐.
-    2) LangChain RetrievalQA·langchain_classic.chains·PromptTemplate 등의 lazy import 를 모두
+    2) LangChain retriever·PromptTemplate 등의 lazy import 를 모두
        부팅 직후에 끝내 두기 — 첫 사용자 질문에서 발생하던 200~400ms import 비용 제거.
 
     반환: ``{"model": str, "latency_ms": int, "tokens": int}`` — 워밍업 서비스가 모니터링 로그에 사용.
     예외는 caller 가 swallow 한다 (loop 가 계속 돌아야 함).
     """
     from rag.run_qa import get_retriever  # type: ignore[import-untyped]
-    from langchain_classic.chains import RetrievalQA
     from langchain_core.prompts import PromptTemplate
 
     await ensure_initialized()
@@ -718,19 +742,16 @@ async def warmup_once() -> dict:
             model_name=runtime.get("chat_model"),
         )
 
-        chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=retriever,
-            return_source_documents=False,  # 워밍업은 source_documents 불필요
-            chain_type_kwargs={
-                "prompt": PromptTemplate.from_template(prompt_template_str)
-            },
+        # 실제 답변 경로와 동일한 조립 방식(수동 검색 + 단일 llm.invoke).
+        docs = retriever.invoke(query)
+        context = "\n\n".join(getattr(d, "page_content", "") or "" for d in docs)
+        final_prompt = PromptTemplate.from_template(prompt_template_str).format(
+            context=context, question=query
         )
 
         t_inner = time.perf_counter()
         with capture_usage(runtime.get("chat_model")) as usage:
-            chain.invoke({"query": query})
+            llm.invoke(final_prompt)
         return int((time.perf_counter() - t_inner) * 1000), usage.total_tokens
 
     latency_ms, total_tokens = await asyncio.to_thread(_run_sync)

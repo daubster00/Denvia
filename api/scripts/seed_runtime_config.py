@@ -39,11 +39,11 @@ DEFAULTS = {
     "runtime:pro_monthly_quota": "500",
     "runtime:show_subscribe_button": "true",
     # #130 ① — 질문 전송 시 화면 중앙 안내 팝업 (관리자 콘텐츠>서비스 토글에서 편집).
-    "runtime:qa_notice_enabled": "true",
-    "runtime:qa_notice_text": (
-        "현재 질문하신 내용에 대한 정보만 제공하며 이전에 질문하신 내용을 참고하여 "
-        "정보를 제공하지 않습니다. Denvia는 매 질문을 항상 새로운 독립질문으로 처리합니다."
-    ),
+    # 게시판 #149(2026-11-02 사용자 결정 ②) — 안내 문구를 **삭제**했다. 원래 문구가
+    # "이전 질문을 참고하지 않는다" 였는데 대화 이어가기 도입으로 사실과 달라졌다.
+    # 그래서 팝업은 기본 꺼짐이고, 문구 키는 아예 시드하지 않는다(없으면 빈 문구).
+    # 관리자가 새 문구를 넣고 다시 켜면 그대로 동작한다.
+    "runtime:qa_notice_enabled": "false",
     "runtime:qa_notice_font_size": "16",
     "runtime:qa_notice_color": "#111111",
     "runtime:qa_notice_font_weight": "500",

@@ -11,6 +11,7 @@ import { PhoneNumberField } from "./PhoneNumberField";
 import { SMSCodeInput } from "./SMSCodeInput";
 import { AddressLookupField } from "@/features/profile/AddressLookupField";
 import { useSessionStore } from "@/stores/session-store";
+import { useQAStore } from "@/stores/qa-store";
 import { ApiError } from "@/types/api";
 import styles from "@/styles/auth-forms.module.css";
 
@@ -153,6 +154,12 @@ export function SignupForm() {
         address_detail: emptyToNull(data.address_detail),
       });
       setUser(user);
+      // 3차 검수 P2 — 로그인 직후 대화의 주인을 확정한다.
+      // 이 호출이 없으면 `ownerUserId`(이 대화의 주인 user_id)가 비어 있을 수 있고,
+      // `setOwner` 는 "주인이 없으면 현재 사용자를 주인으로 기록" 하므로 남아 있던
+      // 대화를 물려받을 여지가 생긴다(지금은 모든 진입 경로가 먼저 비우지만,
+      // 대화를 남기는 초기화 경로가 하나라도 생기면 즉시 유출이 된다).
+      useQAStore.getState().setOwner(user.user_id);
       closePopup();
       router.push("/signup/segment");
     } catch (e) {
