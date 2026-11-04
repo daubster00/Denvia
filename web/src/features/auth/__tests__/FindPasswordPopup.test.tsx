@@ -127,3 +127,57 @@ describe("FindPasswordPopup", () => {
     expect(mockOnBack).toHaveBeenCalled();
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2026-11-04 — 문자가 오지 않을 때의 출구
+//
+// 계기: 2026-11-03 카카오 가입자가 다른 이메일을 넣고 비밀번호 찾기를 3번 시도했다.
+// 계정 열거 방지로 성공 문구만 떠서, 오지 않는 문자를 계속 기다리다 민원이 됐다.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("FindPasswordPopup — 문자 미수신 안내", () => {
+  async function submitOnce(props: Record<string, unknown> = {}) {
+    const { requestPasswordReset } = await import("@/features/auth/api");
+    vi.mocked(requestPasswordReset).mockResolvedValue({ ok: true, linked_providers: [] });
+
+    render(<FindPasswordPopup onBack={mockOnBack} {...props} />);
+    fireEvent.change(screen.getByLabelText(/이메일/), {
+      target: { value: "doc@denvia.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("010-0000-0000"), {
+      target: { value: "010-1234-5678" },
+    });
+    fireEvent.click(screen.getByText("임시 비밀번호 받기"));
+    await waitFor(() => {
+      expect(screen.getByText(/임시 비밀번호를 보내드렸습니다/)).toBeDefined();
+    });
+  }
+
+  it("성공 화면에 이메일·휴대폰 일치 안내와 소셜 가입 안내가 함께 뜬다", async () => {
+    await submitOnce();
+    expect(screen.getByText(/이메일과 휴대폰이 모두 일치/)).toBeDefined();
+    expect(screen.getByText(/소셜\(카카오·네이버·구글\)/)).toBeDefined();
+  });
+
+  it("onFindId 를 주면 아이디 찾기 버튼이 뜨고 눌리면 호출된다", async () => {
+    const onFindId = vi.fn();
+    await submitOnce({ onFindId });
+
+    const btn = screen.getByText("아이디(이메일) 찾기");
+    fireEvent.click(btn);
+    expect(onFindId).toHaveBeenCalledTimes(1);
+  });
+
+  it("onFindId 가 없으면 아이디 찾기 버튼을 그리지 않는다", async () => {
+    await submitOnce();
+    expect(screen.queryByText("아이디(이메일) 찾기")).toBeNull();
+  });
+
+  it("계정 열거 방지 — 불일치 여부를 알려주는 문구는 없다", async () => {
+    await submitOnce({ onFindId: vi.fn() });
+    const body = document.body.textContent ?? "";
+    for (const leak of ["일치하지 않", "등록되지 않", "존재하지 않", "없는 계정", "가입되지 않"]) {
+      expect(body.includes(leak)).toBe(false);
+    }
+  });
+});

@@ -45,7 +45,8 @@ services:
       uv --project /workspace/api run python /workspace/api/scripts/seed_admin.py &&
       uv --project /workspace/api run python /workspace/api/scripts/seed_runtime_config.py &&
       uv --project /workspace/api run uvicorn api.src.main:app
-      --host 0.0.0.0 --port 8000 --reload"
+      --host 0.0.0.0 --port 8000 --reload
+      --proxy-headers --forwarded-allow-ips=*"
     ports:
       - "8000:8000"
     env_file:

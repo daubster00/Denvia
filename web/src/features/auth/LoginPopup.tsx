@@ -259,7 +259,10 @@ export function LoginPopup() {
         ) : view === "signup" ? (
           <SignupForm />
         ) : view === "find-password" ? (
-          <FindPasswordPopup onBack={() => setView(findOrigin)} />
+          <FindPasswordPopup
+            onBack={() => setView(findOrigin)}
+            onFindId={() => setView("find-id")}
+          />
         ) : view === "find-id" ? (
           <FindIdPopup onBack={() => setView(findOrigin)} />
         ) : (

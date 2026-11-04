@@ -33,6 +33,8 @@ const PROVIDER_BTN_CLASS: Record<FindPasswordProvider, string> = {
 
 interface FindPasswordPopupProps {
   onBack: () => void;
+  /** 아이디 찾기 화면으로 전환. 문자가 오지 않을 때의 유일한 출구다(2026-11-04). */
+  onFindId?: () => void;
 }
 
 type SubmittedState =
@@ -44,7 +46,7 @@ type SubmittedState =
  * 소셜 전용 가입자(password_hash=NULL)는 SMS가 발송되지 않으므로,
  * 서버가 응답에 담아 보낸 `linked_providers`로 안내 + 해당 소셜 로그인 버튼을 노출한다.
  */
-export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
+export function FindPasswordPopup({ onBack, onFindId }: FindPasswordPopupProps) {
   const [submitted, setSubmitted] = useState<SubmittedState | null>(null);
   const [phoneValue, setPhoneValue] = useState("");
   const [phoneError, setPhoneError] = useState<string | undefined>();
@@ -141,6 +143,20 @@ export function FindPasswordPopup({ onBack }: FindPasswordPopupProps) {
         <p className={styles.successText}>
           등록된 휴대폰으로 임시 비밀번호를 보내드렸습니다. SMS를 확인해주세요.
         </p>
+        {/* 계정 열거 방지(UX Spec §1011)로 이메일이 틀려도 위와 같은 문구가 뜬다.
+            그래서 "안 오면 무엇을 해야 하는지" 를 반드시 함께 알려준다 — 2026-11-03
+            에 카카오 가입자가 다른 이메일을 넣고 오지 않는 문자를 기다린 민원이 있었다.
+            불일치 여부 자체는 여기서도 절대 알려주지 않는다. */}
+        <p className={styles.helperNote}>
+          문자가 오지 않나요? 가입할 때 쓴 <strong>이메일과 휴대폰이 모두 일치</strong>해야
+          발송됩니다. 소셜(카카오·네이버·구글)로 가입하셨다면 그 계정의 이메일이 아이디입니다.
+          기억나지 않으면 아이디 찾기로 먼저 확인해주세요.
+        </p>
+        {onFindId && (
+          <button type="button" onClick={onFindId} className={styles.secondaryBtn}>
+            아이디(이메일) 찾기
+          </button>
+        )}
         <button type="button" onClick={onBack} className={styles.backBtn}>
           로그인 화면으로 돌아가기
         </button>
