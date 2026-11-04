@@ -128,3 +128,6 @@ scripts/.deploy/
 # 백업본·도구 산출물
 *.bak-*
 .playwright-mcp/
+
+# 판단단계 건강도 수집기 산출물
+scripts/.watch/
