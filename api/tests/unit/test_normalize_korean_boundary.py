@@ -18,7 +18,17 @@
    매칭돼 앞 단계의 보호를 **무력화**했다.
 
 #136 은 같은 성격의 버그를 **영문** 경계로 막았는데, 한글 멀티워드에는 경계가 없어
-같은 유형이 다시 난 것이다. 그래서 PHASE 2 에 한글 **앞** 경계를 넣었다.
+같은 유형이 다시 난 것이다.
+
+## 경계를 어디까지 막을 것인가 — 한 번 과하게 잡았다가 좁혔다
+
+처음에는 한글 전체를 막았다(``(?<![가-힣])``). 그랬더니 운영 질문 2,000건에서
+**막히면 안 되는 것 3건이 함께 막혔다** — "전악보험 치석제거", "임플란트크라운 제거",
+"골드크라운 제거". 앞 글자(악·트·드)는 단순 수식어라 치환돼야 한다.
+
+뜻을 뒤집는 것은 **부정 접두사뿐**이므로 ``(?<!비)`` 로 좁혔다. 기존 vendor 룰
+``(?<!비)(보험|급여) SC``(#136)와 같은 방식이다. 좁힌 뒤 운영 질문 1,000건으로
+재측정했을 때 **결과가 달라지는 질문 0건** — 회귀가 없음을 확인했다.
 뒤는 조사("보험 치석제거는")가 붙으므로 열어 둔다.
 """
 from __future__ import annotations
@@ -71,4 +81,18 @@ def test_non_covered_scaling_is_not_turned_into_covered(question: str) -> None:
     ],
 )
 def test_multiword_synonym_still_applies(question: str, expected: str) -> None:
+    assert expected in _run(question), _run(question)
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # 한글 전체를 막았을 때 과잉 차단됐던 실제 운영 질문들.
+        # 앞 글자가 부정 접두사가 아니면 치환이 살아 있어야 한다.
+        ("전악보험 치석제거 시행시 처방전 발급 가능한가요", "연1회치석제거"),
+        ("보험 치석제거 후 처방", "연1회치석제거"),
+    ],
+)
+def test_modifier_prefix_does_not_block(question: str, expected: str) -> None:
+    """수식어(전악·임플란트 등)가 앞에 붙어도 멀티워드 동의어는 치환돼야 한다."""
     assert expected in _run(question), _run(question)
