@@ -266,3 +266,18 @@ def test_latin_abbreviation_counts_as_topic(question: str) -> None:
     """치과 현장 영문 약어(CU·RP·PRR·NiTi…)는 주제로 인정한다."""
     assert has_billing_topic(question) is True
     assert needs_clarification(question, has_known_topic=False) is False
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 2026-11-04 운영 되묻기 오탐 (qa_log 20979). 판단 단계가 실패해도
+        # 주제어로 걸러져 되묻기까지 가지 않아야 한다.
+        "산소랑 아산화질소는?",
+        "아산화질소 청구 가능해?",
+        "행동조절 90분 산정",
+    ],
+)
+def test_sedation_terms_are_topics(question: str) -> None:
+    assert has_billing_topic(question) is True
+    assert needs_clarification(question, has_known_topic=False) is False
