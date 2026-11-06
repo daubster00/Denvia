@@ -14,6 +14,7 @@ import pytest
 from api.src.rag_integration.question_completeness import (
     ANSWER_KIND_CLARIFICATION,
     CLARIFY_MESSAGE,
+    first_anaphora_index,
     has_anaphora,
     has_billing_topic,
     needs_clarification,
@@ -281,3 +282,83 @@ def test_latin_abbreviation_counts_as_topic(question: str) -> None:
 def test_sedation_terms_are_topics(question: str) -> None:
     assert has_billing_topic(question) is True
     assert needs_clarification(question, has_known_topic=False) is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 8. 지시어는 "있는가" 가 아니라 "어디에 있는가" 로 가른다 (2026-11-06, 게시판 #150-A)
+#
+# 계기: 되묻기 도입 직후 운영 반송 12건 중 9건(75%)이 오탐이었다. 고객이 같은 질문을
+# 7회 던졌는데 "그럼" 한 단어 때문에 매번 반송됐다
+# (qa_log 21224·21225·21226·21227·21229·21231·21241). 같은 내용을 지시어 없이
+# "결핵검사 매년받아야해?" 로 바꿔 던진 21232 는 문서 5개가 정상 검색됐다.
+#
+# 규칙: 지시어가 **문장 첫 어절**이면 되묻고, **문장 중간**에 나오면서 **앞쪽 구간에
+# 이미 보험청구 주제어가 적혀 있으면** 자립 문장으로 보고 통과시킨다.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 고객 실제 질문 — 7회 연속 반송된 결핵검진 건 (qa_log 21225 외)
+        "결핵검진은 매년받고 있는데 그럼 대상자 리스트를 매년 작성해야되?",
+        "의료인종사자 결핵검진은 매년받고 있는데 그럼 대상자 리스트를 매년 작성해야되?",
+        # 고객 실제 질문 — 상악동 건 (qa_log 21215·21216·21101)
+        "상악동 약처방 나갈건데 기본진료 상병에 '상악동염 NOS' 넣을건데 이건 부상병이어도 상관없지?",
+        # 설계 검토 때 든 예시 — 완전히 정상적인 청구 질문
+        "스케일링은 매년 되는데 그럼 치주소파술도 매년 되나요?",
+        # 운영 표본에서 같은 이유로 막혀 있던 질문들
+        "치관확장 청구하려고 하는데 SILKAM이랑 슈처다필론이랑 같은 거야?",
+        "토요일은 그럼 평일에비해 하루종일 가산이야?",
+        "임플란트를 심고 그걸로 지대치를 사용해서 부분틀니는 가능해?",
+        "실손24 프로그램에서 청구하는거 있잖아. 그거 가입 안하면 안되는거야?",
+    ],
+)
+def test_midsentence_anaphora_with_topic_in_front_is_answered(question: str) -> None:
+    """지시어가 문장 중간이고 앞쪽에 주제어가 있으면 되묻지 않는다."""
+    assert has_anaphora(question) is True            # 지시어는 분명히 있다
+    assert needs_clarification(question, has_known_topic=False) is False
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 설계 docstring 에 기록된 사례 — 절대 깨뜨리면 안 된다
+        "그 경우에는 환자 본인부담금이 어떻게 달라지는 건가요?",
+        # 주제어는 있지만 지시어가 문장 맨 앞 → 앞 대화 없이는 대상이 없다
+        "그럼 매년 치과에서는 리스트를 작성해야해?",
+        "그럼 스케일링도 같이 되나요?",
+        "이건 부상병이어도 상관없지?",
+        "그렇게 하면 돼요?",
+    ],
+)
+def test_leading_anaphora_still_asks_back(question: str) -> None:
+    """지시어가 문장 첫 어절이면 주제어·길이와 무관하게 되묻는다."""
+    assert needs_clarification(question, has_known_topic=False) is True
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 지시어 앞쪽에 보험청구 주제가 하나도 없다 → 여전히 되묻는다
+        "어제 말한 그거 다시 알려줘",
+        "아까 그 경우는 어떻게 돼?",
+        "제가 어제 물어본 그건 어떻게 되나요",
+    ],
+)
+def test_midsentence_anaphora_without_topic_in_front_asks_back(question: str) -> None:
+    """지시어가 중간이어도 **앞쪽에 주제어가 없으면** 자립이 아니다."""
+    assert needs_clarification(question, has_known_topic=False) is True
+
+
+def test_first_anaphora_index_reports_position() -> None:
+    """위치 판정의 기반 — 지시어가 처음 나오는 어절 번호를 돌려준다."""
+    assert first_anaphora_index("그럼 어떻게 되나요") == 0
+    assert first_anaphora_index("그 경우에는 본인부담금이 어떻게 되나요") == 0
+    assert first_anaphora_index("결핵검진은 매년받고 있는데 그럼 리스트 작성해야되?") == 3
+    assert first_anaphora_index("스케일링 산정 기준 알려주세요") is None
+
+
+def test_clarification_stays_for_real_fragments() -> None:
+    """실제 반송 12건 중 **정당한** 되묻기는 그대로 남아야 한다 (운영 qa_log 21230)."""
+    assert needs_clarification("시발", has_known_topic=False) is True
