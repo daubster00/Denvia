@@ -362,3 +362,104 @@ def test_first_anaphora_index_reports_position() -> None:
 def test_clarification_stays_for_real_fragments() -> None:
     """실제 반송 12건 중 **정당한** 되묻기는 그대로 남아야 한다 (운영 qa_log 21230)."""
     assert needs_clarification("시발", has_known_topic=False) is True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 9. 범용어(`산정` 류)는 "수치만 묻는 질문" 분기를 무력화하지 못한다
+#    (2026-11-06, 게시판 #150-B)
+#
+# 계기: 운영 qa_log 20969 "몇악당 산정되는거야?" 가 통과해 그대로 검색으로 넘어갔다.
+# 주제어로 걸린 것은 `산정`(청구 금액·횟수를 계산한다) 하나뿐인데, 이 말은 보험청구
+# 질문 거의 전부에 등장하는 범용 동사다. 주제가 있다고 판정되는 순간 "수치만 묻는
+# 맥락 의존 질문" 분기(규칙 2)가 통째로 건너뛰어진다. "**무엇을** 몇악당 산정하는지"
+# 가 빠진 질문이라 앞 대화 없이는 답할 수 없다.
+#
+# 규칙: 범용어는 규칙 3(주제가 잡히면 답한다)에서는 그대로 주제로 인정하고,
+# 규칙 2(수치만 묻는 질문)에서만 주제로 세지 않는다. 사전에서 빼지 않는 이유는
+# 아래 `test_sanjeong_stays_a_topic_for_self_contained_questions` 가 고정한다.
+#
+# 실측(운영 표본 2,953건, outputs/measure_clarify_150b.py): 되묻기 136 → 137건.
+# 새로 막힌 질문은 20969 단 1건(= 목표 미탐), 새로 통과한 질문 0건.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 운영 미탐 본건 (qa_log 20969, 2026-11-04 10:22)
+        "몇악당 산정되는거야?",
+        # 같은 꼴 — 대상이 빠지고 수치·범용어만 남은 질문
+        "몇악당 산정해?",
+        "몇번까지 산정 가능해?",
+        "몇 퍼센트 삭감돼?",
+        "몇번까지 접수돼?",
+    ],
+)
+def test_metric_only_with_generic_term_asks_back(question: str) -> None:
+    """범용어 하나로는 "수치만 묻는 질문" 을 통과시킬 수 없다."""
+    # 사전 자체에는 여전히 주제어로 남아 있다 (규칙 3 용도).
+    assert has_billing_topic(question) is True
+    # 다만 범용어를 제외하면 주제가 없다 → 규칙 2 가 살아난다.
+    assert has_billing_topic(question, allow_generic=False) is False
+    assert needs_clarification(question, has_known_topic=False) is True
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 바로 다음 턴에 고객이 직접 고쳐 던진 완성 문장 (qa_log 20970)
+        "치면세마는 몇악당 산정이야>",
+        # `산정` 을 사전에서 빼면(방안 2) 전부 새로 막히던 자립 질문들.
+        # 운영 표본 실측 10건 중 9건 — 이 테스트가 그 방안의 재도입을 막는다.
+        "블랙실크사용시 산정불가항목",
+        "블랙실크 산정가능항목",
+        "러버댐 산정 기준",
+        "즉충 산정기준",
+        "드라이소켓 재산정기준",
+        "1치당 아닌 1면당 산정되는것은?",
+        "구토반사 심한 환자 리도카글 산정 기준",
+        "개월초과 6개월이내 동일부위 시행하여 50%만 산정했는데 90일은 지나긴함",
+    ],
+)
+def test_sanjeong_stays_a_topic_for_self_contained_questions(question: str) -> None:
+    """`산정` 은 사전에 남아 있어야 한다 — 대상이 분명한 질문을 막으면 안 된다."""
+    assert needs_clarification(question, has_known_topic=False) is False
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # `청구` 를 범용어에 넣었을 때(방안 3-wide) 새로 막히던 자립 질문들.
+        # 사전에 없는 행위 이름(스켈링·프로빙·드라이소켓·나이타이)을 쓴 정상 질문에서
+        # `청구` 가 유일한 주제 신호였다 — 그래서 `청구` 는 범용어가 아니다.
+        "연1회 스켈링이랑 프로빙 동시청구 가능해?",
+        "연1회 하면서 지각과민 청구 가능한가요?",
+        "드라이소켓 같은달에 2번 청구 되나요",
+        "엔도중 나이타이 몇번 청구가능해?",
+        # `처치` 를 범용어에 넣었을 때 새로 막히던 질문 — `처치` 는 실제 행위 이름의
+        # 일부다 (지각과민처치 · 보통처치 · 후처치).
+        "지각과민처치 1일가능횟수",
+        "지각과민처치 8개이상하루에처치시 사유",
+        "지각과민처치(간단) 하루 최대 청구가능한 횟수는?",
+    ],
+)
+def test_procedure_name_fragments_are_not_generic(question: str) -> None:
+    """행위 이름의 일부가 될 수 있는 말(`청구`·`처치`)은 범용어로 취급하지 않는다."""
+    assert needs_clarification(question, has_known_topic=False) is False
+
+
+def test_generic_terms_never_contain_procedure_words() -> None:
+    """범용어 집합에 행위 이름의 조각이 섞여 들어오는 것을 막는 가드.
+
+    실측으로 오탐이 확인된 말들이다. 누군가 "같은 성질 같다" 며 다시 넣으면
+    "지각과민처치 1일가능횟수" 류 정상 질문이 되묻기로 반송된다.
+    """
+    from api.src.rag_integration.question_completeness import _GENERIC_TOPIC_TERMS
+
+    forbidden = {
+        "청구", "처치", "제거", "검사", "검진", "촬영", "수술", "시술", "술식",
+        "고정", "세척", "연마", "측정", "분석", "진단", "사진", "영상", "충전",
+    }
+    assert _GENERIC_TOPIC_TERMS & forbidden == set()
+    # 반대로 본건의 원인인 `산정` 은 반드시 들어 있어야 한다.
+    assert "산정" in _GENERIC_TOPIC_TERMS
