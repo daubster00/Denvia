@@ -463,3 +463,42 @@ def test_generic_terms_never_contain_procedure_words() -> None:
     assert _GENERIC_TOPIC_TERMS & forbidden == set()
     # 반대로 본건의 원인인 `산정` 은 반드시 들어 있어야 한다.
     assert "산정" in _GENERIC_TOPIC_TERMS
+
+
+# ============================================================================
+# 섹션 10 — 전수 재측정에서 드러난 사전 누락 (2026-11-06, #150-B 검수)
+#
+# `_GENERIC_TOPIC_TERMS`(혼자서는 대상을 정하지 못하는 범용어) 도입을 표본 2,953건
+# 으로만 재면 신규 오탐이 0건으로 보이지만, 운영 질문 **전수 21,393건**으로 재면
+# 2건이 드러났다. 둘 다 행위 이름이 사전에 없어 `산정` 이 유일한 주제 신호였던 질문이다.
+# 고칠 곳은 규칙이 아니라 사전이라는 원칙(`needs_clarification` 6) 주석)의 실례.
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 운영 qa_log 실제 질문 — 전부 혼자서 뜻이 통하는 자립 질문이다.
+        "프로빙 횟수산정 어떻게해",          # [635]
+        "나이타이산정횟수",                  # [11180]
+        "프로빙은?",                         # [7930]
+        "#26,27리엔도해서 나이타이 썼는데 횟수 2번맞지?",   # [19293]
+        "당일발수근충에 나이타이파일 필수인지?",            # [20667]
+        "연1회 스켈링이랑 프로빙 동시청구 가능해?",
+        "엔도중 나이타이 몇번 청구가능해?",
+    ],
+)
+def test_transliterated_procedure_names_are_topics(question: str) -> None:
+    """음차 행위·기구 이름(프로빙·나이타이)은 주제어로 인정해 되묻지 않는다."""
+    assert needs_clarification(question, has_known_topic=False) is False
+
+
+def test_metric_only_misses_still_asked_back_after_dictionary_fix() -> None:
+    """사전을 보강해도 대상이 빠진 수치 질문은 계속 되묻는다 (#150-B 목표 보존).
+
+    사전에 단어를 더하면 미탐이 되살아날 수 있으므로 함께 고정한다.
+    """
+    assert needs_clarification("몇악당 산정되는거야?", has_known_topic=False) is True
+    assert needs_clarification("횟수가 0.5로 줄었는데 왜 그럴까?", has_known_topic=False) is True
+    # 같은 뜻의 완성 문장은 통과해야 한다.
+    assert needs_clarification("치면세마는 몇악당 산정이야?", has_known_topic=False) is False
