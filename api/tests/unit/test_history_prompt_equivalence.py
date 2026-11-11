@@ -259,3 +259,47 @@ def test_braces_in_history_do_not_break_format() -> None:
 def test_escape_braces_roundtrip() -> None:
     assert escape_braces("{a}") == "{{a}}"
     assert insert_history_block("질문: {question}", "") == "질문: {question}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. 관리자 블록 본문의 중괄호 (2026-11-11 운영 장애)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_braces_in_admin_block_do_not_break_format() -> None:
+    """관리자가 블록 본문에 "{...}" 를 쓰면 그 키워드 질문 전건이 실패했다.
+
+    2026-11-11 12:35 KST — ``치근단촬영`` 블록 첫 줄이 ``{치근단촬영에 대한 정보입니다.}``
+    로 저장되어, PromptTemplate 이 이를 변수로 읽고 ``Invalid variable name`` 으로 죽었다
+    (qa_logs 22227~22245, 치근단 키워드 질문 9건 연속 "내부 오류").
+    본문은 모델에게 **글자 그대로** 보여야 하고, 포맷은 깨지지 않아야 한다.
+    """
+    overrides = _file_overrides()
+    overrides["치근단촬영"] = PromptOverride(
+        content="{치근단촬영에 대한 정보입니다.}\n-재시행 기준이 없다.",
+        enabled=True,
+        trigger_config={"mode": "keywords", "keywords": ["치근단"]},
+    )
+    docs = [_FakeDoc(t) for t in DOC_TEXTS]
+
+    out = _current_final_prompt("같은치아에 12일만에 치근단 청구 가능할까?", overrides, docs)
+
+    assert "{치근단촬영에 대한 정보입니다.}" in out
+    assert "-재시행 기준이 없다." in out
+
+
+def test_braces_in_base_block_do_not_break_format() -> None:
+    """BASE 블록 본문에 중괄호가 들어가면 **모든 질문**이 실패한다 — 더 치명적."""
+    from rag.prompt_builder import BASE_PROMPT  # type: ignore[import-untyped]
+
+    overrides = _file_overrides()
+    overrides["BASE"] = PromptOverride(
+        content=BASE_PROMPT + "\n예시: {항목}에 대한 정보입니다.",
+        enabled=True,
+        trigger_config={"mode": "base"},
+    )
+    docs = [_FakeDoc(t) for t in DOC_TEXTS]
+
+    out = _current_final_prompt(QUERIES[0], overrides, docs)
+
+    assert "예시: {항목}에 대한 정보입니다." in out

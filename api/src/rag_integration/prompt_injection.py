@@ -194,11 +194,15 @@ def build_prompt_with_overrides_detailed(
 
         parts: list[str] = []
 
+        # 블록 본문은 모두 escape_braces 를 거친다 — 관리자가 본문에 "{" 를 쓰면
+        # PromptTemplate 이 그걸 변수로 읽어 답변 전체가 실패한다(2026-11-11 치근단촬영
+        # 블록 첫 줄 "{...}" 로 치근단 질문 전건 내부 오류). 벤더 원본 본문에는 중괄호가
+        # 없어서 기존 라이브 프롬프트는 1바이트도 바뀌지 않는다.
         base_override = overrides.get("BASE")
         if base_override is None:
-            parts.append(BASE_PROMPT)
+            parts.append(escape_braces(BASE_PROMPT))
         elif base_override.enabled:
-            parts.append(base_override.content)
+            parts.append(escape_braces(base_override.content))
 
         # 마스터 블록 목록 = vendor 원본 순서 + 관리자가 추가한 블록(override 에만 존재).
         # 관리자 블록은 vendor 파일에 원본이 없으므로 overrides 삽입 순서를 그대로 이어붙인다.
@@ -249,7 +253,7 @@ def build_prompt_with_overrides_detailed(
             else:
                 # 관리자 블록인데 override 가 사라짐(삭제됨) → 주입할 내용 없음.
                 continue
-            parts.append(content)
+            parts.append(escape_braces(content))
             injected.append(module_name)
 
         # vendor build_prompt_template과 동일한 최종 템플릿 (#110 클라이언트 compact 포맷)
